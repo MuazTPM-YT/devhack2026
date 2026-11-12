@@ -20,7 +20,7 @@ export function Blast({ incident, className }: { incident: Incident | null; clas
         </div>
         <div>
           <div className="figure">{String(incident?.groupings ?? 0).padStart(2, "0")}</div>
-          <div className="label">alerts grouped in</div>
+          <div className="label">alerts folded in</div>
         </div>
       </div>
 

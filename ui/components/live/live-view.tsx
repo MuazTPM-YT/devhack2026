@@ -4,9 +4,11 @@ import { useSearchParams } from "next/navigation";
 
 import { words } from "@/lib/format";
 import { type Link, useLive } from "@/lib/use-live";
+import { useReceipt } from "@/lib/use-receipt";
 
 import { Blast } from "./blast";
 import { Checklist } from "./checklist";
+import { Severity } from "./severity";
 import { StageStrip } from "./stage-strip";
 import styles from "./live-view.module.css";
 
@@ -21,6 +23,7 @@ export function LiveView() {
   const demo = useSearchParams().get("demo") === "1";
   const { state, link, replay } = useLive(demo);
   const incident = state.current ? state.incidents[state.current] : null;
+  const receipt = useReceipt(incident?.action?.receiptId ?? null, incident?.outcome != null, demo);
 
   return (
     <div className={styles.page}>
@@ -50,6 +53,7 @@ export function LiveView() {
 
       <div className={styles.grid}>
         <Blast incident={incident} className={styles.span4} />
+        <Severity incident={incident} receipt={receipt} className={styles.span5} />
         <Checklist incident={incident} className={styles.span3} />
       </div>
     </div>
