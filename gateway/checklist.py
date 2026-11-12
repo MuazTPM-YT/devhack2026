@@ -5,6 +5,7 @@ import logging
 import sqlite3
 import threading
 import time
+from datetime import datetime, timezone
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -13,15 +14,14 @@ from pydantic import ValidationError
 
 from brain.rules import latest_change_before_onset
 from gateway import approvals, freshness, policy, trust
-from gateway.dryrun import namespace_hash, outside_allowed, previous_template, rollback_patch, spec_diff, spec_hashes
+from gateway.dryrun import build_patch, namespace_hash, outside_allowed, rollback_patch, spec_diff, spec_hashes
 from gateway.verifier import Verification, harm_check, ledger_effect
-from gateway.executor import WriteRefused, list_json, patch_deployment, read_deployment
+from gateway.executor import WriteRefused, list_json, patch_deployment, patch_scale, read_deployment
 from gateway.receipts import ReceiptStore, build_incident_card
 from observer.kube_watch import service_of
 from schemas.models import ActionRequest, GatewayDecision, Incident, Receipt
 
 log = logging.getLogger("gateway")
-BUILT_TOOLS = {"rollback_deploy"}  # ponytail: Phase 1; the other five land in Phase 2 (executor)
 
 
 class Gateway:
@@ -141,10 +141,9 @@ class Gateway:
         await self.step(action.incident_id, steps, "policy", True)
 
         # 4 dry run + snapshot
-        if action.tool not in BUILT_TOOLS:
-            return await self.stop(action, row, steps, "dry_run", "refused", f"{action.tool} not built yet")
+        entry = next((r for r in journal_rows if r["id"] == action.journal_entry), None)
         try:
-            plan = await asyncio.to_thread(self.prepare_rollback, action.target)
+            plan = await asyncio.to_thread(self.prepare, action, entry)
         except WriteRefused as e:
             return await self.stop(action, row, steps, "dry_run", e.outcome, e.reason)
         await self.step(action.incident_id, steps, "dry_run", True, f"{len(plan['diff'])} spec paths change")
@@ -155,8 +154,12 @@ class Gateway:
 
         # 6 freshness
         latest = latest_change_before_onset(journal_rows, action.target, row["onset_at"] or 0, window_s)
-        rule_now = (action.pattern, latest["id"] if latest else None)
-        entry = next((r for r in journal_rows if r["id"] == action.journal_entry), None)
+        # only "recent change" points at a journal entry; other patterns must not trip on unrelated edits
+        rule_now: tuple[str, int | None]
+        if action.pattern == "recent_change":
+            rule_now = (action.pattern, latest["id"] if latest else None)
+        else:
+            rule_now = (action.pattern, action.journal_entry)
         if action.journal_entry is not None and entry is None:
             return await self.stop(action, row, steps, "freshness", "awaiting_approval" if not approved else "escalated",
                                    f"journal entry {action.journal_entry} not found")
@@ -196,40 +199,48 @@ class Gateway:
         changed = ", ".join(sorted(plan["diff"]))[:500]
         await self.publish({"type": "approval_requested", "incident_id": action.incident_id, "payload": {
             "card": card.model_dump(mode="json"), "approval_id": appr["id"], "expires_at": appr["expires_at"],
-            "diff": f"{action.tool} {action.target}: back to revision {plan['to_revision']}; changes {changed}",
+            "diff": f"{action.tool} {action.target}: {plan['summary']}; changes {changed}",
             "forecast": f"{plan['replicas']} replicas with surge: no added downtime expected (forecast not built, P1)"}})
         self.set_state(action.incident_id, "awaiting_approval")
         return decision
 
+    def write(self, target: str, patch: dict, dry_run: bool) -> dict:
+        if patch["kind"] == "scale":
+            return patch_scale(self.apps, target, patch["body"], dry_run)
+        return patch_deployment(self.apps, target, patch["body"], dry_run, patch["content_type"])
+
     # blocking reads + dry run with the agent identity; runs in a thread
-    def prepare_rollback(self, target: str) -> dict:
+    def prepare(self, action: ActionRequest, entry: dict | None) -> dict:
+        target = action.target
         live = read_deployment(self.apps, target)
-        prev = previous_template(live, list_json(self.apps.list_namespaced_replica_set))
-        if prev is None:
-            raise WriteRefused("escalated", f"{target} has no earlier revision to roll back to")
-        template, to_rev = prev
-        patch = rollback_patch(live["metadata"]["resourceVersion"], template)
-        dry = patch_deployment(self.apps, target, patch, dry_run=True)
-        diff = spec_diff(live["spec"], dry["spec"])
+        rss = list_json(self.apps.list_namespaced_replica_set) if action.tool == "rollback_deploy" else []
+        now_iso = datetime.fromtimestamp(self.clock(), timezone.utc).isoformat()
+        patch = build_patch(action.tool, live, action.params, entry, rss, now_iso)
+        dry = self.write(target, patch, dry_run=True)
+        if patch["kind"] == "scale":
+            diff = spec_diff({"replicas": live["spec"].get("replicas")}, {"replicas": dry["spec"].get("replicas")})
+            inverse = {"op": "scale", "target": target, "replicas": live["spec"].get("replicas")}
+        else:
+            diff = spec_diff(live["spec"], dry["spec"])
+            # undo = put the pre-action template back (JSON Patch, agent identity), whatever the tool changed
+            inverse = {"op": "restore_template", "target": target, "template": live["spec"]["template"]}
         if not diff:
-            raise WriteRefused("refused", "rollback would change nothing")
-        if bad := outside_allowed(diff):
-            raise WriteRefused("escalated", f"dry run touched paths a rollback must not: {bad[:5]}")
+            raise WriteRefused("refused", f"{action.tool} would change nothing")
+        if bad := outside_allowed(diff, patch["allowed"]):
+            raise WriteRefused("escalated", f"dry run touched paths {action.tool} must not: {bad[:5]}")
         hashes = spec_hashes(list_json(self.apps.list_namespaced_deployment), list_json(self.core.list_namespaced_config_map))
         pods = [p["metadata"]["name"] for p in list_json(self.core.list_namespaced_pod) if service_of(p) == target]
-        return {"live": live, "patch": patch, "diff": diff, "to_revision": to_rev, "hashes": hashes, "pods": pods,
-                "replicas": live["spec"].get("replicas", 1)}
+        return {"live": live, "patch": patch, "diff": diff, "summary": patch["summary"], "hashes": hashes,
+                "pods": pods, "replicas": live["spec"].get("replicas", 1), "inverse": inverse}
 
     async def execute(self, action: ActionRequest, row: dict, steps: list[dict], plan: dict,
                       gate: dict) -> GatewayDecision:
         try:
-            await asyncio.to_thread(patch_deployment, self.apps, action.target, plan["patch"], False)
+            await asyncio.to_thread(self.write, action.target, plan["patch"], False)
         except WriteRefused as e:
             return await self.stop(action, row, steps, "execute", e.outcome, e.reason)
         await self.step(action.incident_id, steps, "execute", True)
-        # undo = put the pre-action template back (also via JSON Patch, agent identity)
-        inverse = {"op": "restore_template", "target": action.target, "template": plan["live"]["spec"]["template"],
-                   "from_revision": plan["to_revision"]}
+        inverse = plan["inverse"]
         receipt = Receipt(incident_id=action.incident_id, tool=action.tool, target=action.target, diff=plan["diff"],
                           inverse=inverse, evidence_ids=action.evidence_ids, pods_touched=plan["pods"], trust=gate,
                           checklist=steps, hash_before=namespace_hash(plan["hashes"]))
@@ -300,7 +311,7 @@ class Gateway:
                              v: Verification, pause: bool, harm: dict | None, reason: str,
                              hash_after: str | None = None) -> str:
         try:
-            await asyncio.to_thread(self.undo, action.target, receipt.inverse["template"], pause)
+            await asyncio.to_thread(self.undo, action.target, receipt.inverse, pause)
         except WriteRefused as e:
             await self.publish({"type": "escalated", "incident_id": action.incident_id, "payload": {
                 "card": build_incident_card(self.card_incident(row, action.target)).model_dump(mode="json"),
@@ -312,9 +323,15 @@ class Gateway:
         return await self.close(receipt_id, action, row, receipt, v, "undone", harm, reason, hash_after)
 
     # pause an in-progress rollout first so the inverse lands on a still object (§6.4.9 Undo)
-    def undo(self, target: str, template: dict, pause: bool) -> None:
+    def undo(self, target: str, inverse: dict, pause: bool) -> None:
         def rv() -> str:
             return read_deployment(self.apps, target)["metadata"]["resourceVersion"]
+
+        if inverse["op"] == "scale":
+            patch_scale(self.apps, target, {"metadata": {"resourceVersion": rv()},
+                                            "spec": {"replicas": inverse["replicas"]}}, False)
+            return
+        template = inverse["template"]
 
         test = {"op": "test", "path": "/metadata/resourceVersion"}
         if pause:
