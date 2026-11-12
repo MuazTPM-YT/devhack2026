@@ -17,6 +17,17 @@ components:
   mcp:
     enabled: false
 
+  # default 5 users gave payment ~1 request a minute; the observer needs several per second.
+  # ~0.011 checkouts per user per second, so 250 users; headless browsers off, they cost too much RAM
+  load-generator:
+    envOverrides:
+      - name: LOCUST_USERS
+        value: "250"
+      - name: LOCUST_SPAWN_RATE
+        value: "10"
+      - name: LOCUST_BROWSER_TRAFFIC_ENABLED
+        value: "false"
+
   payment:
     replicas: 2
   checkout:
