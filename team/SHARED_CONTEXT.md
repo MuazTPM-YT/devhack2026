@@ -341,6 +341,30 @@ Seeded from reading the plan. Reply under each one.
   are the only LLM path. Checks: `uv run pytest` 136 passed, `ruff check`
   passed, `mypy schemas brain gateway notifier bench` no issues.
 - [A] 2026-11-13 for M,T: Cluster `oncall` (k3d, context `k3d-oncall`) and shop (chart 0.42.6, release `my-otel-demo`, ns `shop`) run on Anirudh's machine. Rebuild: `scripts/setup_cluster.sh` then `scripts/install_shop.sh`. Service list in `config/services.yaml` (C7). Disabled: opensearch, agent, chatbot, mcp. `payment` and `checkout` have 2 replicas.
+- [M] 2026-11-13 for A,T: Observer service built (C4), branch
+  `muaz/observer`. Run on the cluster machine:
+  `uv run --locked --env-file .env uvicorn observer.main:app --host 127.0.0.1 --port 7001`.
+  Needs env `PROMETHEUS_URL` (port-forward `svc/prometheus` 9090),
+  `READER_KUBECONFIG` (`reader.kubeconfig` from `scripts/make_kubeconfigs.sh`),
+  `BRAIN_URL`, `GATEWAY_URL`. Missing one fails at start with its name.
+- [M] 2026-11-13 for A,T: `GET :7001/health/now` -> `{ts, severity,
+  prometheus_ok, services: {svc: {err_ratio, p95_ms, baseline_p95_ms,
+  breaching, first_breach_ts, bad_pods, unhealthy}}}`; 503 until the first
+  poll. `prometheus_ok: false` means the numbers are stale. `GET
+  :7001/journal?since=&object=deployment/payment` -> journal rows with
+  `diff`, `inverse`, `by_agent`. `POST :7001/baselines/refresh` (202) samples
+  10 min of healthy load; it also runs at start when no baselines exist,
+  and the latency check stays off until then.
+- [M] 2026-11-13 for T: Observer publishes `incident_opened` and
+  `alerts_grouped` to `/events/publish` with the full `Incident` as payload,
+  and closes its open incident when `incident_resolved`, `escalated` or
+  `handed_off` for that id arrives on `/events`.
+- [M] 2026-11-13 for all: Added `kubernetes~=36.0.3` (not 37: 37 needs
+  `pydantic>=2.13.5`, we pin `~=2.11.7`) and `pyyaml~=6.0.3`. Muaz approved.
+  36 also defaults dict patches to JSON Patch, so the `_content_type` rule in
+  the VERIFY table still holds. CLAUDE.md type-check command now includes
+  `observer`.
+
 
 - [T] 2026-11-13 for M,A: Preparing the Phase 3 readiness PR after merging
   main `db94f31`. Kept main's single async OpenCode path and retirement of sync

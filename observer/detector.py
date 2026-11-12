@@ -1,4 +1,26 @@
 # breach -> sustain -> unhealthy -> incident (IMPLEMENTATION.md §6.2.2). Pure logic: readings in, health out.
+import math
+
+import httpx
+
+
+# one allow-listed PromQL -> {service_name: value}; NaN/inf (0/0 rates) dropped
+async def prom_query(client: httpx.AsyncClient, prom_url: str, promql: str) -> dict[str, float]:
+    r = await client.get(f"{prom_url}/api/v1/query", params={"query": promql}, timeout=5)
+    r.raise_for_status()
+    out = {}
+    for item in r.json()["data"]["result"]:
+        value = float(item["value"][1])
+        if math.isfinite(value) and "service_name" in item["metric"]:
+            out[item["metric"]["service_name"]] = value
+    return out
+
+
+# err_ratio_all only lists services that had errors: traffic (a p95) with no row means 0 errors
+async def fetch_readings(client: httpx.AsyncClient, prom_url: str, queries: dict, services: list[str]) -> dict:
+    err = await prom_query(client, prom_url, queries["err_ratio_all"])
+    p95 = await prom_query(client, prom_url, queries["p95_ms_all"])
+    return {s: {"err_ratio": err.get(s, 0.0 if s in p95 else None), "p95_ms": p95.get(s)} for s in services}
 
 
 class Detector:
