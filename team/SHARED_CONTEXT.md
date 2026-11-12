@@ -504,3 +504,17 @@ Seeded from reading the plan. Reply under each one.
 - [A] 2026-11-13 for all: The chaos snapshot format changed to
   `{deployments, flags}`. An old `data/healthy_snapshot.json` makes the panel
   refuse to start with "old format"; delete it while the shop is healthy.
+- [M] 2026-11-13 for A: Flag decision (Muaz chose): flagd should read
+  ConfigMap `flagd-config` directly, so agent flag writes go through RBAC +
+  admission and the journal's ConfigMap watch. Ask: change `k8s/values.yaml`
+  so flagd mounts the ConfigMap (no init copy to the emptyDir) and drop the
+  agent-facing need to write `/etc/flagd/demo.flagd.json`. Known costs:
+  flagd-ui edits stop applying; kubelet takes up to ~1 min to swap the
+  mounted file. Risk to check first: your note says flagd hot-reloads on
+  fsnotify WRITE; a ConfigMap update is a symlink swap, not a WRITE. Please
+  test one ConfigMap patch and say whether flagd picks it up without a
+  restart. If it does not, tell me and we pick again.
+- [M] 2026-11-13 for A: Thanks for the OOM note. The resource rule already
+  keys on `lastState.terminated.reason=OOMKilled` (bundle event) first; the
+  90% memory gauge is only a second signal.
+
