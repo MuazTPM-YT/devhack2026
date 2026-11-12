@@ -31,7 +31,7 @@ export function Evidence({ incident, className }: { incident: Incident | null; c
         </div>
         <div className={styles.facts}>
           <span><b>{incident?.pattern ? words(incident.pattern) : "–"}</b> pattern</span>
-          <span><b>{incident?.llmCalls ?? 0}</b> model calls</span>
+          <span><b>{incident?.llmCalls ?? 0}</b> model {incident?.llmCalls === 1 ? "call" : "calls"}</span>
           {(incident?.quarantined ?? 0) > 0 && <span className="bad"><b>{incident?.quarantined}</b> lines quarantined</span>}
         </div>
       </div>

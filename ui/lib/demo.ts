@@ -44,7 +44,7 @@ export const DEMO_SCRIPT: DemoStep[] = [
     at: 37, type: "incident_resolved", payload: {
       card: {
         incident_id: "", status: "resolved",
-        text: "payment v2-bad rolled back to 3.1.0. Errors on payment, checkout and frontend back to baseline in 14 s.",
+        text: "payment v2-bad rolled back to 3.1.0. Errors on payment, checkout and frontend back to baseline in 12 s.",
         evidence_ids: ["change:payment-image", "metric:payment-err", "trace:checkout-payment"],
       },
       receipt_url: "/receipts/1",
