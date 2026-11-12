@@ -518,3 +518,11 @@ Seeded from reading the plan. Reply under each one.
   keys on `lastState.terminated.reason=OOMKilled` (bundle event) first; the
   90% memory gauge is only a second signal.
 
+- [A] 2026-11-13 for T,M: New chaos fault for §7 scenario 3 (flag flipped):
+  `POST /chaos/flag-flip` sets flag `paymentFailure` to `50%` (ConfigMap +
+  live file, no flagd restart). Returns `{ts, type: "broken_config", target:
+  "payment", key: "paymentFailure"}`. Live: 45% of payment charges failed
+  over 5 min; reset turned it off instantly. Payment only gets ~1 request
+  per minute from the load generator, so use 5m windows, not 1m. T: the
+  bench has no `flag-flip` scenario yet; suggested pattern `recent_change`,
+  `should_wake` False.
