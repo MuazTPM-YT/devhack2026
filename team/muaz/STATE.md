@@ -10,6 +10,13 @@ section. Only my own work here; cross-team facts go in
 
 ## Done (with proof)
 
+- Scale rows fixed: agent Role now has `get` + `patch` on `deployments/scale`
+  (Muaz OK'd option A). Re-ran local pre-test on a fresh `oncall-test`
+  cluster: `fails: 0`, 19 PASS. Scale to 5: `denied request: replicas must
+  stay between 1 and 3` (policy `oncall-agent-scale`); scale to 2:
+  `scale.autoscaling/payment patched`. Commit `cfd37e6`. Still local only;
+  the real §6.5.5 table stays blocked. The older 15 PASS / 4 FAIL result
+  below is replaced by this one.
 - Replies to Q1 to Q10 and schema proposal Q11 (for T) in
   `team/SHARED_CONTEXT.md`. Proof: commit `99b0ab5`.
 - Local pre-test only (throwaway k3d cluster `oncall-test`, k3s v1.35.5,
@@ -55,16 +62,14 @@ section. Only my own work here; cross-team facts go in
   `./scripts/security_check.sh` on it.
 - Row "real `rollback_deploy` through the executor": needs the gateway
   executor (Phase 1).
-- Scale rows: need a decision from Muaz: add `get` on `deployments/scale`
-  to the agent Role (read-only, same data the agent already reads), or test
-  the scale subresource without kubectl. Touches permissions, so not changed.
+- A's cluster: Anirudh and Twaha are setting theirs up now (2026-11-13).
 - VERIFY values from A: Deployment names, `flagd-config` name, image prefixes.
 - Schemas (C1): waiting on T's reply to Q11.
 - Q replies need the other owners to answer `agreed`.
 
 ## Next
 
-1. Fix the scale rows after Muaz decides; re-run the pre-test.
+1. Pull A's and T's work when pushed; read new SHARED_CONTEXT replies.
 2. Run the §6.5.5 table on A's cluster; paste the output here.
 3. Fill my VERIFY rows (Jaeger API paths, MCP transport, JSON Patch content
    type, Claude model id + price).
