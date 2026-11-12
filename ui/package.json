@@ -1,0 +1,24 @@
+{
+  "name": "oncall-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test lib/"
+  },
+  "dependencies": {
+    "next": "~16.4.3",
+    "react": "~19.2.9",
+    "react-dom": "~19.2.9"
+  },
+  "devDependencies": {
+    "@types/node": "~26.6.6",
+    "@types/react": "~19.2.18",
+    "@types/react-dom": "~19.2.7",
+    "typescript": "~6.0.3"
+  }
+}
