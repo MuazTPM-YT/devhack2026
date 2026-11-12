@@ -5,11 +5,12 @@ import { useState } from "react";
 import { FaultBoard } from "./fault-board";
 import { Health } from "./health";
 import { KubectlBox } from "./kubectl-box";
+import { TruthLog } from "./truth-log";
 import styles from "./chaos-view.module.css";
 
 export function ChaosView() {
   // bumped after any write so the panels below refetch
-  const [, setVersion] = useState(0);
+  const [version, setVersion] = useState(0);
   const changed = () => setVersion((v) => v + 1);
 
   return (
@@ -22,6 +23,7 @@ export function ChaosView() {
       <div className={styles.grid}>
         <Health className={styles.span4} />
         <KubectlBox onChange={changed} className={styles.span8} />
+        <TruthLog version={version} className={styles.span12} />
       </div>
     </div>
   );
