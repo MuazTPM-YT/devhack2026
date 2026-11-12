@@ -140,4 +140,3 @@ class DiagnosisService:
             except (ValueError, OSError):
                 pass
         return DiagnosisResult(None, rule_action, False, error, events)
-
