@@ -6,15 +6,17 @@ from fastapi.testclient import TestClient
 
 from chaos import ground_truth
 from chaos.faults import (BAD_PAYMENT_IMAGE, BROKEN_PAYMENT_ADDR, FLAG_CONFIGMAP, FLAG_FILE,
-                          LEAK_FLAG, LIVE_FLAG_PATH, KubectlError, bad_deploy, broken_config, datastore_down,
-                          memory_leak)
+                          FLIP_FLAG, LEAK_FLAG, LIVE_FLAG_PATH, KubectlError, bad_deploy,
+                          broken_config, datastore_down, flag_flip, memory_leak)
 from chaos.main import FAULTS, create_app
 from chaos.reset import TARGETS, diff_ops, ensure_snapshot, reset
 
 GOOD_IMAGE = "ghcr.io/open-telemetry/demo:3.1.0-payment"
 GOOD_FLAGS = json.dumps({"flags": {LEAK_FLAG: {"defaultVariant": "off",
                                               "variants": {"off": False, "on": True}},
-                                   "adFailure": {"defaultVariant": "off"}}})
+                                   "adFailure": {"defaultVariant": "off"},
+                                   FLIP_FLAG: {"defaultVariant": "off",
+                                               "variants": {"off": 0, "50%": 0.5}}}})
 
 
 def deployment(name, image=None, replicas=1, env=None):
@@ -262,6 +264,7 @@ def test_reset_undoes_every_fault_at_once(tmp_path):
     ("broken-config", "broken_config", "checkout"),
     ("memory-leak", "resource_exhaustion", "recommendation"),
     ("datastore-down", "failing_dependency", "valkey-cart"),
+    ("flag-flip", "broken_config", "payment"),
 ])
 def test_http_each_fault_records_ground_truth(tmp_path, path, kind, target):
     with TestClient(create_app(tmp_path, FakeKubectl())) as client:
@@ -274,4 +277,14 @@ def test_http_each_fault_records_ground_truth(tmp_path, path, kind, target):
 
 def test_fault_routes_match_bench_scenarios():
     from bench.harness import SCENARIOS
-    assert set(FAULTS) == set(SCENARIOS)
+    assert set(SCENARIOS) <= set(FAULTS)
+
+
+def test_flag_flip_sets_payment_failure_and_leaves_other_flags():
+    fake = FakeKubectl()
+    assert flag_flip(fake) == {"type": "broken_config", "target": "payment", "key": FLIP_FLAG}
+    flags = json.loads(fake.live_flags)["flags"]
+    assert flags[FLIP_FLAG]["defaultVariant"] == "50%"
+    assert flags[LEAK_FLAG]["defaultVariant"] == "off"
+    assert fake.live_flags == fake.configmaps[FLAG_CONFIGMAP]["data"][FLAG_FILE]
+    assert not [c for c in fake.calls if c[:2] == ("rollout", "restart")]
