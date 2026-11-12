@@ -11,6 +11,13 @@ still waits on M's gateway.
 
 ## Done (with proof)
 
+- `POST /chaos/flag-flip` (scenario 3): `paymentFailure` set to `50%`;
+  flagd OFREP returned `value: 0.5`; payment failed 5.1 of 11.2 charges
+  (45%) over 5 min; reset restored `["configmap/flagd-config"]` in 0 s,
+  and the next 2 min showed 0 errors. flagd was not restarted. Tests:
+  `tests/test_chaos.py` 23 pass, full suite 258 passed, ruff and mypy
+  clean. Phase 2 exit: scenarios 1-5 inject and reset; scenario 6 comes
+  with the raw `kubectl` box on `/chaos` (Phase 3).
 - Phase 2 faults, all live on the cluster, each injected then reset:
   - `broken-config`: checkout `PAYMENT_ADDR=payment:9999`; checkout error
     ratio went from 0 to 1.0; reset restored `["checkout"]` in 15 s and
