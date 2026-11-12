@@ -9,6 +9,7 @@ import { useReceipt } from "@/lib/use-receipt";
 import { Blast } from "./blast";
 import { Checklist } from "./checklist";
 import { Evidence } from "./evidence";
+import { Feed } from "./feed";
 import { Outcome } from "./outcome";
 import { Severity } from "./severity";
 import { StageStrip } from "./stage-strip";
@@ -59,6 +60,7 @@ export function LiveView() {
         <Checklist incident={incident} className={styles.span3} />
         <Evidence incident={incident} className={styles.span4} />
         <Outcome incident={incident} receipt={receipt} className={styles.span5} />
+        <Feed feed={state.feed} className={styles.span3} />
       </div>
     </div>
   );
