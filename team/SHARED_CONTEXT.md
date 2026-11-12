@@ -53,14 +53,14 @@ Fill the value once checked against the real cluster. Then copy it into
 
 | Item | Owner | Value | Checked by / date |
 |---|---|---|---|
-| Real Deployment names in `shop` | A | | |
-| Kubernetes server version >= 1.30, ValidatingAdmissionPolicy present | A | | |
-| Span-metric names (`traces_span_metrics_calls_total`, `..._duration_milliseconds_bucket`, label `service_name`) | A + M | | |
-| Where flagd stores flags (ConfigMap name, or file on a volume) — decides §6.2.5 | A + M | | |
+| Real Deployment names in `shop` | A | accounting, ad, astronomy-db, cart, checkout, currency, email, flagd, fraud-detection, frontend, frontend-proxy, grafana, image-provider, jaeger, kafka, load-generator, opamp-server, payment, product-catalog, prometheus, quote, recommendation, shipping, telemetry-docs, valkey-cart (chart 0.42.6; `valkey-cart` and `kafka` are Deployments, not StatefulSets) | [A] 2026-11-13 |
+| Kubernetes server version >= 1.30, ValidatingAdmissionPolicy present | A | Server v1.31.5+k3s1; `validatingadmissionpolicies` and `...bindings` in `admissionregistration.k8s.io/v1` | [A] 2026-11-13 |
+| Span-metric names (`traces_span_metrics_calls_total`, `..._duration_milliseconds_bucket`, label `service_name`) | A + M | Confirmed as written, plus `..._duration_milliseconds_count` / `_sum`. Label `service_name` present for all shop services (also `frontend-web`). Metrics reach Prometheus by OTLP push, not scrape; span_metrics flush set to 5 s | [A] 2026-11-13 (A; M to confirm) |
+| Where flagd stores flags (ConfigMap name, or file on a volume) — decides §6.2.5 | A + M | File on a volume. ConfigMap `flagd-config` is only a seed: init container copies it to emptyDir `config-rw`; flagd reads and the flagd-ui sidecar writes `/etc/flagd/demo.flagd.json` there. UI edits are lost on flagd pod restart. So §6.2.5 polling case applies | [A] 2026-11-13 (A; M to confirm) |
 | Jaeger dependencies API path | M | | |
 | Jaeger traces API path and error tag query | M | | |
-| Helm values keys for replicas, rolling strategy, memory limit, scrape interval | A | | |
-| Image prefix of shop images (admission policy rule, §6.5.3) | A | | |
+| Helm values keys for replicas, rolling strategy, memory limit, scrape interval | A | `components.<name>.replicas`; `components.<name>.resources.limits.memory`; no chart key for strategy (patched in `scripts/install_shop.sh`); intervals: `opentelemetry-collector.config.connectors.span_metrics.metrics_flush_interval` and env `OTEL_METRIC_EXPORT_INTERVAL` via `default.envOverrides`. See `k8s/values.yaml` | [A] 2026-11-13 |
+| Image prefix of shop images (admission policy rule, §6.5.3) | A | `ghcr.io/open-telemetry/demo:3.1.0-<service>` (19 Deployments). Others: `ghcr.io/open-feature/flagd`, `ghcr.io/valkey-io/valkey`, `jaegertracing/jaeger`, `postgres`, `quay.io/prometheus/prometheus`. Bad image `payment:v2-bad` will be local, no registry prefix | [A] 2026-11-13 |
 | MCP SDK transport call for local HTTP | M | | |
 | Python client JSON Patch content type | M | | |
 | Claude model id for `CLAUDE_MODEL` and price per token | M | | |
@@ -74,6 +74,7 @@ Seeded from reading the plan. Reply under each one.
 - **Q1** [plan] 2026-11-12 for all: The plan refers to `IMPLEMENTATION_PLAN.md`,
   but the file in the repo is `IMPLEMENTATION.md`. Rename the file or fix the
   references?
+  -> [A] 2026-11-13: Keep `IMPLEMENTATION.md` (all team files point at it); fix the 2 stale refs at IMPLEMENTATION.md lines 87 and 1193. Not edited yet; waiting for M, T.
 - **Q2** [plan] 2026-11-12 for M,T: Rehearsal trust runs count a success when
   "diagnosis matched ground truth" (§6.4.6), but the gateway must never read
   ground truth (§6.1). Proposal: the bench harness compares the diagnosis to
@@ -87,12 +88,14 @@ Seeded from reading the plan. Reply under each one.
   ignores the chaos panel's own changes by field manager. Proposal: every
   chaos write uses `field_manager="chaos-panel"`; the checklist ignores that
   manager only for changes made before `opened_at`.
+  -> [A] 2026-11-13: agreed. Every chaos write, reset included, uses `field_manager="chaos-panel"`. Note: the judges' raw `kubectl` box does not set it, so those changes count as human changes.
 - **Q5** [plan] 2026-11-12 for M: The observer POSTs incidents to the brain
   (§6.2.2 step 8) but no path is named. Proposal: `POST :7002/incidents`
   with an `Incident` body.
 - **Q6** [plan] 2026-11-12 for A,M: Phase 4 gives `/chaos/shared-outage` to M,
   but `chaos/` is A's code. Proposal: A writes the endpoint, M writes the
   major-incident analysis.
+  -> [A] 2026-11-13: agreed. A writes `POST /chaos/shared-outage` (scale `kafka` to 0 + ground truth); M writes `brain/major.py`.
 - **Q7** [plan] 2026-11-12 for M,T: §6.3.5 puts `brain/redact.py` under the
   brain [M], but Phase 2 gives redaction to T. Proposal: T owns
   `brain/redact.py` (contract C8).
@@ -116,3 +119,4 @@ Seeded from reading the plan. Reply under each one.
 - [plan] 2026-11-12 for all: Team files created: `team/<name>/ARCHITECTURE.md`,
   `TASK.md`, `STATE.md` for muaz, anirudh, twaha. Nothing is built yet; the
   repo holds only `IMPLEMENTATION.md`, `CLAUDE.md`, `README.md`, `LICENSE`.
+- [A] 2026-11-13 for M,T: Cluster `oncall` (k3d, context `k3d-oncall`) and shop (chart 0.42.6, release `my-otel-demo`, ns `shop`) run on Anirudh's machine. Rebuild: `scripts/setup_cluster.sh` then `scripts/install_shop.sh`. Service list in `config/services.yaml` (C7). Disabled: opensearch, agent, chatbot, mcp. `payment` and `checkout` have 2 replicas.
