@@ -18,13 +18,22 @@ def required(name: str) -> str:
     return value
 
 
+def load_approvers() -> set[str]:
+    approvers = {value.strip() for value in required("ONCALL_APPROVER_IDS").split(",") if value.strip()}
+    if not approvers:
+        raise ValueError("Missing ONCALL_APPROVER_IDS")
+    if "rehearsal-harness" in approvers:
+        raise ValueError("rehearsal-harness is forbidden in ONCALL_APPROVER_IDS")
+    return approvers
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     token = required("DISCORD_BOT_TOKEN")
     channels = [int(required(name)) for name in (
         "DISCORD_FYI_CHANNEL_ID", "DISCORD_WAKE_CHANNEL_ID", "DISCORD_TICKETS_CHANNEL_ID",
         "DISCORD_ONCALL_ROLE_ID")]
-    approvers = {value.strip() for value in required("DISCORD_APPROVER_IDS").split(",") if value.strip()}
+    approvers = load_approvers()
     gateway_url = required("GATEWAY_URL").rstrip("/")
     state = NotifierState(Path("data/notifier.db"))
     async with httpx.AsyncClient() as client:

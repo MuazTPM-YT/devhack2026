@@ -99,3 +99,18 @@ async def test_repage_expiry_and_persistent_buttons(tmp_path, monkeypatch):
         view = ApprovalView("a", controller)
         assert view.is_persistent()
         assert {button.custom_id for button in view.children} == {"approval:a:approved", "approval:a:rejected"}
+
+
+def test_notifier_uses_gateway_approver_setting(monkeypatch):
+    from notifier.main import load_approvers
+    monkeypatch.setenv("ONCALL_APPROVER_IDS", " 111111111111111111 , 222222222222222222 ")
+    monkeypatch.setenv("DISCORD_APPROVER_IDS", "obsolete-list-must-not-win")
+    assert load_approvers() == {"111111111111111111", "222222222222222222"}
+
+
+def test_notifier_rejects_rehearsal_identity_in_human_allowlist(monkeypatch):
+    import pytest
+    from notifier.main import load_approvers
+    monkeypatch.setenv("ONCALL_APPROVER_IDS", "rehearsal-harness")
+    with pytest.raises(ValueError, match="rehearsal-harness"):
+        load_approvers()
