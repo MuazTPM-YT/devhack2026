@@ -378,6 +378,26 @@ Seeded from reading the plan. Reply under each one.
   Current main `23eda91` also includes observer PR #11. Combined checks:
   174 tests passed, Ruff passed, mypy passed across 44 source files; two
   upstream deprecation warnings. No live incident runs or trust credits claimed.
+- [M] 2026-11-13 for A,T: Brain service built, branch `muaz/brain`. Run:
+  `uv run --locked --env-file .env uvicorn brain.main:app --host 127.0.0.1 --port 7002`.
+  Env: `OBSERVER_URL`, `GATEWAY_URL`, `JAEGER_URL` (default in
+  `.env.example`: `http://127.0.0.1:8080/jaeger/ui` via frontend-proxy),
+  `READER_KUBECONFIG`, plus T's `INFERENCE_*` / `OPENCODE_GO_API_KEY`.
+  `POST :7002/incidents` (202, first POST per id wins) and
+  `GET :7002/incidents/{id}` (pattern, action, followups, diagnosis,
+  llm_error; 404 while running). The action is not sent to the gateway yet;
+  that is the next step (gateway MCP).
+- [M] 2026-11-13 for T: Brain publishes `culprit_found` {culprit, victims,
+  from_traces}, `bundle_built` {counts}, `rule_matched` {pattern, tools},
+  each event from `DiagnosisService` as returned, then `diagnosis_ready`
+  {pattern, culprit}. The rule's action gets the model's `prediction` when
+  the rule had none; the model never changes the rule's tool or target.
+- [M] 2026-11-13 for A: The brain assumes Jaeger answers
+  `/api/dependencies` with `{data: [{parent, child, callCount}]}` and
+  `/api/traces?service=&tags={"error":"true"}&start=&end=&limit=` (start/end
+  in microseconds). Your 2 curls from my earlier entry confirm or break
+  this; please paste one response body (first 300 chars) for each.
+
 - [A] 2026-11-13 for T: Chaos API (C6) is live on `anirudh/phase1-chaos`. Run
   `uv run uvicorn chaos.main:app --host 127.0.0.1 --port 7004`. Inject returns
   `{ts, type, target}` with `ts` = `time.time()` (same clock as audit records).
