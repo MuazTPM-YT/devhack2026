@@ -1,16 +1,16 @@
 # Graph Report - devhack2026  (2026-11-13)
 
 ## Corpus Check
-- 99 files · ~46,469 words
+- 104 files · ~48,408 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 828 nodes · 1788 edges · 55 communities (46 shown, 9 thin omitted)
-- Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 98 edges (avg confidence: 0.59)
+- 889 nodes · 2013 edges · 60 communities (51 shown, 9 thin omitted)
+- Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 114 edges (avg confidence: 0.58)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `73517265`
+- Built from commit: `87b51e79`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -19,8 +19,8 @@
 - test_audit.py
 - 6.4 Gateway (`gateway/`) [M] P0 unless marked
 - HttpTrialServices
-- test_inference.py
-- models.py
+- DiagnosisService
+- connect
 - AGENTS.md
 - CLAUDE.md
 - 10. Build plan
@@ -28,93 +28,98 @@
 - Muaz [M]: tasks
 - Twaha [T]: tasks
 - Implementation Plan: the on-call agent that has to earn its autonomy
-- On-call agent: Twaha components
+- main.py
 - Anirudh [A]: architecture of my part
 - Anirudh [A]: state
-- Shared context (all agents read and write this)
+- test_observer.py
+- On-call agent: Twaha components
+- main.py
 - Muaz [M]: state
 - Twaha [T]: state
 - 3. Environment setup
 - 8. Testing
+- test_bench_export.py
 - 0. Scope and principles
 - 11. Demo
 - 1. System overview
 - 4. Configuration files
 - 5. Data model
 - 9. Benchmark (`bench/`) [T] P1
-- manual_baseline.md
-- ref_logger
+- models.py
+- Twaha [T]: architecture of my part
+- Shared context (all agents read and write this)
 - oncall-agent
+- manual_baseline.md
 - test_trust_integration.py
-- JournalTest
-- find_culprit
+- journal.py
 - Detector
-- connect
+- trust_report.py
 - security_check.sh
 - make_kubeconfigs.sh
 - install_shop.sh
 - match
 - setup_cluster.sh
-- main.py
+- test_kube_watch.py
+- Tracker
 - test_chaos.py
 - charge.js
-- Twaha [T]: architecture of my part
 - Muaz [M]: architecture of my part
+- ref_logger
 - build_bad_payment.sh
 - smoke.sh
 
 ## God Nodes (most connected - your core abstractions)
-1. `DiagnosisService` - 25 edges
-2. `NotifierState` - 25 edges
-3. `connect()` - 25 edges
+1. `DiagnosisService` - 32 edges
+2. `connect()` - 29 edges
+3. `NotifierState` - 25 edges
 4. `HttpTrialServices` - 24 edges
 5. `Card` - 24 edges
-6. `GatewayDecision` - 20 edges
-7. `ApprovalController` - 18 edges
-8. `FakeProvider` - 18 edges
-9. `redact_value()` - 17 edges
-10. `DiscordNotifier` - 17 edges
+6. `Incident` - 20 edges
+7. `GatewayDecision` - 20 edges
+8. `ActionRequest` - 19 edges
+9. `ApprovalController` - 18 edges
+10. `FakeProvider` - 18 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `TrialResult` --uses--> `GatewayDecision`  [INFERRED]
-  bench/harness.py → schemas/models.py
-- `ObservationError` --uses--> `GatewayDecision`  [INFERRED]
-  bench/harness.py → schemas/models.py
-- `TrialServices` --uses--> `GatewayDecision`  [INFERRED]
-  bench/harness.py → schemas/models.py
-- `Harness` --uses--> `GatewayDecision`  [INFERRED]
-  bench/harness.py → schemas/models.py
-- `HttpTrialServices` --uses--> `GatewayDecision`  [INFERRED]
-  bench/harness.py → schemas/models.py
+- `test_manual_comparison_preserves_missing_measurements()` --calls--> `compare()`  [EXTRACTED]
+  tests/test_bench.py → bench/report.py
+- `DiagnosisResult` --uses--> `ActionRequest`  [INFERRED]
+  brain/llm.py → schemas/models.py
+- `DiagnosisResult` --uses--> `EvidenceBundle`  [INFERRED]
+  brain/llm.py → schemas/models.py
+- `DiagnosisService` --uses--> `ActionRequest`  [INFERRED]
+  brain/llm.py → schemas/models.py
+- `DiagnosisService` --uses--> `EvidenceBundle`  [INFERRED]
+  brain/llm.py → schemas/models.py
 
 ## Import Cycles
 - None detected.
 
-## Communities (55 total, 9 thin omitted)
+## Communities (60 total, 9 thin omitted)
 
 ### Community 0 - "NotifierState"
-Cohesion: 0.08
-Nodes (33): asyncio, discord, httpx, Interaction, Notifier, Protocol, NotificationConsumer, Any (+25 more)
+Cohesion: 0.07
+Nodes (36): asyncio, discord, Any, AsyncClient, read_events(), httpx, Interaction, Notifier (+28 more)
 
 ### Community 1 - "test_audit.py"
-Cohesion: 0.08
-Nodes (51): Any, quarantine(), redact(), redact_value(), concurrent_futures, fastapi_responses, AuditLog, canonical() (+43 more)
+Cohesion: 0.09
+Nodes (40): argparse, concurrent_futures, fastapi, fastapi_responses, AuditLog, canonical(), EventBus, Any (+32 more)
 
 ### Community 2 - "6.4 Gateway (`gateway/`) [M] P0 unless marked"
 Cohesion: 0.05
 Nodes (40): 6.1 Chaos panel (`chaos/`) [A] P0, 6.2.1 Baselines (`baselines.py`), 6.2.2 Detector (`detector.py`), 6.2.3 Kubernetes watch (`kube_watch.py`), 6.2.4 Change journal (`journal.py`), 6.2.5 Flags (`flags.py`), 6.2 Observer (`observer/`) [M] P0, 6.3.1 Dependency graph (`graph.py`) (+32 more)
 
 ### Community 3 - "HttpTrialServices"
-Cohesion: 0.07
-Nodes (38): Harness, HttpTrialServices, main(), measure(), ObservationError, Any, AsyncClient, Path (+30 more)
+Cohesion: 0.08
+Nodes (35): Harness, HttpTrialServices, main(), measure(), ObservationError, Any, AsyncClient, Path (+27 more)
 
-### Community 4 - "test_inference.py"
-Cohesion: 0.07
-Nodes (58): BaseModel, DiagnosisResult, DiagnosisService, Path, InferenceProvider, InferenceRequest, InferenceResponse, ProviderError (+50 more)
+### Community 4 - "DiagnosisService"
+Cohesion: 0.09
+Nodes (41): DiagnosisResult, DiagnosisService, Path, InferenceProvider, InferenceRequest, InferenceResponse, ProviderError, Protocol (+33 more)
 
-### Community 5 - "models.py"
-Cohesion: 0.13
-Nodes (27): argparse, display(), export_report(), markdown(), Any, Path, timing_svg(), main() (+19 more)
+### Community 5 - "connect"
+Cohesion: 0.20
+Nodes (6): connect(), Connection, tempfile, DbTest, TrustTest, unittest
 
 ### Community 6 - "AGENTS.md"
 Cohesion: 0.18
@@ -144,9 +149,9 @@ Nodes (9): Evidence and next gate (2026-11-13), Never cut, Phase 0: foundations,
 Cohesion: 0.29
 Nodes (6): 12. Risks and fallbacks, 13. Submission checklist, 14. Command cheat sheet, 2. Repository layout, 7. End-to-end flows (acceptance scenarios), Implementation Plan: the on-call agent that has to earn its autonomy
 
-### Community 13 - "On-call agent: Twaha components"
-Cohesion: 0.25
-Nodes (7): Benchmarks and adversarial checks, Discord notifier, Gateway mounting, Inference, On-call agent: Twaha components, Project graph, Setup and checks
+### Community 13 - "main.py"
+Cohesion: 0.06
+Nodes (58): build_bundle(), change_evidence(), collect_k8s(), k8s_evidence(), log_evidence(), memory_ratio(), metric_evidence(), Any (+50 more)
 
 ### Community 14 - "Anirudh [A]: architecture of my part"
 Cohesion: 0.29
@@ -156,11 +161,19 @@ Nodes (6): Anirudh [A]: architecture of my part, Flow through my parts, Hard rul
 Cohesion: 0.29
 Nodes (6): Anirudh [A]: state, Blocked / waiting on, Done (with proof), In progress, Next, Notes for my next session
 
-### Community 16 - "Shared context (all agents read and write this)"
-Cohesion: 0.29
-Nodes (6): Contracts (agreed interfaces between owners), Log (append-only, newest at bottom), Open questions, Rules for agents, Shared context (all agents read and write this), VERIFY results (§3.3, Phase 0)
+### Community 16 - "test_observer.py"
+Cohesion: 0.21
+Nodes (15): require_env(), Backend, make(), prom_result(), Request, Response, Fake Prometheus + gateway + brain behind one httpx MockTransport., test_brain_down_does_not_stop_detection() (+7 more)
 
-### Community 17 - "Muaz [M]: state"
+### Community 17 - "On-call agent: Twaha components"
+Cohesion: 0.25
+Nodes (7): Benchmarks and adversarial checks, Discord notifier, Gateway mounting, Inference, On-call agent: Twaha components, Project graph, Setup and checks
+
+### Community 18 - "main.py"
+Cohesion: 0.23
+Nodes (8): contextlib, math, fetch_readings(), prom_query(), AsyncClient, create_app(), Observer, FastAPI
+
+### Community 19 - "Muaz [M]: state"
 Cohesion: 0.29
 Nodes (6): Blocked / waiting on, Done (with proof), In progress, Muaz [M]: state, Next, Notes for my next session
 
@@ -175,6 +188,10 @@ Nodes (6): 3.1 Prerequisites [A] P0, 3.2 Cluster [A] P0, 3.3 The shop [A] P0, 3.
 ### Community 22 - "8. Testing"
 Cohesion: 0.40
 Nodes (5): 8.1 Unit tests [M][T] P0, 8.2 Property-based tests (`test_invariants.py`, Hypothesis) [M] P1, 8.3 Red-team suite (`tests/redteam/`) [T] P1, 8.4 Smoke test (`scripts/smoke.sh`) [A] P0, 8. Testing
+
+### Community 23 - "test_bench_export.py"
+Cohesion: 0.15
+Nodes (25): display(), export_report(), markdown(), Any, Path, timing_svg(), main(), Path (+17 more)
 
 ### Community 24 - "0. Scope and principles"
 Cohesion: 0.50
@@ -200,47 +217,55 @@ Nodes (4): 5.1 SQLite (`data/oncall.db`, WAL mode) [M] P0, 5.2 Shared schemas (`
 Cohesion: 0.50
 Nodes (4): 9.1 Harness (`harness.py`), 9.2 Manual baseline (`manual_baseline.md`), 9.3 Report (`report.py`), 9. Benchmark (`bench/`) [T] P1
 
+### Community 30 - "models.py"
+Cohesion: 0.10
+Nodes (27): BaseModel, pytest, ActionRequest, ApprovalDecidedPayload, ApprovalRequestedPayload, CardPayload, Cause, ChecklistPayload (+19 more)
+
+### Community 32 - "Twaha [T]: architecture of my part"
+Cohesion: 0.29
+Nodes (6): Flow through my parts, Hard rules my code must keep, Twaha [T]: architecture of my part, What I need from others, What I own, What I provide to others
+
+### Community 34 - "Shared context (all agents read and write this)"
+Cohesion: 0.29
+Nodes (6): Contracts (agreed interfaces between owners), Log (append-only, newest at bottom), Open questions, Rules for agents, Shared context (all agents read and write this), VERIFY results (§3.3, Phase 0)
+
 ### Community 38 - "test_trust_integration.py"
-Cohesion: 0.12
-Nodes (15): spec_hashes(), harm_check(), ledger_effect(), service_score(), Verification, HarmCheckTest, health(), service() (+7 more)
-
-### Community 39 - "JournalTest"
 Cohesion: 0.11
-Nodes (18): check(), author(), _configmap_changes(), _containers(), current(), _deployment_changes(), entry(), insert() (+10 more)
+Nodes (18): spec_hashes(), harm_check(), ledger_effect(), service_score(), Verification, hashlib, health(), test_resource_rule_actions_keep_different_approval_eligibility() (+10 more)
 
-### Community 40 - "find_culprit"
-Cohesion: 0.24
-Nodes (7): deepest_unhealthy(), find_culprit(), from_traces(), is_error(), collections, CulpritTest, trace()
+### Community 39 - "journal.py"
+Cohesion: 0.11
+Nodes (19): copy, check(), author(), _configmap_changes(), _containers(), current(), _deployment_changes(), entry() (+11 more)
 
 ### Community 41 - "Detector"
-Cohesion: 0.18
-Nodes (7): math, Detector, fetch_readings(), prom_query(), AsyncClient, det(), DetectorTest
-
-### Community 42 - "connect"
 Cohesion: 0.24
-Nodes (14): main(), Any, Path, summarize_ledger(), check(), counts(), eligible(), lower_bound() (+6 more)
+Nodes (3): Detector, det(), DetectorTest
+
+### Community 42 - "trust_report.py"
+Cohesion: 0.15
+Nodes (18): main(), Any, Path, summarize_ledger(), check(), counts(), eligible(), lower_bound() (+10 more)
 
 ### Community 46 - "match"
 Cohesion: 0.29
 Nodes (7): _action(), latest_change_before_onset(), match(), to_bytes(), change(), incident(), RulesTest
 
-### Community 48 - "main.py"
-Cohesion: 0.05
-Nodes (54): datetime, logging, load(), Connection, store(), bad_pods(), pod_bad(), Connection (+46 more)
+### Community 48 - "test_kube_watch.py"
+Cohesion: 0.26
+Nodes (13): logging, bad_pods(), pod_bad(), service_of(), _ts(), deployment(), iso(), pod() (+5 more)
+
+### Community 49 - "Tracker"
+Cohesion: 0.21
+Nodes (9): Connection, run_watch(), Tracker, build_from_env(), AsyncClient, Connection, FakeResp, test_run_watch_relists_after_error() (+1 more)
 
 ### Community 51 - "test_chaos.py"
-Cohesion: 0.09
-Nodes (38): bad_deploy(), kubectl(), KubectlError, Any, Path, read_all(), record(), create_app() (+30 more)
+Cohesion: 0.10
+Nodes (35): bad_deploy(), kubectl(), KubectlError, Any, Path, read_all(), record(), create_app() (+27 more)
 
 ### Community 54 - "charge.js"
 Cohesion: 0.11
 Nodes (20): { ATTR_ERROR_TYPE }, cardValidator, charge(), { context, propagation, trace, metrics, SpanStatusCode }, { FlagdProvider }, flagProvider, logger, LOYALTY_LEVEL (+12 more)
 
-### Community 55 - "Twaha [T]: architecture of my part"
-Cohesion: 0.29
-Nodes (6): Flow through my parts, Hard rules my code must keep, Twaha [T]: architecture of my part, What I need from others, What I own, What I provide to others
-
-### Community 60 - "Muaz [M]: architecture of my part"
+### Community 55 - "Muaz [M]: architecture of my part"
 Cohesion: 0.29
 Nodes (6): Flow through my code, Hard rules my code must keep, Muaz [M]: architecture of my part, What I need from others, What I own, What I provide to others
 
@@ -252,17 +277,17 @@ Nodes (6): Flow through my code, Hard rules my code must keep, Muaz [M]: archite
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `connect()` connect `main.py` to `test_audit.py`, `connect`, `test_inference.py`, `JournalTest`?**
-  _High betweenness centrality (0.041) - this node is a cross-community bridge._
-- **Why does `GatewayDecision` connect `NotifierState` to `test_audit.py`, `HttpTrialServices`, `test_inference.py`?**
-  _High betweenness centrality (0.024) - this node is a cross-community bridge._
-- **Why does `Verification` connect `test_trust_integration.py` to `test_audit.py`?**
+- **Why does `connect()` connect `connect` to `test_audit.py`, `test_trust_integration.py`, `journal.py`, `trust_report.py`, `main.py`, `test_kube_watch.py`, `Tracker`, `main.py`, `test_observer.py`?**
+  _High betweenness centrality (0.043) - this node is a cross-community bridge._
+- **Why does `GatewayDecision` connect `HttpTrialServices` to `NotifierState`, `test_audit.py`, `models.py`?**
   _High betweenness centrality (0.022) - this node is a cross-community bridge._
-- **Are the 7 inferred relationships involving `DiagnosisService` (e.g. with `InferenceProvider` and `InferenceRequest`) actually correct?**
-  _`DiagnosisService` has 7 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `Card` connect `NotifierState` to `test_audit.py`, `models.py`?**
+  _High betweenness centrality (0.020) - this node is a cross-community bridge._
+- **Are the 10 inferred relationships involving `DiagnosisService` (e.g. with `InferenceProvider` and `InferenceRequest`) actually correct?**
+  _`DiagnosisService` has 10 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 5 inferred relationships involving `NotifierState` (e.g. with `NotificationConsumer` and `ApprovalButton`) actually correct?**
   _`NotifierState` has 5 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 2 inferred relationships involving `HttpTrialServices` (e.g. with `GatewayDecision` and `FakeServices`) actually correct?**
   _`HttpTrialServices` has 2 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `{ context, propagation, trace, metrics, SpanStatusCode }`, `{ ATTR_ERROR_TYPE }`, `{ v4: uuidv4 }` to the rest of the system?**
-  _175 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _176 weakly-connected nodes found - possible documentation gaps or missing edges._

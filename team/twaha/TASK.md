@@ -29,7 +29,8 @@ have offline test evidence; live acceptance stays open below.
 ## Phase 2: checks
 
 - [x] P0 Redaction and hash-only injection quarantine; diagnosis returns quarantine events (`tests/test_redact.py`, `tests/test_inference.py`, C8)
-- [ ] P0 Wire diagnosis result events into runtime publication
+- [x] P0 Brain forwards diagnosis result events (`brain/main.py`, `tests/test_brain.py`, merged PR #14)
+- [ ] P0 Prove brain-to-gateway event delivery with running services
 - [x] P0 Trust, verifier, redaction, audit, and SQLite integration tests pass (§8.1)
 - [ ] P0 Policy/checklist tests and runtime authorization integration (`test_policy.py` still pending)
 
@@ -69,12 +70,12 @@ PR #12 merged as `c6091f7`. Its verified source had 160 passing tests,
 Ruff passing, and mypy passing across 37 source files. The older 166-test
 count included the retired synchronous provider tests.
 
-Merged main through `816de30`, including observer PR #11 and chaos PR #10.
+Merged main through `1b980a0`, including observer #11, chaos #10, and brain #14.
 Shared-note conflict kept both teams' entries. Current branch adds benchmark
-readiness checks and report exports. Full suite: 203 passed; Ruff passed;
-mypy passed across 50 source files. Two upstream deprecation warnings remain.
+readiness checks and report exports (PR #15). Full suite: 215 passed; Ruff passed;
+mypy passed across 53 source files. Two upstream deprecation warnings remain.
 A reports the cluster and shop running on A's machine. Live integration still
-needs service access, M's brain/gateway runtime, and approval/rehearsal handlers.
+needs service access, M's gateway runtime/action handoff, and approval/rehearsal handlers.
 
 No live provider/Discord checks, incident measurements, overnight trust
 credits, manual trials, or card study are claimed complete.

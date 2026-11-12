@@ -5,8 +5,8 @@ Deterministic rules and the safety gateway decide whether an action can run.
 The executor verifies recovery and retains responsibility for undo.
 
 The repository includes Twaha's components, the OpenCode Go adapter, the observer,
-and initial cluster/chaos tooling. The brain/gateway runtime, remediation executor,
-policy checklist, and UI still need integration.
+the brain service, and initial cluster/chaos tooling. The gateway runtime,
+remediation executor, policy checklist, and UI still need integration.
 `IMPLEMENTATION.md` is the current plan; `docs/PLAN.md` contains conflicting older
 contracts. Team contracts remain proposed until affected owners agree.
 

@@ -3,10 +3,19 @@
 **Last updated:** 2026-11-13
 **Current phase:** Phase 4 report tooling implemented; runtime integration and live proof pending
 **Branch:** `codex/twaha-measurement-reports`
-**Source baseline:** `origin/main` at `816de30` (includes observer PR #11 and chaos PR #10)
+**Source baseline:** `origin/main` at `1b980a0` (includes observer #11, chaos #10, and brain #14)
 **Implementation:** PRs #8 and [#12](https://github.com/MuazTPM-YT/devhack2026/pull/12) merged; #12 merge commit `c6091f7`
 
 ## Done (with proof)
+
+- PR #15: https://github.com/MuazTPM-YT/devhack2026/pull/15. Merged the later
+  main `1b980a0`, including M's brain runtime. Preserved both shared handoffs and
+  rebuilt conflicting generated graph files. Combined suite: 215 passed; Ruff
+  passed; mypy passed across 53 files. Two upstream warnings remain. Graph:
+  889 nodes, 2013 edges, 60 communities.
+- Brain now constructs the existing Go adapter and forwards DiagnosisService
+  result events through its publisher (`brain/main.py`, `tests/test_brain.py`).
+  Gateway action handoff and live event delivery still need integration.
 
 - Pulled main through `816de30`. Shared-note merge conflict kept both teams'
   entries; merge commit `f442ab9` retains the task/state update from PR #13's branch.
@@ -72,8 +81,8 @@
 
 ## Blocked / waiting on
 
-- M's brain and gateway runtime must mount event/receipt routes, publish
-  diagnosis result events, and connect the executor/verifier loop.
+- M's gateway runtime must mount event/receipt routes and connect brain action
+  handoff to the executor/verifier loop. Brain service and event forwarding exist.
 - Authoritative approvals, policy/checklist/budget checks, usable undo snapshots,
   and rehearsal handlers remain required. Trust, freshness, and verifier core
   implementations and tests already exist; they are not missing dependencies.
@@ -89,7 +98,7 @@
 
 ## Next
 
-1. Integrate with M's brain/gateway runtime and authoritative handlers.
+1. Connect M's brain to the gateway runtime and authoritative handlers.
 2. Verify local Go/Discord configuration, then run provider and notifier smoke checks.
 3. Run end-to-end smoke and live security acceptance on A's cluster.
 4. Collect overnight, accuracy, and manual trials in separate result files.

@@ -114,6 +114,7 @@ Rules:
 - Lint: `uv run ruff check .`
 - Type check: `uv run mypy schemas brain gateway notifier bench observer chaos`
 - Observer: `uv run --locked --env-file .env uvicorn observer.main:app --host 127.0.0.1 --port 7001`
+- Brain: `uv run --locked --env-file .env uvicorn brain.main:app --host 127.0.0.1 --port 7002`
 - Notifier: `uv run --locked --env-file .env uvicorn notifier.main:app --host 127.0.0.1 --port 7005`
 - Audit: `uv run python scripts/verify_audit.py data/audit.jsonl`
 
