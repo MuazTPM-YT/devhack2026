@@ -1,0 +1,78 @@
+import asyncio
+import time
+from typing import Any
+
+import discord
+import httpx
+
+from gateway.client import read_events
+from notifier.discord_bot import DiscordNotifier
+from notifier.state import NotifierState
+from schemas.models import Card
+
+TERMINAL = {"incident_resolved", "handed_off"}
+
+
+class NotificationConsumer:
+    def __init__(self, client: httpx.AsyncClient, gateway_url: str, notifier: DiscordNotifier,
+                 state: NotifierState, repage_s: float = 120):
+        self.client, self.gateway_url, self.notifier, self.state = client, gateway_url, notifier, state
+        self.repage_s = repage_s
+
+    async def handle(self, record: dict[str, Any]):
+        seq = int(record["seq"])
+        if seq <= self.state.get("cursor", 0):
+            return
+        event = record["event"]
+        incident_id, kind = event.get("incident_id"), event["type"]
+        payload = event.get("payload", {})
+        pending = self.state.get("wakes", {})
+        if kind in TERMINAL:
+            pending.pop(incident_id, None)
+        if kind in {"approval_requested", "incident_resolved", "escalated", "handed_off"}:
+            card = Card.model_validate(payload["card"])
+            if kind == "approval_requested":
+                await self.notifier.request_approval(payload["approval_id"], card,
+                                                     payload["diff"], payload["forecast"], payload["expires_at"])
+            elif kind == "incident_resolved":
+                if card.status == "MITIGATED, NOT FIXED":
+                    await self.notifier.ticket(card)
+                else:
+                    await self.notifier.fyi(card, payload.get("receipt_url", ""))
+            elif kind == "escalated":
+                await self.notifier.wake(card, payload.get("briefing", ""))
+                pending[incident_id] = {"card": card.model_dump(), "briefing": payload.get("briefing", ""),
+                                        "last_page": time.time()}
+            else:
+                await self.notifier.fyi(card, payload.get("receipt_url", ""))
+        if kind == "approval_decided":
+            approval_id = payload["approval_id"]
+            row = self.state.get(f"approval:{approval_id}")
+            if row:
+                row["decision"] = payload["decision"]
+                self.state.set(f"approval:{approval_id}", row)
+        if payload.get("acknowledged"):
+            pending.pop(incident_id, None)
+        self.state.set("wakes", pending)
+        self.state.set("cursor", seq)
+
+    async def repage(self):
+        while True:
+            await asyncio.sleep(min(10, self.repage_s))
+            pending = self.state.get("wakes", {})
+            for row in pending.values():
+                if time.time() - row["last_page"] >= self.repage_s:
+                    await self.notifier.wake(Card.model_validate(row["card"]), row["briefing"])
+                    row["last_page"] = time.time()
+            self.state.set("wakes", pending)
+
+    async def run(self):
+        await self.notifier.wait_until_ready()
+        async with asyncio.TaskGroup() as group:
+            group.create_task(self.repage())
+            while True:
+                try:
+                    async for record in read_events(self.client, self.gateway_url, self.state.get("cursor", 0)):
+                        await self.handle(record)
+                except (httpx.HTTPError, ValueError, KeyError, discord.HTTPException):
+                    await asyncio.sleep(2)
