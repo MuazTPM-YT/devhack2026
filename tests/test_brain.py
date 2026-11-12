@@ -208,3 +208,27 @@ async def test_resource_case_sends_restart_then_raise_limit(tmp_path):
     assert record["pattern"] == "resource"
     assert [(a.tool, a.params) for a in brain.submitted] == [("restart_service", {}),
                                                              ("raise_limit", {"memory": "512Mi"})]
+
+
+async def test_datastore_scaled_to_zero_moves_culprit_to_protected_dependency(tmp_path):
+    from brain.culprit import dependency_change
+
+    class StoreWorld(World):
+        def __call__(self, request):
+            if request.url.path == "/journal":
+                return httpx.Response(200, json=[{"id": 12, "object": "deployment/valkey-cart", "kind": "replicas",
+                                                  "ts": 950.0, "field_manager": "chaos-panel", "by_agent": False,
+                                                  "diff": {"replicas": {"old": 1, "new": 0}}}])
+            return super().__call__(request)
+
+    world = StoreWorld(jaeger_up=False)  # no traces, no graph edge to the datastore
+    inc = INC.model_copy(update={"unhealthy": ["cart"]})
+    brain = make(world, [diagnosis_json(causes=[], prediction=None)], tmp_path)
+    record = await brain.handle(inc)
+    assert record["incident"]["culprit"] == "valkey-cart" and record["incident"]["victims"] == ["cart"]
+    assert record["pattern"] == "protected"
+    assert [(a.tool, a.target, a.params) for a in brain.submitted] == [("scale", "valkey-cart", {"replicas": 1})]
+    assert world.published[0]["payload"]["moved_from"] == "cart"
+    own = [{"id": 1, "object": "deployment/cart", "kind": "image", "ts": 940.0, "by_agent": False}]
+    assert dependency_change(own + [{"id": 12, "object": "deployment/valkey-cart", "kind": "replicas", "ts": 950.0,
+                                     "by_agent": False}], "cart", [], SERVICES, 960, 600) is None  # own change wins

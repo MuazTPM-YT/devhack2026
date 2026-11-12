@@ -18,7 +18,7 @@ from fastapi import FastAPI, HTTPException
 from brain import rules
 from brain.bundle import build_bundle, collect_k8s
 from brain import major
-from brain.culprit import fetch_error_traces, find_culprit
+from brain.culprit import dependency_change, fetch_error_traces, find_culprit
 from brain.gateway_client import call_tool
 from brain.graph import DependencyGraph
 from brain.llm import DiagnosisService
@@ -93,9 +93,15 @@ class Brain:
                 culprit = ranked[0]["target"]
                 victims = sorted(set(incident.unhealthy) - {culprit})
             await self.publish("major_incident", incident.id, {"ranked": ranked})
+        moved_from = None
+        if not is_major and culprit:
+            dep = dependency_change(journal_rows, culprit, edges, self.services, incident.onset_at, window_s)
+            if dep:
+                moved_from, culprit = culprit, dep["object"].split("/", 1)[1]
+                victims = sorted((set(victims) | {moved_from}) - {culprit})
         incident = incident.model_copy(update={"culprit": culprit, "victims": victims, "major": is_major})
         await self.publish("culprit_found", incident.id, {"culprit": culprit, "victims": victims,
-                                                          "from_traces": bool(traces)})
+                                                          "from_traces": bool(traces), "moved_from": moved_from})
 
         k8s: dict = {"events": [], "logs": [], "memory_ratio": None, "memory_limit": None}
         if culprit:
