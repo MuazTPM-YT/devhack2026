@@ -5,11 +5,21 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** 1 (stdlib-only core done; IO wiring waits on deps + schemas)
-**Branches:** PR #16 (`muaz/gateway`) open. Now `muaz/verify-loop` on top of #16 (not pushed)
+**Current phase:** 2 (tools); Phase 1 code complete, live smoke pending on A's machine
+**Branches:** PR #1 to #17 merged (mine: #1,#3-#7,#11,#14,#16,#17). Now `muaz/phase2-tools` (not pushed)
 
 ## Done (with proof)
 
+- Phase 2 tools on `muaz/phase2-tools`: `revert_config` (env, from the
+  journal entry's inverse, strategic merge), `restart_service`
+  (restartedAt), `scale` (scale subresource, merge patch), `raise_limit`
+  (one container, must raise, <= `max_memory`). Every body pins the live
+  resourceVersion; params bounded in the policy step; undo restores the
+  pre-action template or scales back. Proof: `uv run pytest` -> `246
+  passed`; `ruff check .` -> `All checks passed!`; `mypy ... chaos` -> `no
+  issues found in 60 source files`; `tests/test_tools.py` 7 pass. Mutation
+  check (must-raise, bounds, scale undo, env-only revert) -> 4 FAIL, all
+  caught. Fake API server only.
 - Gateway part 2 + brain hand-over on `muaz/verify-loop`:
   `Gateway.verify` (5 s health poll, early abort -> pause/undo/resume,
   human change -> handed_off without undo, harm check, outcome), `undo`,
@@ -184,6 +194,12 @@ section. Only my own work here; cross-team facts go in
 
 ## Blocked / waiting on
 
+- Flags: flagd keeps live flags in a file on an emptyDir (A), so
+  `revert_config` for flags and `enable_degraded_mode` are refused for now.
+  Needs a plan (next).
+- Brain does not submit `raise_limit` follow-ups yet (restart first, then an
+  approval request); the in-flight rule would refuse it while the restart
+  verifies. Needs a small queue in the brain.
 - Approval auth: Muaz chose allowlist only, gateway on 127.0.0.1 (no
   shared secret).
 - JSON Patch `test` failure status (assumed 422 with "test" in the body ->
