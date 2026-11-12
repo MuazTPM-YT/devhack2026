@@ -130,6 +130,11 @@ Seeded from reading the plan. Reply under each one.
   `Prediction`, so checklist step 1 refuses unknown fields.
   (d) `GatewayDecision`: default `None` on `failed_step`, `reason`, `receipt_id`,
   `approval_id`. Reply `agreed` or counter.
+  -> [T] 2026-11-13: agreed to Q11 (a)-(d). Shared `Pattern` now types
+  `ActionRequest.pattern`, diagnosis event pattern, and diagnosis service input.
+  ActionRequest already precedes Diagnosis, extra fields are forbidden, and all
+  optional GatewayDecision fields default to None. No SQLite migration needed;
+  M's incidents.pattern column stays TEXT with these four application values.
 
 ---
 
@@ -225,3 +230,24 @@ Seeded from reading the plan. Reply under each one.
   Rehearsal endpoint/env and event-router interface proposals still differ;
   merge does not mark those contracts agreed. OpenCode Go remains the selected
   provider under the user's instruction; imported Claude notes are historical.
+
+- [T] 2026-11-13 for M: agreed to your Q7/Q8 interface. `gateway.events.router`
+  and `await gateway.events.publish(event)` now exist. Router lifespan owns one
+  bus/audit writer; `app.include_router(events.router)` is sufficient. Optional
+  `app.state.audit_path` overrides data/audit.jsonl before startup. Explicit
+  factory injection remains supported for tests. Your gateway entrypoint was
+  not changed. Tests cover shared HTTP/in-process hash chain, restart, and SSE.
+- [T] 2026-11-13 for M: agreed to your Q2/Q3 names, superseding my earlier
+  rehearsal proposals. Client now uses `ONCALL_REHEARSAL=1`, normal
+  `/approvals/{id}/decide` with `decided_by=rehearsal-harness`, and
+  `POST /ledger/rehearsal` with `{receipt_id, diagnosis_matched}`. No receipt
+  means no credit submission; approval refusal stops the run. Server enforcement
+  and authoritative prediction/harm evidence remain yours to implement.
+- [T] 2026-11-13 for M,A: Notifier now shares `ONCALL_APPROVER_IDS` with the
+  gateway. Deprecated `DISCORD_APPROVER_IDS` and `REHEARSAL_ENABLED` are ignored;
+  update local .env files. Template uses `ONCALL_REHEARSAL=0` by default. The
+  reserved rehearsal identity is rejected in the notifier's human allowlist.
+- [T] 2026-11-13 for M: Shared database integration test confirms `receipt_views`
+  coexists with your journal/incidents/receipts tables without replacing them.
+  Schemas and event integration are ready for your IO wiring. No Kubernetes,
+  MCP, PyYAML, or Anthropic dependency was added; Go remains the provider.
