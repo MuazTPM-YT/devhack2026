@@ -1,6 +1,6 @@
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Tool = Literal[
     "rollback_deploy", "revert_config", "restart_service", "scale", "raise_limit",
@@ -15,7 +15,7 @@ EventType = Literal[
 
 
 class Model(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
 
 class Evidence(Model):
@@ -88,12 +88,6 @@ class GatewayDecision(Model):
     approval_id: str | None = None
 
 
-class Event(Model):
-    type: EventType
-    incident_id: str | None = None
-    payload: dict[str, Any] = Field(default_factory=dict)
-
-
 class Receipt(Model):
     incident_id: str
     tool: Tool
@@ -107,6 +101,12 @@ class Receipt(Model):
     elapsed_s: float | None = None
     added_disruption_s: float | None = None
     forecast_s: float | None = None
+    pods_touched: list[str] = Field(default_factory=list)
+    blast: dict[str, Any] = Field(default_factory=dict)
+    trust: dict[str, Any] = Field(default_factory=dict)
+    checklist: list[dict[str, Any]] = Field(default_factory=list)
+    hash_before: str | None = None
+    hash_after: str | None = None
 
 
 class Card(Model):
@@ -114,3 +114,81 @@ class Card(Model):
     status: str
     text: str
     evidence_ids: list[str]
+
+
+class Payload(BaseModel):
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
+
+
+class CardPayload(Payload):
+    card: Card
+    receipt_url: str = ""
+    briefing: str = ""
+
+
+class ApprovalRequestedPayload(CardPayload):
+    approval_id: str
+    diff: str
+    forecast: str
+    expires_at: float
+
+
+class ApprovalDecidedPayload(Payload):
+    approval_id: str
+    decision: Literal["approved", "rejected", "expired"]
+    acknowledged: bool = False
+
+
+class DiagnosisReadyPayload(Payload):
+    pattern: str
+    culprit: str | None
+
+
+class ChecklistPayload(Payload):
+    name: str
+    passed: bool
+    reason: str | None = None
+
+
+class QuarantinePayload(Payload):
+    line_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class InferencePayload(Payload):
+    provider: str | None = None
+    model: str | None = None
+    usage: dict[str, Any] = Field(default_factory=dict)
+    attempt: int | None = None
+    error: str | None = None
+    cached: bool = False
+
+
+PAYLOADS: dict[str, type[Payload]] = {
+    "approval_requested": ApprovalRequestedPayload,
+    "approval_decided": ApprovalDecidedPayload,
+    "diagnosis_ready": DiagnosisReadyPayload,
+    "checklist_step": ChecklistPayload,
+    "injection_quarantined": QuarantinePayload,
+    "llm_called": InferencePayload,
+    "incident_resolved": CardPayload,
+    "escalated": CardPayload,
+    "handed_off": CardPayload,
+}
+
+
+class Event(Model):
+    type: EventType
+    incident_id: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def check_payload(self) -> Self:
+        payload_type = PAYLOADS.get(self.type)
+        if payload_type:
+            if not self.incident_id:
+                raise ValueError("Lifecycle event requires incident_id")
+            validated = payload_type.model_validate(self.payload)
+            if isinstance(validated, CardPayload) and validated.card.incident_id != self.incident_id:
+                raise ValueError("Card incident_id does not match event")
+            self.payload = validated.model_dump(mode="json")
+        return self

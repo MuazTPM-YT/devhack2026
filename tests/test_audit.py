@@ -81,3 +81,24 @@ def test_card_stays_five_lines_with_multiline_fields():
     receipt = Receipt(incident_id="i", tool="rollback_deploy", target="payment\nextra",
                       diff={}, inverse={"image": "old"}, evidence_ids=["journal:41\nextra"])
     assert len(build_card(receipt, 1).text.splitlines()) == 5
+
+
+@pytest.mark.parametrize("decision,status", [
+    ("awaiting_approval", "NEEDS APPROVAL"), ("escalated", "WOKE YOU BECAUSE"),
+    ("handed_off", "HANDED OFF"), ("refused", "NO ACTION"),
+])
+def test_incident_card_variants(bundle, decision, status):
+    from gateway.receipts import build_incident_card
+    from schemas.models import GatewayDecision
+    card = build_incident_card(bundle.incident, decision=GatewayDecision(decision=decision))
+    assert card.status == status
+    assert len(card.text.splitlines()) == 5
+    assert "verification not run" in card.text
+
+
+def test_major_mitigation_card(bundle):
+    from gateway.receipts import build_incident_card
+    bundle.incident.major = True
+    card = build_incident_card(bundle.incident, mitigated=True)
+    assert card.status == "MAJOR INCIDENT: MITIGATED, NOT FIXED"
+    assert len(card.text.splitlines()) == 5

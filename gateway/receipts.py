@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from brain.redact import redact_value
-from schemas.models import Card, Receipt
+from schemas.models import Card, Diagnosis, GatewayDecision, Incident, Receipt
 
 
 class ReceiptStore:
@@ -61,3 +61,36 @@ def create_receipts_router(store: ReceiptStore) -> APIRouter:
         return {"id": receipt_id, "receipt": receipt, "card": build_card(receipt, receipt_id)}
 
     return router
+
+
+def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
+                        decision: GatewayDecision | None = None, receipt: Receipt | None = None,
+                        receipt_id: int | None = None, mitigated: bool = False) -> Card:
+    if receipt and receipt_id is not None:
+        card = build_card(receipt, receipt_id)
+    else:
+        card = Card(incident_id=incident.id, status="WOKE YOU BECAUSE", text="", evidence_ids=[])
+    if decision:
+        card.status = {"awaiting_approval": "NEEDS APPROVAL", "handed_off": "HANDED OFF",
+                       "escalated": "WOKE YOU BECAUSE", "refused": "NO ACTION"}.get(decision.decision, card.status)
+    if mitigated:
+        card.status = "MITIGATED, NOT FIXED"
+    if incident.major:
+        card.status = f"MAJOR INCIDENT: {card.status}"
+    causes = diagnosis.causes if diagnosis else []
+    ids = list(dict.fromkeys(card.evidence_ids + [value for cause in causes for value in cause.evidence_ids]))
+    cause_class = causes[0].cause_class if causes else "unknown"
+    def clean(text):
+        return " ".join(redact_value(str(text)).split())
+    refs = " ".join(f"[{clean(value)}]" for value in ids) or "none supplied"
+    action = f"{receipt.tool} on {clean(receipt.target)}; receipt #{receipt_id}" if receipt else "nothing"
+    check = (f"prediction={receipt.prediction_held}; harm clean={receipt.harm_clean}"
+             if receipt else "verification not run")
+    undo = f"inspect receipt #{receipt_id}; request gateway approval" if receipt else "inspect evidence before approving"
+    card.text = "\n".join([
+        f"{card.status}: {clean(incident.culprit or 'cause unknown')}",
+        f"Why: {cause_class}; evidence {refs}",
+        f"Did: {action}", f"Checked: {check}", f"Undo / ask: {undo}",
+    ])
+    card.evidence_ids = ids
+    return card

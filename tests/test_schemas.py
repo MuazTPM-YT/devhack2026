@@ -14,3 +14,21 @@ def test_unknown_tool_and_event_rejected():
 def test_prediction_deadline_is_bounded():
     with pytest.raises(ValidationError):
         Prediction(metric="err_ratio", target="payment", below=0.05, within_s=0)
+
+
+def test_payload_contract_rejects_incomplete_approval():
+    with pytest.raises(ValidationError):
+        Event(type="approval_requested", incident_id="i", payload={"approval_id": "a"})
+
+
+def test_payload_rejects_cross_incident_card():
+    with pytest.raises(ValidationError):
+        Event(type="incident_resolved", incident_id="i", payload={"card": {
+            "incident_id": "other", "status": "FIXED", "text": "done", "evidence_ids": [],
+        }})
+
+
+def test_evidence_rejects_nonfinite_timestamp():
+    from schemas.models import Evidence
+    with pytest.raises(ValidationError):
+        Evidence(id="query:x", kind="query", summary="metric", ts=float("nan"))
