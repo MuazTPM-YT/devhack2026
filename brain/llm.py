@@ -9,15 +9,6 @@ from typing import Any
 from pydantic import ValidationError
 
 from brain.providers.base import InferenceProvider, InferenceRequest, ProviderError
-from brain.providers import opencode_go_sync as _sync_provider
-from brain.providers.opencode_go_sync import (
-    SYSTEM_PROMPT as SYSTEM_PROMPT,
-    TOOL as TOOL,
-    URL as URL,
-    USER_AGENT as USER_AGENT,
-    config_from_env as config_from_env,
-    request_body as request_body,
-)
 from brain.redact import quarantine, redact_value
 from schemas.models import ActionRequest, Diagnosis, EvidenceBundle, Pattern
 
@@ -150,5 +141,3 @@ class DiagnosisService:
                 pass
         return DiagnosisResult(None, rule_action, False, error, events)
 
-
-diagnose = _sync_provider.diagnose
