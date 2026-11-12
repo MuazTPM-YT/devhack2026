@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { FaultBoard } from "./fault-board";
 import { Health } from "./health";
+import { KubectlBox } from "./kubectl-box";
 import styles from "./chaos-view.module.css";
 
 export function ChaosView() {
@@ -20,6 +21,7 @@ export function ChaosView() {
       <FaultBoard onChange={changed} />
       <div className={styles.grid}>
         <Health className={styles.span4} />
+        <KubectlBox onChange={changed} className={styles.span8} />
       </div>
     </div>
   );
