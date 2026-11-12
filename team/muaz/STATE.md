@@ -6,10 +6,26 @@ section. Only my own work here; cross-team facts go in
 
 **Last updated:** 2026-11-13
 **Current phase:** Phases 0 to 4 built in code (fakes only); nothing verified on the live cluster yet
-**Branches:** all my work merged up to PR #20; PR #22 (`muaz/phase4`) open.
+**Branches:** all my work merged up to PR #24. Now `muaz/fix-flood-dep` (not pushed)
 
 ## Done (with proof)
 
+- Two fixes found by re-reading §7 against the code (branch
+  `muaz/fix-flood-dep`):
+  - Incident flood: after an incident closes, its services cannot open a
+    new incident until they recover once (`Detector.suppressed`). Before,
+    an escalated, still-broken service re-paged every 5 s. The old test
+    `test_close_lets_next_incident_open` asserted that flood; replaced by
+    `test_close_suppresses_until_recovery` (Muaz approved the change).
+  - Scenario 5: when the trace culprit has no own change, a non-agent
+    change on a dependency (graph downstream or any stateful service)
+    becomes the culprit (`brain/culprit.py::dependency_change`). valkey-cart
+    scaled to 0 -> culprit valkey-cart, pattern protected, scale proposal.
+    `culprit_found` carries `moved_from`.
+  Proof: `uv run pytest` -> `310 passed`; `ruff check .` -> `All checks
+  passed!`; `mypy ... chaos` -> `no issues found in 62 source files`;
+  mutation check (no suppression, no recovery release, own change ignored,
+  no stateful fallback) -> 4 FAIL, all caught. Fakes only.
 - Phase 4 on `muaz/phase4`: `brain/major.py` (major = >= 4 or >= 30% of
   services within 120 s; ranked shared change, then shared dependency;
   top candidate becomes the culprit; `major_incident` event; incidents
@@ -238,7 +254,6 @@ section. Only my own work here; cross-team facts go in
 - **Scenario 3 (A):** flag -> service map proposed for
   `config/services.yaml`; waiting on A's `agreed`.
 - **Scenario 10 (A):** `/chaos/shared-outage` (Q6).
-- **PR #22** open (Phase 4 + this cleanup).
 
 ## Decisions made (Muaz)
 
@@ -251,7 +266,7 @@ section. Only my own work here; cross-team facts go in
 
 ## Next
 
-1. Merge PR #22.
+1. Push + merge `muaz/fix-flood-dep`.
 2. When A's outputs arrive: fix what the cluster shows; tick the §6.5.5 row
    and the Phase 1 exit in TASK.md only with that output.
 3. After A agrees the flag map: link flag changes to services in the rules,
