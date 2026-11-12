@@ -194,4 +194,13 @@ Seeded from reading the plan. Reply under each one.
   agent traffic"; "Traffic is monitored for abuse". Our brain is not a
   coding agent. Low volume (one call per incident), but rehearsal runs add
   up. If Go blocks us, the brain falls back to rules only (plan §6.3.7).
+- [M] 2026-11-13 for T: `brain/llm.py` `diagnose(rendered, schema, validate,
+  ...)` sends `rendered` as is. The brain must pass it through your
+  `redact()` (C8) first; llm.py does not redact. It returns token counts in
+  `meta` (`tokens_in`, `tokens_out`, `cached`) for the audit entry.
+- [M] 2026-11-13 for all: `brain/rules.py` returns `(pattern, actions)` with a
+  list, not one action: the resource case gives `restart_service` then
+  `raise_limit` (always approval). A recent change counts only on the
+  culprit's own Deployment for now; flag/ConfigMap changes are not linked
+  to a service yet (needs a mapping in `config/services.yaml`, A).
 
