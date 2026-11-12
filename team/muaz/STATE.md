@@ -5,11 +5,27 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** 3 (trust, humans); live smoke pending on A's machine
-**Branches:** PR #19 merged. Now `muaz/phase3` (not pushed)
+**Current phase:** 4 done in code; live smoke pending on A's machine
+**Branches:** PR #20 (`muaz/phase3`) open. Now `muaz/phase4` on top of #20 (not pushed)
 
 ## Done (with proof)
 
+- Phase 4 on `muaz/phase4`: `brain/major.py` (major = >= 4 or >= 30% of
+  services within 120 s; ranked shared change, then shared dependency;
+  top candidate becomes the culprit; `major_incident` event; incidents
+  `major=1`), gateway major rules (root cause only, one restart, no scale
+  up, approval unless reverting the shared change), `blocked` event on
+  403/422 (scenario 12), `tests/test_invariants.py`. Proof: `uv run
+  pytest` -> `276 passed`; property test prints `2000 generated cases, 0
+  violations`; mutating the target checks / freshness / trust gate /
+  in-flight / budgets gives 1 / 3 / 40 / 13 / 7 violations, so the test
+  bites. `ruff check .` -> `All checks passed!`; `mypy ... chaos` -> `no
+  issues found in 62 source files`. Fakes only.
+  - ASSUMED: stdlib `random` (fixed seeds) instead of Hypothesis, no new
+    dependency; no shrinking. Invariant 8 counts gateway events (the bus
+    appends each to the audit log).
+  - Not built: "shared node" (k3d has one node), degraded mode on approval
+    in scenario 10 (waits on flags).
 - Phase 3 on `muaz/phase3`: `gateway/blast.py` (upstream blast radius,
   forecast from replicas + maxUnavailable + measured pod startup, net
   benefit per policy), checklist step 5 real (asks a human when too costly
@@ -209,6 +225,10 @@ section. Only my own work here; cross-team facts go in
 
 ## Blocked / waiting on
 
+- Load rate: Muaz chose "A raises the load generator rate" (payment ~1
+  req/min makes 1 m windows flap). Waiting on A.
+- Scenario 3: flag -> service map proposed for `config/services.yaml` (A,
+  C7); waiting on A's `agreed`.
 - Flags: Muaz chose "flagd reads ConfigMap `flagd-config` directly" (A
   changes `k8s/values.yaml`). Waiting on A to confirm flagd reloads a
   mounted-ConfigMap update without a restart. Until then flag reverts and

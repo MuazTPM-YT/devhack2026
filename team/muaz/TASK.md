@@ -52,8 +52,8 @@ Exit: scenarios 7 to 9 and 11 to 12 pass.
 
 ## Phase 4: wide outages and measurement
 
-- [ ] P1 Major-incident mode + shared-cause analysis (§6.3.3), checklist major rules (§6.4.2); `/chaos/shared-outage` endpoint per Q6
-- [ ] P1 Property-based tests, report "N cases, 0 violations" (§8.2)
+- [x] P1 Major-incident mode + shared-cause analysis (§6.3.3), checklist major rules (§6.4.2); `/chaos/shared-outage` endpoint per Q6 — proof: `tests/test_major.py` 7 pass (incl. kafka outage -> major, culprit kafka, protected), branch `muaz/phase4`. `/chaos/shared-outage` is A's (Q6). Shared node skipped (one-node k3d).
+- [x] P1 Property-based tests, report "N cases, 0 violations" (§8.2) — proof: `tests/test_invariants.py` prints `2000 generated cases, 0 violations`; mutated checks produce violations. Stdlib random, not Hypothesis.
 
 Exit: scenario 10 passes.
 

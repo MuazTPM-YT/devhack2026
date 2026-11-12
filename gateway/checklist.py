@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 from pydantic import ValidationError
 
+from brain.major import shared_change
 from brain.rules import latest_change_before_onset
 from gateway import approvals, blast, freshness, policy, trust
 from gateway.dryrun import build_patch, namespace_hash, outside_allowed, rollback_patch, spec_diff, spec_hashes
@@ -80,6 +81,9 @@ class Gateway:
         incident_id = action.incident_id if isinstance(action, ActionRequest) else str(action.get("incident_id"))
         target = action.target if isinstance(action, ActionRequest) else action.get("target")
         await self.step(incident_id, steps, name, False, reason)
+        if reason and reason.startswith("API server refused"):  # RBAC or admission said no (scenario 12)
+            await self.publish({"type": "blocked", "incident_id": incident_id,
+                                "payload": {"step": name, "tool": getattr(action, "tool", None), "reason": reason}})
         decision = GatewayDecision(decision=outcome, failed_step=name, reason=reason)  # type: ignore[arg-type]
         if row is not None:
             gone = name == "freshness" and outcome == "refused"
@@ -156,6 +160,12 @@ class Gateway:
         ok, outcome, reason = policy.check(action.model_dump(), self.services, self.policy, used, asking=asking)
         if not ok:
             return await self.stop(action, row, steps, "policy", outcome, reason)
+        if row.get("major"):
+            with self.lock:
+                restarts = self.conn.execute("SELECT COUNT(*) FROM receipts WHERE incident_id=? AND tool=?",
+                                             (action.incident_id, "restart_service")).fetchone()[0]
+            if bad := policy.major_check(action.model_dump(), row.get("culprit"), restarts):
+                return await self.stop(action, row, steps, "policy", "refused", bad)
         await self.step(action.incident_id, steps, "policy", True)
 
         # 4 dry run + snapshot
@@ -164,6 +174,8 @@ class Gateway:
             plan = await asyncio.to_thread(self.prepare, action, entry)
         except WriteRefused as e:
             return await self.stop(action, row, steps, "dry_run", e.outcome, e.reason)
+        if row.get("major") and action.tool == "scale" and action.params["replicas"] > plan["replicas"]:
+            return await self.stop(action, row, steps, "dry_run", "refused", "major incident: no scale up")
         await self.step(action.incident_id, steps, "dry_run", True, f"{len(plan['diff'])} spec paths change")
 
         # 5 blast radius + net benefit
@@ -211,6 +223,11 @@ class Gateway:
         with self.lock:
             gate = trust.check(self.conn, self.policy["trust"], self.policy["tools"][action.tool], action.pattern,
                                action.tool, action.target, kind)
+        if not approved and row.get("major"):
+            shared = shared_change(journal_rows, row["onset_at"] or 0, window_s)
+            if not (action.pattern == "recent_change" and shared and action.journal_entry == shared["id"]):
+                return await self.ask(action, row, steps, plan, "major incident: a human approves every action "
+                                                                "except reverting the shared change", gate)
         if not approved:
             if not gate["open"]:
                 return await self.ask(action, row, steps, plan, f"trust bound {gate['lower_bound']} < {gate['bar']}",
