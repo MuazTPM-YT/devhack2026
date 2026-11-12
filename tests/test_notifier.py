@@ -57,3 +57,14 @@ async def test_consumer_restart_deduplicates_and_resolves_wake(tmp_path):
         record = {"seq": 2, "event": {"type": "incident_resolved", "incident_id": "i", "payload": {"card": card}}}
         await consumer.handle(record)
         assert state.get("wakes") == {}
+
+
+async def test_success_status_with_refusal_body_is_not_approval(tmp_path):
+    state = NotifierState(tmp_path / "notifier.db")
+    state.set("approval:a", {"expires_at": time.time() + 60})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda _: httpx.Response(200, json={"decision": "refused", "reason": "stale"})
+    )) as client:
+        controller = ApprovalController(client, "http://gateway", {"approver"}, state)
+        assert await controller.decide("a", "approver", "approved") == "gateway refused decision"
+    assert not state.get("approval:a").get("decision")

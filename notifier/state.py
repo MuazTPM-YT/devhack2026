@@ -3,6 +3,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from brain.redact import redact_value
+
 
 class NotifierState:
     def __init__(self, path: Path):
@@ -21,7 +23,7 @@ class NotifierState:
 
     def set(self, key: str, value: Any):
         with self.connect() as db:
-            db.execute("INSERT OR REPLACE INTO notifier_state VALUES (?, ?)", (key, json.dumps(value)))
+            db.execute("INSERT OR REPLACE INTO notifier_state VALUES (?, ?)", (key, json.dumps(redact_value(value))))
 
     def approvals(self) -> dict[str, Any]:
         with self.connect() as db:

@@ -6,7 +6,9 @@ import httpx
 
 from brain.redact import redact
 from notifier.state import NotifierState
-from schemas.models import Card
+from pydantic import ValidationError
+
+from schemas.models import Card, GatewayDecision
 
 
 class ApprovalController:
@@ -31,6 +33,12 @@ class ApprovalController:
                 json={"decision": decision, "decided_by": user_id}, timeout=10,
             )
             if response.status_code != 200:
+                return "gateway refused decision"
+            try:
+                result = GatewayDecision.model_validate(response.json())
+            except (ValueError, ValidationError):
+                return "gateway refused decision"
+            if decision == "approved" and result.decision != "executed":
                 return "gateway refused decision"
             row.update(decision=decision, decided_by=user_id, decided_at=time.time())
             self.state.set(f"approval:{approval_id}", row)
@@ -101,6 +109,8 @@ class DiscordNotifier(discord.Client):
 
     async def request_approval(self, approval_id: str, card: Card, diff: str,
                                forecast: str, expires_at: float) -> None:
+        if self.controller.state.get(f"approval:{approval_id}"):
+            return
         view = ApprovalView(approval_id, self.controller)
         message = await self.send_text(self.wake_channel,
                                        f"{card.text}\nDiff: {diff[:500]}\nForecast: {forecast}\n"
@@ -108,3 +118,10 @@ class DiscordNotifier(discord.Client):
         self.controller.state.set(f"approval:{approval_id}", {
             "message_id": message.id, "channel_id": message.channel.id, "expires_at": expires_at,
         })
+
+    async def close_approval(self, approval_id: str, row: dict, decision: str):
+        channel = self.get_channel(row["channel_id"]) or await self.fetch_channel(row["channel_id"])
+        if not isinstance(channel, (discord.TextChannel, discord.Thread, discord.DMChannel)):
+            raise ValueError("Discord channel cannot receive messages")
+        message = await channel.fetch_message(row["message_id"])
+        await message.edit(content=f"Approval {approval_id}: {decision}", view=None)

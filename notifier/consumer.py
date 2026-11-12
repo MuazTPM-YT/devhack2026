@@ -62,17 +62,39 @@ class NotificationConsumer:
             pending = self.state.get("wakes", {})
             for row in pending.values():
                 if time.time() - row["last_page"] >= self.repage_s:
-                    await self.notifier.wake(Card.model_validate(row["card"]), row["briefing"])
+                    try:
+                        await self.notifier.wake(Card.model_validate(row["card"]), row["briefing"])
+                    except (discord.HTTPException, httpx.HTTPError):
+                        continue
                     row["last_page"] = time.time()
             self.state.set("wakes", pending)
+
+    async def expire_approvals(self):
+        while True:
+            for approval_id, row in self.state.approvals().items():
+                decision = row.get("decision")
+                if not decision and row["expires_at"] <= time.time():
+                    decision = "expired"
+                    row["decision"] = decision
+                    self.state.set(f"approval:{approval_id}", row)
+                if decision and not row.get("view_closed"):
+                    try:
+                        await self.notifier.close_approval(approval_id, row, decision)
+                    except discord.HTTPException:
+                        continue
+                    row["view_closed"] = True
+                    self.state.set(f"approval:{approval_id}", row)
+            await asyncio.sleep(5)
 
     async def run(self):
         await self.notifier.wait_until_ready()
         async with asyncio.TaskGroup() as group:
             group.create_task(self.repage())
+            group.create_task(self.expire_approvals())
             while True:
                 try:
                     async for record in read_events(self.client, self.gateway_url, self.state.get("cursor", 0)):
                         await self.handle(record)
+                    await asyncio.sleep(1)
                 except (httpx.HTTPError, ValueError, KeyError, discord.HTTPException):
                     await asyncio.sleep(2)
