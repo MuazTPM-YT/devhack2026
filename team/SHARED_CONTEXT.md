@@ -116,3 +116,48 @@ Seeded from reading the plan. Reply under each one.
 - [plan] 2026-11-12 for all: Team files created: `team/<name>/ARCHITECTURE.md`,
   `TASK.md`, `STATE.md` for muaz, anirudh, twaha. Nothing is built yet; the
   repo holds only `IMPLEMENTATION.md`, `CLAUDE.md`, `README.md`, `LICENSE`.
+
+- [T] 2026-11-13 for M,A: User approved Twaha components plus inference adapter on
+  `codex/twaha-opencode-go`. Implementation is component-tested; no cluster code
+  or teammate entrypoints were changed. Existing C1-C10 statuses remain proposed.
+- [T] 2026-11-13 for M,A: User selected OpenCode Go subscription instead of Claude
+  API. Provider protocol and Go adapter are implemented. Required settings:
+  `INFERENCE_PROVIDER=opencode_go`, `INFERENCE_MODEL`, `OPENCODE_GO_API_KEY`.
+  No model default, CLI subprocess, Claude fallback, or paid-endpoint fallback.
+- [T] 2026-11-13 for M: Q7/Q8 implementation proposal: T owns `brain/redact.py`;
+  mount `create_events_router(EventBus(AuditLog(path)))` and
+  `create_receipts_router(ReceiptStore(path))` in your gateway. Use one audit
+  writer/worker. README contains exact imports and lifecycle boundaries.
+- [T] 2026-11-13 for M,A: C2/C3 wire proposal: SSE data is the audit envelope
+  `{seq, ts, event, prev_hash, hash}`; inner event is `{type, incident_id, payload}`.
+  SSE IDs equal audit sequences and support `Last-Event-ID` replay. UI must read
+  inner payload. Gateway must configure UI CORS if browser origins differ.
+- [T] 2026-11-13 for M: C2 payload proposal: `diagnosis_ready` includes `pattern`
+  and `culprit`; notification terminal events include `card`; approval requests
+  include `approval_id`, `card`, `diff`, `forecast`, `expires_at`. Typed payloads
+  live in `schemas/models.py`; remaining producer payloads stay extensible.
+- [T] 2026-11-13 for M: C9 storage proposal: receipt views use `receipt_views` in
+  SQLite. They contain redacted display data only. Executor must retain usable
+  inverses and verification state separately; no undo route was added here.
+- [T] 2026-11-13 for M: Approval contract proposal: notifier POSTs `decision`
+  (`approved` or `rejected`) and `decided_by`; endpoint returns `GatewayDecision`.
+  Notifier confirms approval only for `executed`. Gateway must independently
+  authenticate caller/identity, check expiry/state, and rerun safety checks.
+- [T] 2026-11-13 for M: Q2/Q3 proposal: rehearsal-only routes
+  `POST /rehearsal/approvals/{id}/decide` with `{decision: "approved"}` and
+  `POST /rehearsal/ledger` with `{incident_id, diagnosis_correct}`. Harness calls
+  them only with `--rehearsal` plus `REHEARSAL_ENABLED=true`. Server must disable
+  them by default, restrict known rehearsal incidents, and require its own
+  prediction/harm evidence before trust credit. No raw ground truth is sent.
+- [T] 2026-11-13 for A: C6 response proposal: injections return `ts`, `type`,
+  `target`; optional `should_wake` sets paging expectation. Harness needs observer
+  `/health/now` numeric severity and 60 seconds of stable health before injection.
+- [T] 2026-11-13 for M,A: User approved uv + FastAPI/Pydantic/HTTPX/discord.py/
+  Uvicorn, with pytest/pytest-asyncio/Ruff/mypy. Root `pyproject.toml`, `uv.lock`,
+  and Commands sections now exist. Other owner-specific dependencies still need
+  agreement. Run `uv sync --locked`, `uv run pytest`, `uv run ruff check .`,
+  `uv run mypy schemas brain gateway notifier bench`.
+- [T] 2026-11-13 for M,A: Offline red-team report covers 12 component checks.
+  It explicitly does not verify RBAC, admission policy, protected-target policy,
+  budgets, freshness, or auto-undo. Live runs and rehearsal trust credits remain
+  unperformed. README records integration contracts and current limitations.
