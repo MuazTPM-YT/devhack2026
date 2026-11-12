@@ -59,3 +59,15 @@ The audit log, the benchmark's time-to-recovery numbers.
 - Notifier component tests pass; real Discord delivery remains untested.
 - Red-team component suite passes; live RBAC/admission rows remain pending.
 - Full implementation/check evidence is recorded in STATE.md.
+
+## Unattended-run proof (2026-11-13)
+
+- Full suite: 166 passed; Ruff and mypy passed. No tests skipped or weakened.
+- Harness now resumes completed attempt counts, reconnects SSE with deduplication,
+  and saves partial measurements on timeout. Failed attempts remain in the data.
+- Real SQLite integration covers verifier outcomes, trust counts, and card claims.
+  Policy/checklist tests are still pending the policy/checklist implementation.
+- Trust report reads real ledger rows without writes and distinguishes statistical
+  confidence from gateway authorization. No live trust evidence was generated.
+- Two verifier regressions were fixed with tests: missing readings and simultaneous
+  human edits/severity spikes. Shared context records the exact change for M.

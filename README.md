@@ -153,6 +153,10 @@ The observer must return numeric `severity` from `/health/now`.
 ```sh
 uv run --locked --env-file .env python -m bench.harness --scenario bad-deploy --runs 10
 uv run --locked python -m bench.report bench/results.jsonl
+# Resume toward 30 attempts per scenario, without repeating recorded attempts:
+uv run --locked --env-file .env python -m bench.harness --scenario bad-deploy --runs 30 --resume
+# Read existing trust evidence without modifying the gateway database:
+uv run --locked python -m bench.trust_report data/oncall.db
 # After manual trials exist:
 uv run --locked python -m bench.report bench/results.jsonl --manual data/manual-results.jsonl
 uv run --locked pytest tests/redteam --junitxml=data/redteam.xml
@@ -166,6 +170,28 @@ may supply `tier`, `failed_customer_requests`, `harm_clean`, `prediction_held`,
 accuracy, wakes, verification samples, forecast error, and token usage. Token
 usage is not reported as cash spent under a subscription. Manual timing records
 are described in `bench/manual_baseline.md`; no manual measurements exist yet.
+
+`--resume` treats `--runs` as the total attempt count per scenario in that output
+file. Failed attempts count, so recovery never silently replaces failed evidence
+with successes. Completed attempts are not injected again. Corrupt or truncated
+result files fail before any reset. An interrupted attempt without a completed
+row starts fresh through reset. Use one writer per output file and a separate
+output file for each configuration or experiment.
+
+SSE observation reconnects after disconnects or temporary stream errors, passing
+the last audit sequence and ignoring replayed events. The 300-second overall
+observation deadline remains in force. Timeout and failed approval/ledger requests
+preserve already collected measurements in the failed trial record. Approval
+and ledger POSTs are not automatically retried after uncertain network outcomes.
+Normalized usage accepts either provider `usage` fields or sync metadata
+`tokens_in` / `tokens_out`; an explicit usage map takes precedence.
+
+The trust report opens an existing database read-only and keeps rehearsal and
+real counts separate. `statistical_threshold_met` describes sample evidence
+only; `authorization_evaluated` is false. Tools, protected targets, freshness,
+budgets, and approvals still need gateway checks. Set `--confidence` and `--bar`
+to match the gateway policy when it differs from 0.95 and 0.90. No report creates
+trust credit or supplies missing measurements.
 
 Rehearsal clients now follow Muaz's Q2/Q3 contract. Gateway routes are still
 owned by Muaz and are not implemented on this branch. Use both `--rehearsal`
