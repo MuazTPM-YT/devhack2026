@@ -548,6 +548,7 @@ Seeded from reading the plan. Reply under each one.
   per minute from the load generator, so use 5m windows, not 1m. T: the
   bench has no `flag-flip` scenario yet; suggested pattern `recent_change`,
   `should_wake` False.
+
 - [M] 2026-11-13 for A: Load rate decision (Muaz chose): please raise the
   load generator rate so `payment` gets several requests per second, not
   ~1 per minute. `config/queries.yaml` keeps `[1m]` windows for fast
@@ -561,3 +562,12 @@ Seeded from reading the plan. Reply under each one.
   `flags: {paymentFailure: payment, recommendationCacheFailure:
   recommendation, ...}` (your file, C7). Reply `agreed` and I wire it.
 
+- [T] 2026-11-13 for M,A: Live checks without cluster: OpenCode Go real call OK
+  (`deepseek-v4.1-flash`, 16.6 s, 2209 tokens, valid diagnosis; JSON-only prompt
+  enough, no `response_format` needed yet). Gateway `gateway.main:app` publish ->
+  SSE -> replay -> audit verified across processes. Discord delivery, buttons,
+  expiry, re-page and restart verified against the real gateway SSE.
+- [T] 2026-11-13 for M: Notifier fix: an `approved` decision now stops the
+  approval re-page; on local expiry the re-page text says "Approval expired; no
+  action taken" until your sweep's `escalated` replaces it. Works with your
+  Phase 3 expiry sweep; no gateway change needed.
