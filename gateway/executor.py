@@ -2,15 +2,10 @@
 import json
 from typing import Any
 
-from gateway.dryrun import FIELD_MANAGER, JSON_PATCH
+from gateway.dryrun import FIELD_MANAGER, JSON_PATCH, MERGE, WriteRefused
 
 NAMESPACE = "shop"
-
-
-class WriteRefused(Exception):
-    def __init__(self, outcome: str, reason: str):
-        super().__init__(reason)
-        self.outcome, self.reason = outcome, reason
+__all__ = ["WriteRefused", "classify", "patch_deployment", "patch_scale", "read_deployment", "list_json"]
 
 
 # 409 or a failed resourceVersion test -> someone else changed it: hand off; RBAC/admission -> escalate
@@ -22,17 +17,24 @@ def classify(status: int, body: str) -> WriteRefused:
     return WriteRefused("escalated", f"API error {status}: {body[:300]}")
 
 
-# dry_run=True asks the API server (and admission) without saving anything
-def patch_deployment(apps: Any, name: str, patch: list[dict], dry_run: bool) -> dict:
+def _call(fn: Any, name: str, body: Any, dry_run: bool, content_type: str) -> dict:
     from kubernetes.client.rest import ApiException
 
     try:
-        resp = apps.patch_namespaced_deployment(name, NAMESPACE, patch, dry_run="All" if dry_run else None,
-                                                field_manager=FIELD_MANAGER, _content_type=JSON_PATCH,
-                                                _preload_content=False)
+        resp = fn(name, NAMESPACE, body, dry_run="All" if dry_run else None, field_manager=FIELD_MANAGER,
+                  _content_type=content_type, _preload_content=False)
     except ApiException as e:
         raise classify(e.status, str(e.body or e.reason)) from None
     return json.loads(resp.data)
+
+
+# dry_run=True asks the API server (and admission) without saving anything
+def patch_deployment(apps: Any, name: str, body: Any, dry_run: bool, content_type: str = JSON_PATCH) -> dict:
+    return _call(apps.patch_namespaced_deployment, name, body, dry_run, content_type)
+
+
+def patch_scale(apps: Any, name: str, body: dict, dry_run: bool) -> dict:
+    return _call(apps.patch_namespaced_deployment_scale, name, body, dry_run, MERGE)
 
 
 def read_deployment(apps: Any, name: str) -> dict:

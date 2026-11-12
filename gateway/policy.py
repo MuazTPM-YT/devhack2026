@@ -2,6 +2,8 @@
 import sqlite3
 import time
 
+from brain.rules import to_bytes
+
 
 def usage(conn: sqlite3.Connection, incident_id: str, now: float | None = None) -> dict[str, int]:
     now = time.time() if now is None else now
@@ -22,9 +24,29 @@ def check(action: dict, services: dict, policy: dict, used: dict[str, int]) -> t
         return False, "escalated", f"{action['target']} is protected; a human must act"
     if not svc.get("actable"):
         return False, "refused", f"{action['target']} is not actable"
+    bad = bounds(action, policy["tools"][action["tool"]])
+    if bad:
+        return False, "refused", bad
     b = policy["budgets"]
     if used["incident"] >= b["max_actions_per_incident"] or used["hour"] >= b["max_actions_per_hour"]:
         return False, "escalated", "action budget used up"
     if used["in_flight"] >= b["max_in_flight"]:
         return False, "refused", "another action is still being verified"
     return True, "", None
+
+
+# tool params inside config/policy.yaml limits; the admission policy re-checks replicas on the cluster
+def bounds(action: dict, tool: dict) -> str | None:
+    p = action.get("params") or {}
+    if action["tool"] == "scale":
+        n = p.get("replicas")
+        if type(n) is not int or not tool["min"] <= n <= tool["max"]:
+            return f"scale needs integer replicas in [{tool['min']}, {tool['max']}]"
+    if action["tool"] == "raise_limit":
+        try:
+            ok = 0 < to_bytes(str(p.get("memory"))) <= to_bytes(tool["max_memory"])
+        except ValueError:
+            ok = False
+        if not ok:
+            return f"raise_limit needs memory up to {tool['max_memory']}"
+    return None
