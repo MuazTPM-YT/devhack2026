@@ -53,4 +53,4 @@ export const DEMO_SCRIPT: DemoStep[] = [
 ];
 
 // receipt the gateway would return for receipt 1
-export const DEMO_RECEIPT = { forecast_s: 18, elapsed_s: 11.5, prediction_held: true };
+export const DEMO_RECEIPT = { forecast_s: 18, elapsed_s: 11.5, prediction_held: true, trust: { lower_bound: 0.905 } };
