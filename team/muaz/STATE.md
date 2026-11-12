@@ -194,9 +194,10 @@ section. Only my own work here; cross-team facts go in
 
 ## Blocked / waiting on
 
-- Flags: flagd keeps live flags in a file on an emptyDir (A), so
-  `revert_config` for flags and `enable_degraded_mode` are refused for now.
-  Needs a plan (next).
+- Flags: Muaz chose "flagd reads ConfigMap `flagd-config` directly" (A
+  changes `k8s/values.yaml`). Waiting on A to confirm flagd reloads a
+  mounted-ConfigMap update without a restart. Until then flag reverts and
+  `enable_degraded_mode` are refused.
 - Brain does not submit `raise_limit` follow-ups yet (restart first, then an
   approval request); the in-flight rule would refuse it while the restart
   verifies. Needs a small queue in the brain.
