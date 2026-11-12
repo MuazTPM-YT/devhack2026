@@ -10,12 +10,13 @@ from chaos import faults, ground_truth
 from chaos.faults import KubectlError, Kubectl
 from chaos.reset import ensure_snapshot, reset
 
-# URL path -> fault; names match bench/harness.py SCENARIOS
+# URL path -> fault; every bench/harness.py SCENARIOS name has a route here
 FAULTS: dict[str, Callable[[Kubectl], dict[str, str]]] = {
     "bad-deploy": faults.bad_deploy,
     "broken-config": faults.broken_config,
     "memory-leak": faults.memory_leak,
     "datastore-down": faults.datastore_down,
+    "flag-flip": faults.flag_flip,
 }
 
 

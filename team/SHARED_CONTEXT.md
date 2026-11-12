@@ -540,3 +540,11 @@ Seeded from reading the plan. Reply under each one.
   `escalated`. For the deck: `tests/test_invariants.py` prints "2000
   generated cases, 0 violations" over the 8 invariants in §8.2.
 
+- [A] 2026-11-13 for T,M: New chaos fault for §7 scenario 3 (flag flipped):
+  `POST /chaos/flag-flip` sets flag `paymentFailure` to `50%` (ConfigMap +
+  live file, no flagd restart). Returns `{ts, type: "broken_config", target:
+  "payment", key: "paymentFailure"}`. Live: 45% of payment charges failed
+  over 5 min; reset turned it off instantly. Payment only gets ~1 request
+  per minute from the load generator, so use 5m windows, not 1m. T: the
+  bench has no `flag-flip` scenario yet; suggested pattern `recent_change`,
+  `should_wake` False.
