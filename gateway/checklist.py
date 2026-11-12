@@ -13,7 +13,7 @@ import httpx
 from pydantic import ValidationError
 
 from brain.rules import latest_change_before_onset
-from gateway import approvals, freshness, policy, trust
+from gateway import approvals, blast, freshness, policy, trust
 from gateway.dryrun import build_patch, namespace_hash, outside_allowed, rollback_patch, spec_diff, spec_hashes
 from gateway.verifier import Verification, harm_check, ledger_effect
 from gateway.executor import WriteRefused, list_json, patch_deployment, patch_scale, read_deployment
@@ -24,16 +24,27 @@ from schemas.models import ActionRequest, GatewayDecision, Incident, Receipt
 log = logging.getLogger("gateway")
 
 
+def forecast_text(plan: dict) -> str:
+    f, b = plan.get("forecast") or {}, plan.get("blast") or {}
+    hit = ", ".join(b.get("healthy_affected", [])) or "none known"
+    return (f"about {f.get('forecast_s', 0):.0f} s of lost capacity ({plan['replicas']} replicas, "
+            f"surge {'on' if plan.get('surge') else 'off'}); healthy callers at risk: {hit}")
+
+
 class Gateway:
     def __init__(self, conn: sqlite3.Connection, apps: Any, core: Any, http: httpx.AsyncClient, observer_url: str,
                  services: dict, policy_cfg: dict, publish: Callable[[dict], Awaitable[Any]],
-                 receipts: ReceiptStore, approvers: set[str], clock: Callable[[], float] = time.time):
+                 receipts: ReceiptStore, approvers: set[str], clock: Callable[[], float] = time.time,
+                 graph: Any = None):
         self.conn, self.apps, self.core, self.http, self.observer_url = conn, apps, core, http, observer_url
         self.services, self.policy, self.publish, self.receipts = services, policy_cfg, publish, receipts
         self.approvers, self.clock = approvers, clock
         self.lock = threading.Lock()
         self.verify_every = 5.0
         self.tasks: set[asyncio.Task] = set()
+        self.graph = graph  # brain.graph.DependencyGraph; None = blast radius unknown
+        self.heartbeats: dict[int, float] = {}
+        self.verifying: dict[int, asyncio.Task] = {}
 
     # ---- helpers -------------------------------------------------------------------------------
     def incident(self, incident_id: str) -> dict | None:
@@ -101,6 +112,12 @@ class Gateway:
         action = ActionRequest.model_validate_json(row["action_json"])
         inc = self.incident(action.incident_id)
         expired = self.clock() > row["expires_at"]
+        with self.lock:
+            busy = policy.usage(self.conn, action.incident_id, self.clock())["in_flight"]
+        if decision == "approved" and not expired and busy >= self.policy["budgets"]["max_in_flight"]:
+            # keep the approval: it can be used once the action in flight finishes verifying
+            return GatewayDecision(decision="refused", failed_step="policy", approval_id=approval_id,
+                                   reason="another action is still being verified; approval kept, try again")
         state = "expired" if expired else ("approved" if decision == "approved" else "rejected")
         approvals.set_state(self.conn, approval_id, state, decided_by)
         await self.publish({"type": "approval_decided", "incident_id": action.incident_id,
@@ -135,7 +152,8 @@ class Gateway:
         # 3 policy
         with self.lock:
             used = policy.usage(self.conn, action.incident_id, self.clock())
-        ok, outcome, reason = policy.check(action.model_dump(), self.services, self.policy, used)
+        asking = not approved and self.policy["tools"][action.tool]["auto_eligible"] is False
+        ok, outcome, reason = policy.check(action.model_dump(), self.services, self.policy, used, asking=asking)
         if not ok:
             return await self.stop(action, row, steps, "policy", outcome, reason)
         await self.step(action.incident_id, steps, "policy", True)
@@ -148,9 +166,24 @@ class Gateway:
             return await self.stop(action, row, steps, "dry_run", e.outcome, e.reason)
         await self.step(action.incident_id, steps, "dry_run", True, f"{len(plan['diff'])} spec paths change")
 
-        # 5 net benefit
-        # ponytail: P1 (§6.4.4); with 2 replicas + surge the forecast is 0 s anyway
-        await self.step(action.incident_id, steps, "net_benefit", True, "not built (P1); passes")
+        # 5 blast radius + net benefit
+        edges, known = [], False
+        if self.graph is not None:
+            try:
+                edges, known = await self.graph.get(), True
+            except (httpx.HTTPError, KeyError, ValueError) as e:
+                log.warning("dependency graph failed: %s", type(e).__name__)
+        radius = blast.blast_radius(action.target, edges, health)
+        forecast_s = blast.forecast_added_seconds(action.tool, plan["replicas"], plan["surge"], plan["startup_s"])
+        ok, nb = blast.net_benefit(float(health.get("severity", 0)), radius, forecast_s, self.services, self.policy)
+        if not known and forecast_s > 0:
+            ok, nb["reason"] = False, "blast radius unknown and the action costs capacity"
+        plan["blast"], plan["forecast"] = radius, nb
+        if not ok and not approved:
+            return await self.ask(action, row, steps, plan, nb.get("reason") or f"net benefit too low: {nb}",
+                                  step_name="net_benefit")
+        await self.step(action.incident_id, steps, "net_benefit", True,
+                        f"forecast {forecast_s:.0f} s" + ("" if ok else "; accepted by approver"))
 
         # 6 freshness
         latest = latest_change_before_onset(journal_rows, action.target, row["onset_at"] or 0, window_s)
@@ -188,19 +221,19 @@ class Gateway:
         return await self.execute(action, row, steps, plan, {**gate, "approved_by": approved_by, "pattern": action.pattern})
 
     async def ask(self, action: ActionRequest, row: dict, steps: list[dict], plan: dict, reason: str | None,
-                  gate: dict | None = None) -> GatewayDecision:
-        await self.step(action.incident_id, steps, "trust_gate", False, reason)
+                  gate: dict | None = None, step_name: str = "trust_gate") -> GatewayDecision:
+        await self.step(action.incident_id, steps, step_name, False, reason)
         with self.lock:
             appr = approvals.create(self.conn, action.incident_id, action.model_dump(mode="json"), self.clock(),
                                     self.policy["approval"]["expiry_seconds"])
-        decision = GatewayDecision(decision="awaiting_approval", failed_step="trust_gate", reason=reason,
+        decision = GatewayDecision(decision="awaiting_approval", failed_step=step_name, reason=reason,
                                    approval_id=appr["id"])
         card = build_incident_card(self.card_incident(row, action.target), decision=decision)
         changed = ", ".join(sorted(plan["diff"]))[:500]
         await self.publish({"type": "approval_requested", "incident_id": action.incident_id, "payload": {
             "card": card.model_dump(mode="json"), "approval_id": appr["id"], "expires_at": appr["expires_at"],
             "diff": f"{action.tool} {action.target}: {plan['summary']}; changes {changed}",
-            "forecast": f"{plan['replicas']} replicas with surge: no added downtime expected (forecast not built, P1)"}})
+            "forecast": forecast_text(plan)}})
         self.set_state(action.incident_id, "awaiting_approval")
         return decision
 
@@ -229,9 +262,11 @@ class Gateway:
         if bad := outside_allowed(diff, patch["allowed"]):
             raise WriteRefused("escalated", f"dry run touched paths {action.tool} must not: {bad[:5]}")
         hashes = spec_hashes(list_json(self.apps.list_namespaced_deployment), list_json(self.core.list_namespaced_config_map))
-        pods = [p["metadata"]["name"] for p in list_json(self.core.list_namespaced_pod) if service_of(p) == target]
+        pod_objs = [p for p in list_json(self.core.list_namespaced_pod) if service_of(p) == target]
+        pods = [p["metadata"]["name"] for p in pod_objs]
         return {"live": live, "patch": patch, "diff": diff, "summary": patch["summary"], "hashes": hashes,
-                "pods": pods, "replicas": live["spec"].get("replicas", 1), "inverse": inverse}
+                "pods": pods, "replicas": live["spec"].get("replicas", 1), "inverse": inverse,
+                "surge": blast.surge_ok(live), "startup_s": blast.startup_seconds(pod_objs)}
 
     async def execute(self, action: ActionRequest, row: dict, steps: list[dict], plan: dict,
                       gate: dict) -> GatewayDecision:
@@ -243,17 +278,19 @@ class Gateway:
         inverse = plan["inverse"]
         receipt = Receipt(incident_id=action.incident_id, tool=action.tool, target=action.target, diff=plan["diff"],
                           inverse=inverse, evidence_ids=action.evidence_ids, pods_touched=plan["pods"], trust=gate,
-                          checklist=steps, hash_before=namespace_hash(plan["hashes"]))
+                          checklist=steps, hash_before=namespace_hash(plan["hashes"]), blast=plan.get("blast", {}),
+                          forecast_s=(plan.get("forecast") or {}).get("forecast_s"))
         receipt_id = self.receipts.save(receipt)
         with self.lock:
             self.conn.execute(
                 "INSERT INTO receipts (id, incident_id, ts, tool, target, diff_json, pods_touched_json, inverse_json, "
-                "hash_before, checklist_json, trust_json, forecast_json, outcome) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
+                "hash_before, checklist_json, trust_json, forecast_json, blast_json, outcome) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
                 (receipt_id, action.incident_id, self.clock(), action.tool, action.target, json.dumps(plan["diff"]),
                  json.dumps(plan["pods"]), json.dumps(inverse), json.dumps(plan["hashes"]), json.dumps(steps),
-                 json.dumps(gate), json.dumps({"prediction": action.prediction.model_dump() if action.prediction
-                                               else None})))
+                 json.dumps(gate), json.dumps({**(plan.get("forecast") or {}), "prediction":
+                                               action.prediction.model_dump() if action.prediction else None}),
+                 json.dumps(plan.get("blast", {}))))
             self.conn.execute("UPDATE incidents SET state='verifying', tier=? WHERE id=?",
                               ("auto" if gate.get("open") else "ask", action.incident_id))
             self.conn.commit()
@@ -261,6 +298,8 @@ class Gateway:
                             "payload": {"receipt_id": receipt_id, "tool": action.tool, "target": action.target}})
         task = asyncio.create_task(self.verify(receipt_id, action, row, plan, receipt))
         self.tasks.add(task)
+        self.verifying[receipt_id] = task
+        self.heartbeats[receipt_id] = self.clock()
         task.add_done_callback(self.tasks.discard)
         return GatewayDecision(decision="executed", receipt_id=receipt_id)
 
@@ -282,6 +321,7 @@ class Gateway:
                 log.warning("verify tick failed: %s", type(e).__name__)
                 if self.clock() - v.t0 >= cfg["window_seconds"]:
                     result = "window_end"
+            self.heartbeats[receipt_id] = self.clock()
             await self.publish({"type": "verify_tick", "incident_id": action.incident_id, "payload": {
                 "receipt_id": receipt_id, "severity": health.get("severity"), "recovered": v.recovered}})
 
@@ -364,7 +404,11 @@ class Gateway:
             self.conn.execute("UPDATE incidents SET state=?, resolved_at=? WHERE id=?",
                               (state, self.clock() if state == "resolved" else None, action.incident_id))
             self.conn.commit()
-        card = build_incident_card(self.card_incident(row, action.target), receipt=final, receipt_id=receipt_id)
+        self.heartbeats.pop(receipt_id, None)
+        self.verifying.pop(receipt_id, None)
+        mitigated = action.tool == "restart_service" and outcome in ("success", "right_by_accident")
+        card = build_incident_card(self.card_incident(row, action.target), receipt=final, receipt_id=receipt_id,
+                                   mitigated=mitigated)
         await self.publish({"type": event, "incident_id": action.incident_id, "payload": {
             "card": card.model_dump(mode="json"), "receipt_url": f"/receipts/{receipt_id}",
             "briefing": reason or ""}})
@@ -389,3 +433,67 @@ class Gateway:
                               (json.dumps({**gate, "credited": True}), receipt_id))
             self.conn.commit()
         return {"credited": True, "success": success}
+
+    # ---- background upkeep (§6.4.8 expiry, §6.4.10 watchdog) ------------------------------------
+    async def expire_approvals(self) -> int:
+        now = self.clock()
+        with self.lock:
+            rows = [dict(r) for r in self.conn.execute(
+                "SELECT * FROM approvals WHERE state='pending' AND expires_at < ?", (now,))]
+        for r in rows:
+            approvals.set_state(self.conn, r["id"], "expired", None)
+            action = ActionRequest.model_validate_json(r["action_json"])
+            await self.publish({"type": "approval_decided", "incident_id": action.incident_id,
+                                "payload": {"approval_id": r["id"], "decision": "expired"}})
+            await self.stop(action, self.incident(action.incident_id), [], "approval", "escalated",
+                            "approval expired")
+        return len(rows)
+
+    # an action older than 180 s whose verifier stopped ticking gets undone and a human woken
+    async def watchdog(self, stale_after_s: float = 180, heartbeat_s: float = 30) -> int:
+        now = self.clock()
+        with self.lock:
+            rows = [dict(r) for r in self.conn.execute(
+                "SELECT * FROM receipts WHERE outcome='pending' AND ts < ?", (now - stale_after_s,))]
+        done = 0
+        for r in rows:
+            beat = self.heartbeats.get(r["id"])
+            if beat is not None and now - beat <= heartbeat_s:
+                continue
+            if (task := self.verifying.pop(r["id"], None)) is not None:
+                task.cancel()
+            inverse, gate = json.loads(r["inverse_json"]), json.loads(r["trust_json"] or "{}")
+            row = self.incident(r["incident_id"]) or {"id": r["incident_id"]}
+            reason = f"watchdog: verifier silent for receipt #{r['id']}"
+            try:
+                await asyncio.to_thread(self.undo, r["target"], inverse, inverse["op"] == "restore_template")
+                outcome = "undone"
+            except WriteRefused as e:
+                reason, outcome = f"{reason}; UNDO FAILED ({e.reason})", "pending"
+            with self.lock:
+                self.conn.execute("UPDATE receipts SET outcome=? WHERE id=?",
+                                  ("undone" if outcome == "undone" else "watchdog_failed", r["id"]))
+                if outcome == "undone" and gate.get("approved_by") != approvals.REHEARSAL_APPROVER:
+                    trust.record(self.conn, gate.get("pattern"), r["tool"], r["target"], "real", False, now)
+                self.conn.commit()
+            if (view := self.receipts.get(r["id"])) is not None and outcome == "undone":
+                self.receipts.update(r["id"], view.model_copy(update={"outcome": "undone"}))
+            self.heartbeats.pop(r["id"], None)
+            if outcome == "undone":
+                await self.publish({"type": "action_undone", "incident_id": r["incident_id"],
+                                    "payload": {"receipt_id": r["id"], "reason": "watchdog"}})
+            self.set_state(r["incident_id"], "escalated")
+            card = build_incident_card(self.card_incident(row, r["target"]))
+            await self.publish({"type": "escalated", "incident_id": r["incident_id"],
+                                "payload": {"card": card.model_dump(mode="json"), "briefing": reason}})
+            done += 1
+        return done
+
+    async def upkeep(self, every_s: float = 5) -> None:
+        while True:
+            try:
+                await self.expire_approvals()
+                await self.watchdog()
+            except Exception as e:  # never let upkeep die quietly
+                log.error("upkeep failed: %r", e)
+            await asyncio.sleep(every_s)
