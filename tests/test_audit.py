@@ -102,3 +102,22 @@ def test_major_mitigation_card(bundle):
     card = build_incident_card(bundle.incident, mitigated=True)
     assert card.status == "MAJOR INCIDENT: MITIGATED, NOT FIXED"
     assert len(card.text.splitlines()) == 5
+
+
+@pytest.mark.parametrize("line", ["null", "42", "[]", "{bad json"])
+def test_corrupt_record_reports_sequence(tmp_path, line):
+    path = tmp_path / "audit.jsonl"
+    path.write_text(line + "\n")
+    with pytest.raises(ValueError, match="seq 1"):
+        verify(path)
+
+
+def test_audit_cli_runs_from_repository_root(tmp_path):
+    import subprocess
+    import sys
+    path = tmp_path / "audit.jsonl"
+    AuditLog(path).append({"type": "blocked"})
+    result = subprocess.run([sys.executable, "scripts/verify_audit.py", str(path)],
+                            text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+    assert "1 records" in result.stdout

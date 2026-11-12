@@ -22,6 +22,8 @@ def verify(path: Path) -> list[dict[str, Any]]:
     for expected, line in enumerate(path.read_text().splitlines(), 1):
         try:
             record = json.loads(line)
+            if not isinstance(record, dict):
+                raise ValueError
             digest = record.pop("hash")
             if record["seq"] != expected or record["prev_hash"] != previous:
                 raise ValueError
