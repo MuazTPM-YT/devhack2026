@@ -68,3 +68,31 @@ async def test_event_router_rejects_second_active_application(tmp_path):
                 pass
         assert (await events.publish({"type": "blocked"}))["seq"] == 1
     assert not second.state.audit_path.exists()
+
+
+async def test_event_router_validates_before_persisting_and_shares_database(tmp_path):
+    import pytest
+    from pydantic import ValidationError
+    from gateway import events
+    from schemas.db import connect
+    path = tmp_path / "oncall.db"
+    db = connect(str(path))
+    db.execute("INSERT INTO incidents(id, state) VALUES ('inc-1', 'open')")
+    db.commit()
+    store = ReceiptStore(path)
+    receipt_id = store.save(Receipt(incident_id="inc-1", tool="rollback_deploy", target="payment",
+                                    diff={}, inverse={"image": "old"}, evidence_ids=["journal:41"]))
+    assert db.execute("SELECT state FROM incidents WHERE id='inc-1'").fetchone()["state"] == "open"
+    assert db.execute("SELECT count(*) FROM receipts").fetchone()[0] == 0
+    assert store.get(receipt_id).inverse == {"image": "old"}
+    db.close()
+    app = FastAPI()
+    app.state.audit_path = tmp_path / "audit.jsonl"
+    app.include_router(events.router)
+    async with app.router.lifespan_context(app):
+        with pytest.raises(ValidationError):
+            await events.publish({"type": "approval_requested", "incident_id": "inc-1", "payload": {}})
+        assert not app.state.audit_path.exists()
+        record = await events.publish({"type": "blocked", "payload": {"password": "fake-private-value"}})
+        assert record["event"]["payload"]["password"] == "[REDACTED]"
+    assert "fake-private-value" not in app.state.audit_path.read_text()
