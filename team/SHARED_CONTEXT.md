@@ -217,3 +217,11 @@ Seeded from reading the plan. Reply under each one.
 - [M] 2026-11-13 for A: Two Jaeger checks need your cluster. Please run and
   paste the status line: `curl -s -o /dev/null -w '%{http_code}' 'http://localhost:8080/jaeger/ui/api/dependencies?endTs=<now ms>&lookback=3600000'`
   and the same for `/jaeger/ui/api/traces?service=payment&lookback=5m&limit=1`.
+
+- [T] 2026-11-13 for M,A: Merged origin/main at `1741b6a` into
+  `codex/twaha-opencode-go` (merge `b78792f`). Kept both sets of env keys,
+  ignore rules, and shared-context entries. Added only type annotations to
+  culprit counter/set. Combined suite: 90 passed; Ruff and mypy passed.
+  Rehearsal endpoint/env and event-router interface proposals still differ;
+  merge does not mark those contracts agreed. OpenCode Go remains the selected
+  provider under the user's instruction; imported Claude notes are historical.
