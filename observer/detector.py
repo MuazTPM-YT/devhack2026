@@ -31,6 +31,7 @@ class Detector:
         self.group_within_s = group_within_s
         self.first_breach: dict[str, float] = {}
         self.incident: dict | None = None
+        self.suppressed: set[str] = set()  # still sick from a closed incident; no new page until healthy once
 
     # one poll: readings {svc: {err_ratio, p95_ms}}, baselines {svc: p95_ms}, bad_pods {svc: count} from kube watch
     def tick(self, now: float, readings: dict, baselines: dict, bad_pods: dict) -> tuple[dict, tuple | None]:
@@ -56,7 +57,9 @@ class Detector:
                     + 2 * sum(v["bad_pods"] for v in services.values()) + len(unhealthy))
         health = {"ts": now, "severity": severity, "services": services}
 
-        if unhealthy and self.incident is None:
+        self.suppressed &= set(unhealthy)  # a service that recovered may open an incident again
+        fresh = [s for s in unhealthy if s not in self.suppressed]
+        if fresh and self.incident is None:
             starts = [services[s]["first_breach_ts"] for s in unhealthy]
             self.incident = {"id": f"inc-{int(now * 1000)}", "opened_at": now,
                              "onset_at": min(now if t is None else t for t in starts), "unhealthy": unhealthy,
@@ -69,6 +72,9 @@ class Detector:
                 return health, ("alerts_grouped", dict(self.incident))
         return health, None
 
-    # brain/gateway closed it (resolved, escalated, handed off); next unhealthy service opens a new one
+    # brain/gateway closed it (resolved, escalated, handed off). Its services stay quiet until they recover,
+    # otherwise an escalated, still-broken service re-pages every poll
     def close_incident(self) -> None:
+        if self.incident is not None:
+            self.suppressed |= set(self.incident["unhealthy"])
         self.incident = None

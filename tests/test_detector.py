@@ -56,12 +56,18 @@ class DetectorTest(unittest.TestCase):
         self.assertIsNone(d.tick(200, {}, {}, {"payment": 1, "checkout": 1, "cart": 1})[1])
         self.assertEqual(d.incident["unhealthy"], ["checkout", "payment"])
 
-    def test_close_lets_next_incident_open(self):
+    # closed while still sick (escalated): no re-page every poll; after recovery a new break opens again
+    def test_close_suppresses_until_recovery(self):
         d = det()
         d.tick(0, {}, {}, {"payment": 1})
         self.assertIsNone(d.tick(5, {}, {}, {"payment": 1})[1])
         d.close_incident()
-        self.assertEqual(d.tick(10, {}, {}, {"payment": 1})[1][0], "incident_opened")
+        for t in (10, 15, 20):
+            self.assertIsNone(d.tick(t, {}, {}, {"payment": 1})[1])
+        self.assertEqual(d.tick(25, {}, {}, {"payment": 1, "cart": 1})[1][0], "incident_opened")  # new service
+        d.close_incident()
+        d.tick(30, {}, {}, {})  # both recover
+        self.assertEqual(d.tick(35, {}, {}, {"payment": 1})[1][0], "incident_opened")
 
 
 if __name__ == "__main__":
