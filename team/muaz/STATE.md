@@ -6,10 +6,21 @@ section. Only my own work here; cross-team facts go in
 
 **Last updated:** 2026-11-13
 **Current phase:** 1 (stdlib-only core done; IO wiring waits on deps + schemas)
-**Branches:** PR #1, #3 to #6 merged. Now `muaz/drop-llm` (not pushed)
+**Branches:** PR #1, #3 to #7 merged. Now `muaz/observer` (not pushed)
 
 ## Done (with proof)
 
+- Observer service (C4) on `muaz/observer`: `observer/main.py` (FastAPI,
+  detector loop, `/health/now`, `/journal`, `/baselines/refresh`, incident
+  POST to brain + bus, terminal-event close), `observer/kube_watch.py`
+  (list + watch, relist on error, bad pods, journal tracker),
+  `observer/baselines.py`, Prometheus fetch in `observer/detector.py`,
+  `schemas/config.py`. Deps `kubernetes~=36.0.3`, `pyyaml~=6.0.3` (Muaz OK).
+  Proof: `uv run pytest` -> `150 passed`; `ruff check .` -> `All checks
+  passed!`; `mypy schemas brain gateway notifier bench observer` -> `no
+  issues found in 43 source files`. Mutation check (OOM window, traffic
+  rule, relist version check, Prometheus-down skip) -> 4 FAIL, all caught.
+  NOT run against the real cluster yet (cluster is on Anirudh's machine).
 - Merged main after PR #8 (Twaha) into `muaz/drop-llm`; resolved
   `brain/llm.py` modify/delete by keeping `DiagnosisService` and removing
   only my sync interface. Proof: `uv sync --locked` OK; `uv run pytest` ->
@@ -129,9 +140,9 @@ section. Only my own work here; cross-team facts go in
 
 ## In progress
 
-- Phase 1 IO wiring (not started): Prometheus client in detector loop,
-  kube watch, FastAPI `/health/now` + `/journal`, Jaeger fetch + graph,
-  bundle, `rules.py`, gateway checklist + executor, verifier loop + undo.
+- Phase 1 IO wiring: observer done (fakes only). Next: brain service
+  (`POST /incidents`, Jaeger graph + culprit fetch, bundle, rules +
+  DiagnosisService), then gateway (MCP, checklist, executor, verifier loop).
 
 ## Blocked / waiting on
 
@@ -140,10 +151,9 @@ section. Only my own work here; cross-team facts go in
   `./scripts/security_check.sh` on it.
 - Row "real `rollback_deploy` through the executor": needs the gateway
   executor (Phase 1).
-- A's cluster: Anirudh and Twaha are setting theirs up now (2026-11-13).
+- Real-cluster runs (observer smoke, §6.5.5 table, Jaeger curls) happen on Anirudh's machine.
 - VERIFY values from A: Deployment names, `flagd-config` name, image prefixes.
 - Jaeger paths: need one curl on A's cluster (asked in SHARED_CONTEXT log).
-- Twaha's branch `codex/twaha-opencode-go` (pyproject, schemas, events, LLM) not merged yet; IO wiring waits on it.
 - OpenCode Go: one real call with Muaz's key through Twaha's adapter.
 - Schemas (C1): waiting on T's reply to Q11. Blocks `rules.py`, bundle, gateway.
 - Deps + commands (Q9/Q10): block every network/cluster part of Phase 1.
