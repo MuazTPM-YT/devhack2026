@@ -12,6 +12,8 @@ BAD_PAYMENT_IMAGE = "payment:v2-bad"
 # wrong port: checkout keeps calling payment and every call fails to connect
 BROKEN_PAYMENT_ADDR = "payment:9999"
 LEAK_FLAG = "recommendationCacheFailure"
+FLIP_FLAG = "paymentFailure"
+FLIP_VARIANT = "50%"
 FLAG_CONFIGMAP = config.load("services")["flag_config"]["configmap"]
 FLAG_FILE = "demo.flagd.json"
 # flagd reads this emptyDir copy and hot-reloads it; flagd-ui mounts the same dir here
@@ -69,6 +71,14 @@ def write_flags(text: str, run: Kubectl = kubectl) -> None:
     run("patch", "configmap", FLAG_CONFIGMAP, "--type=merge",
         "-p", json.dumps({"data": {FLAG_FILE: text}}), f"--field-manager={FIELD_MANAGER}")
     run(*LIVE_FLAGS, "sh", "-c", f"cat > {LIVE_FLAG_PATH}", input=text)
+
+
+# scenario 3: a plain bad flag change, half of payments fail; the fix is reverting the flag
+def flag_flip(run: Kubectl = kubectl) -> dict[str, str]:
+    flags = json.loads(read_flags(run))
+    flags["flags"][FLIP_FLAG]["defaultVariant"] = FLIP_VARIANT
+    write_flags(json.dumps(flags, indent=2), run)
+    return {"type": "broken_config", "target": "payment", "key": FLIP_FLAG}
 
 
 def memory_leak(run: Kubectl = kubectl) -> dict[str, str]:
