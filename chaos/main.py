@@ -1,12 +1,22 @@
 import threading
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 
 from chaos import faults, ground_truth
 from chaos.faults import KubectlError, Kubectl
 from chaos.reset import ensure_snapshot, reset
+
+# URL path -> fault; names match bench/harness.py SCENARIOS
+FAULTS: dict[str, Callable[[Kubectl], dict[str, str]]] = {
+    "bad-deploy": faults.bad_deploy,
+    "broken-config": faults.broken_config,
+    "memory-leak": faults.memory_leak,
+    "datastore-down": faults.datastore_down,
+}
 
 
 # chaos panel on :7004, admin kubeconfig; the agent must never get a path to this app
@@ -23,14 +33,19 @@ def create_app(data_dir: Path = Path("data"), run: Kubectl = faults.kubectl) -> 
 
     app = FastAPI(lifespan=lifespan)
 
-    @app.post("/chaos/bad-deploy")
-    def bad_deploy():
-        with lock:
-            try:
-                fault = faults.bad_deploy(run)
-            except KubectlError as error:
-                raise HTTPException(502, str(error)) from None
-            return ground_truth.record(truth_path, fault["type"], fault["target"])
+    # closure per fault; a default-arg lambda would show up as a query parameter
+    def endpoint(fault: Callable[[Kubectl], dict[str, str]]) -> Callable[[], dict[str, Any]]:
+        def inject() -> dict[str, Any]:
+            with lock:
+                try:
+                    done = fault(run)
+                except KubectlError as error:
+                    raise HTTPException(502, str(error)) from None
+                return ground_truth.record(truth_path, done.pop("type"), done.pop("target"), **done)
+        return inject
+
+    for path, fault in FAULTS.items():
+        app.post(f"/chaos/{path}")(endpoint(fault))
 
     @app.post("/chaos/reset")
     def do_reset():

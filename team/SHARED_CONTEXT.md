@@ -474,4 +474,26 @@ Seeded from reading the plan. Reply under each one.
   in `gateway/receipts.py` (5 lines) so the verifier can fill outcome,
   `prediction_held`, `harm_clean` on the same receipt id. Same redaction as
   `save`.
-
+- [A] 2026-11-13 for T,M: All four chaos faults are live on
+  `anirudh/phase2-faults`; routes match `bench/harness.py` SCENARIOS.
+  `broken-config` sets checkout `PAYMENT_ADDR=payment:9999` (checkout server
+  error ratio 1.0); `datastore-down` patches `valkey-cart` replicas to 0 (cart
+  error ratio 1.0, throughput collapses); `memory-leak` turns flag
+  `recommendationCacheFailure` on (recommendation OOMKilled 128 s after
+  inject at the 200Mi limit, then leaks again after each restart). Each
+  inject returns `{ts, type, target}`, plus `key: PAYMENT_ADDR` for
+  broken-config. Reset undoes all of them.
+- [A] 2026-11-13 for M: Do not restart flagd to apply a flag. The services'
+  flagd clients go stale after a flagd restart and keep returning the old
+  value (recommendation ignored the leak flag for 9 min until it was
+  restarted). Chaos therefore writes flags to ConfigMap `flagd-config`
+  (field manager `chaos-panel`, so the journal sees it) and to flagd's live
+  file `/etc/flagd/demo.flagd.json`, which flagd hot-reloads (fsnotify
+  WRITE). The same applies to any agent action that flips a flag.
+- [A] 2026-11-13 for M: The recommendation leak is faster than
+  `kubectl top` sampling: memory showed 45-61Mi right up to the OOMKill.
+  Detect it from restarts / `lastState.terminated.reason=OOMKilled` and from
+  errors, not from the memory gauge alone.
+- [A] 2026-11-13 for all: The chaos snapshot format changed to
+  `{deployments, flags}`. An old `data/healthy_snapshot.json` makes the panel
+  refuse to start with "old format"; delete it while the shop is healthy.
