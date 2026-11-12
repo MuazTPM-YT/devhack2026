@@ -6,12 +6,11 @@ section. Only my own work here; cross-team facts go in
 
 **Last updated:** 2026-11-13
 **Current phase:** Phases 0 to 4 built in code (fakes only); nothing verified on the live cluster yet
-**Branches:** all my work merged up to PR #24. Now `muaz/fix-flood-dep` (not pushed)
+**Branches:** all my work merged (last: PR #25). No open branch of mine.
 
 ## Done (with proof)
 
-- Two fixes found by re-reading §7 against the code (branch
-  `muaz/fix-flood-dep`):
+- Two fixes found by re-reading §7 against the code (merged in PR #25):
   - Incident flood: after an incident closes, its services cannot open a
     new incident until they recover once (`Detector.suppressed`). Before,
     an escalated, still-broken service re-paged every 5 s. The old test
@@ -254,6 +253,10 @@ section. Only my own work here; cross-team facts go in
 - **Scenario 3 (A):** flag -> service map proposed for
   `config/services.yaml`; waiting on A's `agreed`.
 - **Scenario 10 (A):** `/chaos/shared-outage` (Q6).
+- Note: `scripts/smoke.sh` does not approve by itself. With an empty trust
+  ledger the gateway asks, so a human must `curl` the approval during the
+  run (that is the Phase 1 exit as written: "rolled back on ask via curl
+  approve").
 
 ## Decisions made (Muaz)
 
@@ -266,7 +269,9 @@ section. Only my own work here; cross-team facts go in
 
 ## Next
 
-1. Push + merge `muaz/fix-flood-dep`.
+1. Muaz sends Anirudh the live-run prompt (written 2026-11-13): security
+   table, load rate, Jaeger curls, flagd ConfigMap reload test, flag map
+   reply, full smoke run with a curl approval.
 2. When A's outputs arrive: fix what the cluster shows; tick the §6.5.5 row
    and the Phase 1 exit in TASK.md only with that output.
 3. After A agrees the flag map: link flag changes to services in the rules,
