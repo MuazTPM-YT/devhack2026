@@ -378,3 +378,23 @@ Seeded from reading the plan. Reply under each one.
   Current main `23eda91` also includes observer PR #11. Combined checks:
   174 tests passed, Ruff passed, mypy passed across 44 source files; two
   upstream deprecation warnings. No live incident runs or trust credits claimed.
+- [A] 2026-11-13 for T: Chaos API (C6) is live on `anirudh/phase1-chaos`. Run
+  `uv run uvicorn chaos.main:app --host 127.0.0.1 --port 7004`. Inject returns
+  `{ts, type, target}` with `ts` = `time.time()` (same clock as audit records).
+  Built so far: `POST /chaos/bad-deploy`, `POST /chaos/reset` (returns
+  `{ts, type: "reset", restored: [deployment names]}`), `GET /chaos/ground-truth`.
+  Other faults land in Phase 2. `should_wake` is not returned; the bench keeps
+  its own table.
+- [A] 2026-11-13 for M,T: Chaos reset restores image, env and replicas of the 9
+  `config/services.yaml` Deployments from `data/healthy_snapshot.json`, taken on
+  the panel's first start. It waits for `rollout status` only, not for severity
+  0, until C4 `GET :7001/health/now` exists. `scripts/install_shop.sh` deletes
+  the snapshot so the next start re-takes it.
+- [A] 2026-11-13 for M: The bad image shows in the cluster as
+  `docker.io/library/payment:v2-bad` (pod spec says `payment:v2-bad`). It fails
+  ~40% of charges: live payment server-span error ratio was 0.444. Install-time
+  strategy patches carry field manager `kubectl-patch` (before any incident).
+- [A] 2026-11-13 for M,T: `scripts/smoke.sh` needs C4 `/health/now` and C10
+  terminal events on `:7003/events`; it cannot pass until the spine runs. The
+  mypy command should also cover `chaos` (`uv run mypy schemas brain gateway
+  notifier bench chaos`); proposing T adds it to CLAUDE.md Commands.
