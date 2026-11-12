@@ -10,6 +10,7 @@ from typing import Any, Protocol
 import httpx
 
 from gateway.client import read_events
+from schemas.models import GatewayDecision
 
 SCENARIOS = {
     "bad-deploy": ("recent_change", False),
@@ -56,6 +57,8 @@ class Harness:
         self.services, self.output, self.rehearsal = services, output, rehearsal
 
     async def run(self, scenarios: list[str], repetitions: int = 10) -> list[TrialResult]:
+        if self.rehearsal and os.environ.get("ONCALL_REHEARSAL") != "1":
+            raise ValueError("Set ONCALL_REHEARSAL=1 for rehearsal hooks")
         results = []
         for scenario in scenarios:
             if scenario not in SCENARIOS:
@@ -143,8 +146,11 @@ class HttpTrialServices:
         return response.json()
 
     async def observe(self, injection, rehearsal):
+        if rehearsal and os.environ.get("ONCALL_REHEARSAL") != "1":
+            raise ValueError("Set ONCALL_REHEARSAL=1 for rehearsal hooks")
         records = []
         incident_id = None
+        receipt_id: int | None = None
         async with asyncio.timeout(self.timeout_s):
             async for record in read_events(self.client, self.gateway_url):
                 if record["ts"] < injection["ts"]:
@@ -155,15 +161,20 @@ class HttpTrialServices:
                 if incident_id is None or event.get("incident_id") != incident_id:
                     continue
                 records.append(record)
+                candidate = event.get("payload", {}).get("receipt_id")
+                if type(candidate) is int and candidate > 0:
+                    receipt_id = candidate
                 if rehearsal and event["type"] == "approval_requested":
                     response = await self.client.post(
-                        f"{self.gateway_url}/rehearsal/approvals/{event['payload']['approval_id']}/decide",
-                        json={"decision": "approved"},
+                        f"{self.gateway_url}/approvals/{event['payload']['approval_id']}/decide",
+                        json={"decision": "approved", "decided_by": "rehearsal-harness"},
                     )
                     response.raise_for_status()
+                    if GatewayDecision.model_validate(response.json()).decision != "executed":
+                        raise ValueError("Rehearsal approval did not execute")
                 if event["type"] in TERMINAL:
-                    if rehearsal:
-                        diagnosis: dict[str, Any] = next((item["event"]["payload"] for item in records
+                    if rehearsal and receipt_id is not None:
+                        diagnosis: dict[str, Any] = next((item["event"]["payload"] for item in reversed(records)
                                           if item["event"]["type"] == "diagnosis_ready"), {})
                         expected = {"bad_deploy": "recent_change", "broken_config": "recent_change",
                                     "resource_exhaustion": "resource", "failing_dependency": "protected"}.get(injection.get("type"))
@@ -171,8 +182,8 @@ class HttpTrialServices:
                                    and diagnosis.get("culprit") == injection["target"]
                                    and diagnosis.get("pattern") == expected)
                         response = await self.client.post(
-                            f"{self.gateway_url}/rehearsal/ledger",
-                            json={"incident_id": incident_id, "diagnosis_correct": matched},
+                            f"{self.gateway_url}/ledger/rehearsal",
+                            json={"receipt_id": receipt_id, "diagnosis_matched": matched},
                         )
                         response.raise_for_status()
                     return records
@@ -188,8 +199,8 @@ async def main():
     args = parser.parse_args()
     if args.runs < 1:
         parser.error("--runs must be positive")
-    if args.rehearsal and os.environ.get("REHEARSAL_ENABLED") != "true":
-        parser.error("Set REHEARSAL_ENABLED=true for rehearsal hooks")
+    if args.rehearsal and os.environ.get("ONCALL_REHEARSAL") != "1":
+        parser.error("Set ONCALL_REHEARSAL=1 for rehearsal hooks")
     async with httpx.AsyncClient() as client:
         services = HttpTrialServices(client, os.environ["GATEWAY_URL"], os.environ["OBSERVER_URL"],
                                      os.environ["CHAOS_URL"])

@@ -49,7 +49,8 @@ async def test_matching_pattern_wrong_culprit_is_not_correct(tmp_path):
     assert results[0].diagnosis_correct is False
 
 
-async def test_rehearsal_hooks_only_when_enabled():
+async def test_rehearsal_hooks_only_when_enabled(monkeypatch):
+    monkeypatch.setenv("ONCALL_REHEARSAL", "1")
     import httpx
     from bench.harness import HttpTrialServices
     calls = []
@@ -59,13 +60,14 @@ async def test_rehearsal_hooks_only_when_enabled():
                                         "payload": {"pattern": "recent_change", "culprit": "payment"}}},
         {"seq": 3, "ts": 102, "event": {"type": "approval_requested", "incident_id": "i",
                                         "payload": {"approval_id": "a"}}},
-        {"seq": 4, "ts": 110, "event": {"type": "incident_resolved", "incident_id": "i"}},
+        {"seq": 4, "ts": 110, "event": {"type": "incident_resolved", "incident_id": "i",
+                                        "payload": {"receipt_id": 17}}},
     ]
     def handle(request):
         calls.append(request)
         if request.method == "GET":
             return httpx.Response(200, text="".join(f"data: {json.dumps(row)}\n\n" for row in records))
-        return httpx.Response(200, json={"ok": True})
+        return httpx.Response(200, json={"decision": "executed"})
     async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
         services = HttpTrialServices(client, "http://gateway", "http://observer", "http://chaos")
         injection = {"ts": 100, "type": "bad_deploy", "target": "payment"}
@@ -75,7 +77,10 @@ async def test_rehearsal_hooks_only_when_enabled():
         await services.observe(injection, True)
         posts = [request for request in calls if request.method == "POST"]
         assert len(posts) == 2
-        assert json.loads(posts[-1].content) == {"incident_id": "i", "diagnosis_correct": True}
+        assert posts[0].url.path == "/approvals/a/decide"
+        assert json.loads(posts[0].content) == {"decision": "approved", "decided_by": "rehearsal-harness"}
+        assert posts[-1].url.path == "/ledger/rehearsal"
+        assert json.loads(posts[-1].content) == {"receipt_id": 17, "diagnosis_matched": True}
         assert "ground_truth" not in posts[-1].content.decode()
 
 
@@ -86,3 +91,64 @@ def test_manual_comparison_preserves_missing_measurements():
     assert result["recovery_speedup"]["bad-deploy"] == 3
     assert result["manual"]["bad-deploy"]["detect_s"]["median"] is None
     assert result["manual"]["bad-deploy"]["false_wakes"] is None
+
+
+async def test_rehearsal_disabled_before_any_network_call(monkeypatch):
+    import httpx
+    import pytest
+    from bench.harness import HttpTrialServices
+    monkeypatch.delenv("ONCALL_REHEARSAL", raising=False)
+    def forbidden(request):
+        pytest.fail("Disabled rehearsal made a network call")
+    async with httpx.AsyncClient(transport=httpx.MockTransport(forbidden)) as client:
+        services = HttpTrialServices(client, "http://gateway", "http://observer", "http://chaos")
+        with pytest.raises(ValueError, match="ONCALL_REHEARSAL"):
+            await services.observe({"ts": 100}, True)
+
+
+async def test_rehearsal_without_receipt_never_submits_credit(monkeypatch):
+    import httpx
+    from bench.harness import HttpTrialServices
+    monkeypatch.setenv("ONCALL_REHEARSAL", "1")
+    records = [
+        {"seq": 1, "ts": 100, "event": {"type": "incident_opened", "incident_id": "i"}},
+        {"seq": 2, "ts": 110, "event": {"type": "escalated", "incident_id": "i"}},
+    ]
+    def handle(request):
+        assert request.method == "GET"
+        return httpx.Response(200, text="".join(f"data: {json.dumps(row)}\n\n" for row in records))
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        services = HttpTrialServices(client, "http://gateway", "http://observer", "http://chaos")
+        assert len(await services.observe({"ts": 100}, True)) == 2
+
+
+async def test_rehearsal_refusal_stops_credit(monkeypatch):
+    import httpx
+    import pytest
+    from bench.harness import HttpTrialServices
+    monkeypatch.setenv("ONCALL_REHEARSAL", "1")
+    records = [
+        {"seq": 1, "ts": 100, "event": {"type": "incident_opened", "incident_id": "i"}},
+        {"seq": 2, "ts": 101, "event": {"type": "approval_requested", "incident_id": "i",
+                                        "payload": {"approval_id": "a"}}},
+        {"seq": 3, "ts": 110, "event": {"type": "incident_resolved", "incident_id": "i",
+                                        "payload": {"receipt_id": 17}}},
+    ]
+    def handle(request):
+        if request.method == "GET":
+            return httpx.Response(200, text="".join(f"data: {json.dumps(row)}\n\n" for row in records))
+        assert request.url.path == "/approvals/a/decide"
+        return httpx.Response(200, json={"decision": "refused"})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        services = HttpTrialServices(client, "http://gateway", "http://observer", "http://chaos")
+        with pytest.raises(ValueError, match="did not execute"):
+            await services.observe({"ts": 100}, True)
+
+
+async def test_disabled_harness_never_resets_or_injects(monkeypatch, tmp_path):
+    import pytest
+    monkeypatch.delenv("ONCALL_REHEARSAL", raising=False)
+    services = FakeServices()
+    with pytest.raises(ValueError, match="ONCALL_REHEARSAL"):
+        await Harness(services, tmp_path / "results.jsonl", rehearsal=True).run(["bad-deploy"], 1)
+    assert services.calls == 0
