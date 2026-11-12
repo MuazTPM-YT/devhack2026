@@ -38,11 +38,11 @@ class Verification:
             if value is not None and value < p["below"]:
                 self.prediction_held = True
 
-        if self.early_abort and health["severity"] > self.sev_before:
-            return "early_abort"
         if non_agent_change:
             return "handed_off"
-        healthy = all(not services.get(s, {}).get("unhealthy") for s in self.watched)
+        if self.early_abort and health["severity"] > self.sev_before:
+            return "early_abort"
+        healthy = all(services.get(s, {}).get("unhealthy") is False for s in self.watched)
         self.recovered = healthy
         if healthy:
             self.healthy_since = now if self.healthy_since is None else self.healthy_since

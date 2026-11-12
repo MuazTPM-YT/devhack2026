@@ -34,7 +34,7 @@ def redact_value(value: Any) -> Any:
             name = str(key)
             if name in {"line_hash", "hash_before", "hash_after"} and isinstance(item, str) and re.fullmatch(r"[a-f0-9]{64}", item):
                 result[name] = item
-            elif isinstance(item, (int, float)) and name.endswith("tokens"):
+            elif type(item) in (int, float) and (name.endswith("tokens") or name in {"tokens_in", "tokens_out"}):
                 result[name] = item
             else:
                 result[redact(name)] = "[REDACTED]" if SECRET_KEYS.search(name) else redact_value(item)
