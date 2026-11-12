@@ -6,10 +6,32 @@ section. Only my own work here; cross-team facts go in
 
 **Last updated:** 2026-11-13
 **Current phase:** 1 (stdlib-only core done; IO wiring waits on deps + schemas)
-**Branches:** phase 0, phase 1 core, verify rows merged to `main` (PR #1, #3, #4); old branches deleted on GitHub. Now `muaz/phase1-logic` (not pushed)
+**Branches:** PR #1, #3, #4 merged; PR #5 (`muaz/phase1-logic`) open. Now `muaz/llm-opencode` on top of #5 (not pushed)
 
 ## Done (with proof)
 
+- `brain/rules.py` + `brain/llm.py` on `muaz/llm-opencode`, stdlib only.
+  Proof: `python3 -m unittest discover -s tests` -> `Ran 59 tests ... OK`
+  (3.14.9 and 3.12.12). Mutation check (by_agent filter, change window,
+  retry count, cache fallback) -> 5 FAIL, all 4 caught. Lint + type check
+  NOT RUN (Q9). No real OpenCode Go call made (no key here).
+  - rules: general rule (image/resources/other -> `rollback_deploy`, env ->
+    `revert_config`, replicas -> `scale`), protected inverse, OOM or
+    memory >= 90% -> `restart_service` + `raise_limit` (2x, capped at
+    `max_memory`). `tests/test_rules.py`. Commit `cc60751`.
+  - llm: OpenCode Go chat completions, model `deepseek-v4.1-flash` (Muaz
+    pick), forced `submit_diagnosis` tool, one retry, 30 s timeout, token
+    counts, cache in `data/llm_cache/`. `OPENCODE_API_KEY`, `LLM_MODEL`
+    in `.env.example`. `tests/test_llm.py`. Commit `97eab10`.
+  - ASSUMED: tool per change kind as above; `Authorization: Bearer` for
+    the key; DeepSeek accepts forced tool choice with reasoning on. Check
+    the last two with one real call.
+- LLM provider switched to OpenCode Go in `team/SHARED_CONTEXT.md` (VERIFY
+  row, Q10 reply, 3 log entries). Proof, live probes 2026-11-13:
+  `GET https://opencode.ai/inference/go/v1/models` -> 200, 30 models with
+  `api`, `cost`, `capabilities`; POST chat completions without session
+  header -> 400 `MissingSessionID`; with it, no key -> `OpenCode Go requires
+  an API key`. Key header format NOT verified (no key here).
 - Gateway pure logic on `muaz/phase1-logic`, stdlib only. Proof:
   `python3 -m unittest discover -s tests` -> `Ran 45 tests ... OK` (3.14.9
   and 3.12.12). Mutation check: rule-change, harm unexpected-change,
@@ -27,9 +49,7 @@ section. Only my own work here; cross-team facts go in
     Commit `08b7860`.
 - My VERIFY rows filled in `team/SHARED_CONTEXT.md` (commit `e90fd78`).
   Proof is the source each came from:
-  - Claude: pricing page, `claude-sonnet-5-5` $2 in / $10 out per MTok.
-    Forced `tool_choice` + `temperature` return 400 on it (claude-api skill
-    docs); llm.py must use `client.messages.parse(output_format=Diagnosis)`.
+  - Claude row superseded 2026-11-13: team uses OpenCode Go (see below).
   - kubernetes 37.0.1 wheel, `kubernetes/client/api_client.py:724`
     `select_header_content_type` returns first `json` match, so every patch
     defaults to `application/json-patch+json`; pass `_content_type`.
@@ -113,6 +133,7 @@ section. Only my own work here; cross-team facts go in
 - A's cluster: Anirudh and Twaha are setting theirs up now (2026-11-13).
 - VERIFY values from A: Deployment names, `flagd-config` name, image prefixes.
 - Jaeger paths: need one curl on A's cluster (asked in SHARED_CONTEXT log).
+- OpenCode Go: one real call with Muaz's key to confirm `Authorization: Bearer` and forced tool choice.
 - Schemas (C1): waiting on T's reply to Q11. Blocks `rules.py`, bundle, gateway.
 - Deps + commands (Q9/Q10): block every network/cluster part of Phase 1.
 - Q replies need the other owners to answer `agreed`.
@@ -123,7 +144,7 @@ section. Only my own work here; cross-team facts go in
 2. Run the §6.5.5 table on A's cluster; paste the output here.
 3. When deps land: wire detector + journal to Prometheus and kube watch,
    add `/health/now`, `/journal`; then rules, gateway, verifier.
-4. When llm.py lands: add `CLAUDE_MODEL` to `.env.example` in the same commit.
+4. When llm.py lands: add `OPENCODE_API_KEY`, `LLM_MODEL` to `.env.example` in the same commit.
 
 ## Notes for my next session
 

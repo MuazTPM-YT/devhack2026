@@ -63,7 +63,8 @@ Fill the value once checked against the real cluster. Then copy it into
 | Image prefix of shop images (admission policy rule, §6.5.3) | A | | |
 | MCP SDK transport call for local HTTP | M | mcp 2.3.0 (2026-10-02): **`FastMCP` is gone**, use `from mcp.server.mcpserver import MCPServer`; `mcp.run(transport="streamable-http", host=, port=)` or mount `mcp.streamable_http_app(streamable_http_path="/mcp")`; client `from mcp import Client` (`Client("http://host:port/mcp")`) or `mcp.client.streamable_http.streamable_http_client(url)` | M, docs/source 2026-11-13 (wheel source) |
 | Python client JSON Patch content type | M | kubernetes 37.0.1: **default is always `application/json-patch+json`**, whatever the body type (`select_header_content_type` takes the first `json` match). Pass `_content_type=` on every patch: `application/json-patch+json` (list) or `application/strategic-merge-patch+json` (dict). `dry_run="All"`, `field_manager=` are kwargs | M, docs/source 2026-11-13 (wheel source) |
-| Claude model id for `CLAUDE_MODEL` and price per token | M | `claude-sonnet-5-5` (plan says Sonnet-class): $2 / MTok input, $10 / MTok output, $0.10 / MTok cache read, $2.50 / MTok 5 min cache write. Plan §6.3.7 breaks on it: forced `tool_choice` and `temperature=0` both return 400. Use structured output (`client.messages.parse(..., output_format=Diagnosis)`) | M, docs/source 2026-11-13 (pricing page) |
+| Claude model id for `CLAUDE_MODEL` and price per token | M | Superseded 2026-11-13: the team uses OpenCode Go, not Claude. See next row | M 2026-11-13 |
+| OpenCode Go endpoint, headers, model, price | M | Chat Completions at `https://opencode.ai/inference/go/openai/v1/chat/completions` (from public `GET /inference/go/v1/models`). Needs header `x-opencode-session` (without it: 400 `MissingSessionID`), own User-Agent, and the key (without it: `OpenCode Go requires an API key`). Key header format not documented; check with the real key. Model: see log | M, live probe 2026-11-13 |
 
 ---
 
@@ -119,6 +120,7 @@ Seeded from reading the plan. Reply under each one.
   -> [M] 2026-11-13: agreed: T sets one root `pyproject.toml` + `uv.lock` (uv is installed on M's machine). Suggested commands: `uv run pytest`, `uv run ruff check .`, `uv run mypy .` (ruff, mypy, pytest as dev deps, part of Q10).
   -> [M] 2026-11-13: M needs: fastapi, uvicorn, pydantic, kubernetes, mcp, anthropic, httpx, pyyaml, hypothesis, pytest (+ ruff, mypy as dev). Proposal: drop scipy. With `reset_on_failure: true` the gate is closed on any failure, and with 0 failures `beta.ppf(1-c, s, 1) == (1-c) ** (1/s)` exactly (10 runs 74.1%, 30 runs 90.5%, 59 runs 95.1%), so `trust.py` needs only stdlib. Each human still OKs the final list; versions pinned with `~=` and at least 14 days old.
   -> [M] 2026-11-13: Candidate pins checked on PyPI (newest release at least 14 days old): `kubernetes~=37.0.1` (37.0.2 is from 2026-11-06, too new), `mcp~=2.3.0`, `anthropic~=2.3.0` (2.4 to 2.8 are under 14 days). mcp 2.x and anthropic 2.x are new majors; see the VERIFY rows.
+  -> [M] 2026-11-13: Drop `anthropic` from the list: the team uses OpenCode Go, an OpenAI-compatible HTTP API. One POST needs no SDK; `httpx` (already listed) or stdlib does it.
 
 - **Q11** [M] 2026-11-13 for T: C1 schema changes before `schemas/` is written:
   (a) one `Pattern = Literal["recent_change", "resource", "protected", "unknown"]`,
@@ -177,4 +179,28 @@ Seeded from reading the plan. Reply under each one.
   30 trust runs per key still clear it. One failure on a key closes its gate
   (`reset_on_failure`). Ledger rows keep `rehearsal` and `real` apart; the
   gate sums both.
+- [M] 2026-11-13 for all: LLM provider is **OpenCode Go**, not Claude (Muaz
+  decision). Plan text that says Claude, `CLAUDE_MODEL` or Anthropic means
+  this now. Env keys (added to `.env.example` with `brain/llm.py`):
+  `OPENCODE_API_KEY`, `LLM_MODEL`. Endpoint and headers: VERIFY table.
+- [M] 2026-11-13 for T: Cost per incident for the bench: tokens x the
+  model's `cost` from `GET https://opencode.ai/inference/go/v1/models` (USD
+  per 1M tokens). Some models have a weekday multiplier there (DeepSeek:
+  2x at 01:00-04:00 and 06:00-10:00 UTC). The plan itself is a flat monthly
+  fee with per-model dollar limits (5 h: 20%, week: 50%, month: 100%).
+  Redaction (C8) still applies to every string sent to it.
+- [M] 2026-11-13 for all: Risk: OpenCode Go docs say it "is designed for
+  OpenCode and other coding agents" and clients should "Send typical coding
+  agent traffic"; "Traffic is monitored for abuse". Our brain is not a
+  coding agent. Low volume (one call per incident), but rehearsal runs add
+  up. If Go blocks us, the brain falls back to rules only (plan §6.3.7).
+- [M] 2026-11-13 for T: `brain/llm.py` `diagnose(rendered, schema, validate,
+  ...)` sends `rendered` as is. The brain must pass it through your
+  `redact()` (C8) first; llm.py does not redact. It returns token counts in
+  `meta` (`tokens_in`, `tokens_out`, `cached`) for the audit entry.
+- [M] 2026-11-13 for all: `brain/rules.py` returns `(pattern, actions)` with a
+  list, not one action: the resource case gives `restart_service` then
+  `raise_limit` (always approval). A recent change counts only on the
+  culprit's own Deployment for now; flag/ConfigMap changes are not linked
+  to a service yet (needs a mapping in `config/services.yaml`, A).
 
