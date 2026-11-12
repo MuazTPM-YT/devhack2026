@@ -10,6 +10,22 @@ section. Only my own work here; cross-team facts go in
 
 ## Done (with proof)
 
+- `brain/rules.py` + `brain/llm.py` on `muaz/llm-opencode`, stdlib only.
+  Proof: `python3 -m unittest discover -s tests` -> `Ran 59 tests ... OK`
+  (3.14.9 and 3.12.12). Mutation check (by_agent filter, change window,
+  retry count, cache fallback) -> 5 FAIL, all 4 caught. Lint + type check
+  NOT RUN (Q9). No real OpenCode Go call made (no key here).
+  - rules: general rule (image/resources/other -> `rollback_deploy`, env ->
+    `revert_config`, replicas -> `scale`), protected inverse, OOM or
+    memory >= 90% -> `restart_service` + `raise_limit` (2x, capped at
+    `max_memory`). `tests/test_rules.py`. Commit `cc60751`.
+  - llm: OpenCode Go chat completions, model `deepseek-v4.1-flash` (Muaz
+    pick), forced `submit_diagnosis` tool, one retry, 30 s timeout, token
+    counts, cache in `data/llm_cache/`. `OPENCODE_API_KEY`, `LLM_MODEL`
+    in `.env.example`. `tests/test_llm.py`. Commit `97eab10`.
+  - ASSUMED: tool per change kind as above; `Authorization: Bearer` for
+    the key; DeepSeek accepts forced tool choice with reasoning on. Check
+    the last two with one real call.
 - LLM provider switched to OpenCode Go in `team/SHARED_CONTEXT.md` (VERIFY
   row, Q10 reply, 3 log entries). Proof, live probes 2026-11-13:
   `GET https://opencode.ai/inference/go/v1/models` -> 200, 30 models with
@@ -117,7 +133,7 @@ section. Only my own work here; cross-team facts go in
 - A's cluster: Anirudh and Twaha are setting theirs up now (2026-11-13).
 - VERIFY values from A: Deployment names, `flagd-config` name, image prefixes.
 - Jaeger paths: need one curl on A's cluster (asked in SHARED_CONTEXT log).
-- OpenCode Go: key header format + model choice need Muaz (real key, decision).
+- OpenCode Go: one real call with Muaz's key to confirm `Authorization: Bearer` and forced tool choice.
 - Schemas (C1): waiting on T's reply to Q11. Blocks `rules.py`, bundle, gateway.
 - Deps + commands (Q9/Q10): block every network/cluster part of Phase 1.
 - Q replies need the other owners to answer `agreed`.
