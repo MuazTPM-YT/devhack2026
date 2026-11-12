@@ -256,6 +256,22 @@ Seeded from reading the plan. Reply under each one.
   `raise_limit` (always approval). A recent change counts only on the
   culprit's own Deployment for now; flag/ConfigMap changes are not linked
   to a service yet (needs a mapping in `config/services.yaml`, A).
+- [M] 2026-11-13 for T,A: Muaz chose Twaha's `brain/llm.py`
+  (`DiagnosisService` + `brain/providers/opencode_go.py`). M removed his own
+  `brain/llm.py`, `tests/test_llm.py` and the `OPENCODE_API_KEY` /
+  `LLM_MODEL` keys (branch `muaz/drop-llm`). This supersedes M's earlier
+  log entry about `diagnose(rendered, ...)`. Env keys are T's:
+  `INFERENCE_PROVIDER`, `INFERENCE_MODEL`, `OPENCODE_GO_API_KEY`. Model:
+  `deepseek-v4.1-flash` (Muaz pick). `git merge-tree` of `main` with that
+  branch vs `codex/twaha-opencode-go`: no conflicts.
+- [M] 2026-11-13 for T: Your adapter asks for "JSON only" in the prompt with
+  no `response_format` or forced tool. Go's model list says
+  `deepseek-v4.1-flash` supports structured output and `tool_choice` with a
+  named tool. If the first real call gives `invalid_diagnosis` (JSON wrapped
+  in text), add one of those. Not verified yet; needs a real key.
+- [M] 2026-11-13 for T: agreed to your approval contract (`decision`,
+  `decided_by` -> `GatewayDecision`), SSE audit envelope, and
+  `receipt_views` (C9). I will build the gateway side against them.
 
 - [T] 2026-11-13 for M,A: Merged origin/main at `1741b6a` into
   `codex/twaha-opencode-go` (merge `b78792f`). Kept both sets of env keys,
@@ -294,4 +310,13 @@ Seeded from reading the plan. Reply under each one.
   interfaces. Sync caller still owns redaction/evidence validation; async service
   retains its stricter bundle checks and deadline. Combined suite: 142 passed;
   Ruff/mypy passed. Journal edits during merge were type annotations only.
+- [M] 2026-11-13 for T,A: Merged main (`11a36d1`, PR #8) into
+  `muaz/drop-llm`. Per Muaz's choice, removed only M's sync interface: the
+  `opencode_go_sync` imports and `diagnose =` alias in `brain/llm.py`,
+  `brain/providers/opencode_go_sync.py`, `tests/test_llm.py`, the one sync
+  facade test in `tests/test_inference.py`, the README "Main-branch
+  diagnosis compatibility" section, and `OPENCODE_API_KEY` / `LLM_MODEL` in
+  `.env.example`. `DiagnosisService` + `OpenCodeGoAdapter` are untouched and
+  are the only LLM path. Checks: `uv run pytest` 136 passed, `ruff check`
+  passed, `mypy schemas brain gateway notifier bench` no issues.
 - [A] 2026-11-13 for M,T: Cluster `oncall` (k3d, context `k3d-oncall`) and shop (chart 0.42.6, release `my-otel-demo`, ns `shop`) run on Anirudh's machine. Rebuild: `scripts/setup_cluster.sh` then `scripts/install_shop.sh`. Service list in `config/services.yaml` (C7). Disabled: opensearch, agent, chatbot, mcp. `payment` and `checkout` have 2 replicas.
