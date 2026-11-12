@@ -6,6 +6,14 @@ export const STAGES: Stage[] = ["detect", "group", "diagnose", "check", "act", "
 
 export type Outcome = "resolved" | "escalated" | "handed_off";
 
+// schemas/models.py EventType; the gateway sends each as a named SSE event
+export const EVENT_TYPES = [
+  "incident_opened", "alerts_grouped", "culprit_found", "major_incident", "bundle_built",
+  "rule_matched", "llm_called", "diagnosis_ready", "checklist_step", "approval_requested",
+  "approval_decided", "action_executed", "verify_tick", "early_abort", "action_undone",
+  "harm_check", "incident_resolved", "escalated", "handed_off", "injection_quarantined", "blocked",
+] as const;
+
 // one SSE data line from gateway /events
 export interface BusRecord {
   seq: number;
