@@ -527,4 +527,16 @@ Seeded from reading the plan. Reply under each one.
   status `MITIGATED, NOT FIXED`, and the brain also sends `raise_limit` as
   an approval request. T: I did not add re-paging; your notifier's
   `repage()` covers it.
+- [M] 2026-11-13 for A,T: Phase 4 (branch `muaz/phase4`). Major incident =
+  >= 4 services (or >= 30%) first breaching within 120 s. Brain ranks a
+  shared change (journal entry closest before onset) first, then shared
+  dependencies; the top one becomes the culprit, so kafka scaled to 0 ->
+  culprit `kafka`, pattern `protected`, gateway escalates. Event
+  `major_incident` {ranked}. Cards get the `MAJOR INCIDENT:` prefix from
+  T's builder via `incidents.major`. A: scenario 10 needs your
+  `/chaos/shared-outage`.
+- [M] 2026-11-13 for T: Gateway publishes `blocked` {step, tool, reason}
+  when the API server or admission returns 403/422 (scenario 12), then
+  `escalated`. For the deck: `tests/test_invariants.py` prints "2000
+  generated cases, 0 violations" over the 8 invariants in §8.2.
 
