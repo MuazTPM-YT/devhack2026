@@ -1,10 +1,25 @@
 # Twaha [T]: state
 
 **Last updated:** 2026-11-13
-**Current phase:** components implemented; teammate integration pending
+**Current phase:** integration contracts aligned; gateway runtime/live checks pending
 **Branch:** `codex/twaha-opencode-go`
 
 ## Done (with proof)
+
+- Integration slice: `uv run --locked pytest -q` -> 106 passed, 1 upstream
+  discord.py audioop warning. Ruff and mypy passed (31 source files).
+- T accepted M Q11: shared Pattern literal, existing schema ordering/defaults,
+  and extra-field refusal. Inference keeps the OpenCode Go adapter.
+- `gateway.events.router` plus async `publish(event)` match M Q8. Router
+  lifespan owns one active bus; tests verify HTTP/in-process shared audit chain,
+  restart, second-app refusal, SSE frame format, and disconnect cleanup.
+- Harness follows M Q2/Q3: `ONCALL_REHEARSAL=1`, normal approval endpoint with
+  reserved rehearsal identity, and `/ledger/rehearsal` using a receipt ID.
+  Disabled mode makes no reset/injection calls; refused approvals stop credit.
+- Notifier now reads `ONCALL_APPROVER_IDS`. Legacy DISCORD_APPROVER_IDS and
+  REHEARSAL_ENABLED are ignored. Human allowlist cannot include rehearsal-harness.
+- Shared SQLite test proves display receipt storage coexists with Muaz's
+  operational tables. No migration, new dependency, or gateway main added.
 
 - Merged Muaz's `origin/main` at `1741b6a`. Resolved env/ignore/shared-context
   conflicts without dropping either side. Combined suite: 90 passed. Added
@@ -35,13 +50,15 @@
 
 ## In progress
 
-- No component implementation work remains in the approved scope.
-  Live integration remains pending teammate services, agreement, and credentials.
+- Integration slice complete. Live wiring still needs Muaz's gateway entrypoint,
+  approval/rehearsal handlers, and Anirudh's running shop.
 
 ## Blocked / waiting on
 
-- C1-C10 remain proposed until affected owners agree; no teammate consent inferred.
-- Muaz must mount routers and connect diagnosis results to orchestration.
+- Contract table still awaits all listed owners. T has explicitly accepted M's
+  Q2/Q3/Q7/Q8/Q11 proposals; no agreement from A inferred.
+- Muaz must mount `events.router` and receipt routes, then connect diagnosis
+  results to orchestration. Module-level publish requires router lifespan.
 - Muaz must implement authoritative approvals, policy/trust/freshness/budget tests,
   usable undo snapshots, and rehearsal-only endpoints before live integration.
 - Anirudh must provide cluster, telemetry, and agreed chaos responses.
@@ -51,13 +68,15 @@
 
 ## Next
 
-1. Agree proposed contracts and mount components in teammate services.
+1. Muaz mounts components and implements the agreed approval/rehearsal handlers.
 2. Configure `.env` locally with Go model/key and Discord settings.
 3. Run live provider/notifier checks, then cluster smoke and benchmark trials.
 4. Add gateway trust/policy tests when Muaz's implementations exist.
 
 ## Notes for my next session
 
+- Rehearsal is opt-in with ONCALL_REHEARSAL=1. Normal notifier and gateway
+  share ONCALL_APPROVER_IDS; use the updated .env.example.
 - No Claude API dependency. Use `INFERENCE_PROVIDER=opencode_go`, `INFERENCE_MODEL`,
   `OPENCODE_GO_API_KEY`; exact model must be selected explicitly.
 - `ReceiptStore` persists redacted display data in `receipt_views`; executor must
