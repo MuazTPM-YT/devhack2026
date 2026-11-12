@@ -35,6 +35,12 @@ class TrialResult:
     blocked: int = 0
     usage: dict[str, float] | None = None
     source: str = "rehearsal"
+    tier: str | None = None
+    failed_customer_requests: int | None = None
+    harm_clean: bool | None = None
+    prediction_held: bool | None = None
+    forecast_s: float | None = None
+    actual_added_s: float | None = None
     error: str | None = None
 
 
@@ -61,6 +67,7 @@ class Harness:
                     await self.services.wait_healthy()
                     injection = await self.services.inject(scenario)
                     result.started_at = float(injection["ts"])
+                    result.should_wake = injection.get("should_wake", result.should_wake)
                     records = await self.services.observe(injection, self.rehearsal)
                     for record in records:
                         event, ts = record["event"], record["ts"]
@@ -71,7 +78,11 @@ class Harness:
                             result.detect_s = elapsed
                         elif kind == "diagnosis_ready":
                             result.diagnose_s = elapsed
-                            result.diagnosis_correct = payload.get("pattern") == SCENARIOS[scenario][0]
+                            if injection.get("target") and payload.get("culprit"):
+                                result.diagnosis_correct = (
+                                    payload.get("pattern") == SCENARIOS[scenario][0]
+                                    and payload["culprit"] == injection["target"]
+                                )
                         elif kind == "llm_called":
                             usage = result.usage or {}
                             for key, value in payload.get("usage", {}).items():
@@ -82,6 +93,10 @@ class Harness:
                             result.wake = True
                         elif kind == "blocked":
                             result.blocked += 1
+                        for field in ("tier", "failed_customer_requests", "harm_clean",
+                                      "prediction_held", "forecast_s", "actual_added_s"):
+                            if field in payload:
+                                setattr(result, field, payload[field])
                         if kind in TERMINAL:
                             result.outcome = kind
                             if kind == "incident_resolved":
@@ -147,6 +162,19 @@ class HttpTrialServices:
                     )
                     response.raise_for_status()
                 if event["type"] in TERMINAL:
+                    if rehearsal:
+                        diagnosis: dict[str, Any] = next((item["event"]["payload"] for item in records
+                                          if item["event"]["type"] == "diagnosis_ready"), {})
+                        expected = {"bad_deploy": "recent_change", "broken_config": "recent_change",
+                                    "resource_exhaustion": "resource", "failing_dependency": "protected"}.get(injection.get("type"))
+                        matched = (bool(injection.get("target")) and expected is not None
+                                   and diagnosis.get("culprit") == injection["target"]
+                                   and diagnosis.get("pattern") == expected)
+                        response = await self.client.post(
+                            f"{self.gateway_url}/rehearsal/ledger",
+                            json={"incident_id": incident_id, "diagnosis_correct": matched},
+                        )
+                        response.raise_for_status()
                     return records
         return records
 

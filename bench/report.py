@@ -19,6 +19,19 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         result["false_wakes"] = sum(row["wake"] and not row["should_wake"] for row in trials)
         result["missed_wakes"] = sum(not row["wake"] and row["should_wake"] for row in trials)
         result["blocked"] = sum(row.get("blocked", 0) for row in trials)
+        for metric in ("harm_clean", "prediction_held"):
+            measured = [row[metric] for row in trials if row.get(metric) is not None]
+            result[metric] = {"samples": len(measured),
+                              "pass_rate": sum(measured) / len(measured) if measured else None}
+        forecast_pairs = [(row["forecast_s"], row["actual_added_s"]) for row in trials
+                          if row.get("forecast_s") is not None and row.get("actual_added_s") is not None]
+        result["forecast_mean_absolute_error_s"] = (
+            statistics.mean(abs(a - b) for a, b in forecast_pairs) if forecast_pairs else None
+        )
+        result["chart_series"] = {metric: [row.get(metric) for row in trials]
+                                  for metric in ("detect_s", "diagnose_s", "recover_s")}
+        result["provider_usage"] = [row.get("usage") for row in trials]
+        result["billing"] = "subscription; token counts are not cash charges"
         summary[scenario] = result
     return summary
 
