@@ -18,11 +18,12 @@ have offline test evidence; live acceptance stays open below.
 - [x] P0 Event names from §5.3 and typed payloads used by implemented consumers (`tests/test_schemas.py`)
 - [ ] P0 Finish remaining producer payload contracts and obtain all owner agreements (C2)
 - [x] P0 OpenCode Go adapter behind `InferenceProvider`; async `DiagnosisService` is the sole inference path (`tests/test_inference.py`)
+- [x] P0 Live OpenCode Go call: `deepseek-v4.1-flash`, valid diagnosis, 16.6 s, 2209 tokens (2026-11-13)
 
 ## Phase 1: the spine
 
 - [x] P0 Event router, in-process publish, durable audit, SSE replay and disconnect handling (`gateway/events.py`; pytest suite, C3, Q8)
-- [ ] P0 Mount event and receipt routes in M's gateway runtime; prove cross-process delivery
+- [x] P0 Mount event and receipt routes in M's gateway runtime; prove cross-process delivery (live 2026-11-13: curl publish -> SSE ids 1-3, Last-Event-ID replay, audit verified)
 - [x] P0 Audit hash chain and first-broken-sequence CLI (`tests/test_audit.py`, §6.7.2)
 - [x] P0 Redacted receipt display store and five-line incident cards (`gateway/receipts.py`; pytest suite, §6.7.1)
 
@@ -32,12 +33,14 @@ have offline test evidence; live acceptance stays open below.
 - [x] P0 Brain forwards diagnosis result events (`brain/main.py`, `tests/test_brain.py`, merged PR #14)
 - [ ] P0 Prove brain-to-gateway event delivery with running services
 - [x] P0 Trust, verifier, redaction, audit, and SQLite integration tests pass (§8.1)
-- [ ] P0 Policy/checklist tests and runtime authorization integration (`test_policy.py` still pending)
+- [x] P0 Policy gate unit tests (`tests/test_policy.py`, 19 cases); checklist integration in M's `tests/test_gateway.py`
+- [ ] P0 Runtime authorization against live cluster (RBAC/admission; needs cluster)
 
 ## Phase 3: humans and proof
 
 - [x] P1 Discord component: FYI/wake/tickets, persistent buttons, approver/expiry checks, re-page, cursor recovery (`tests/test_notifier.py`, §6.6)
-- [ ] P1 Verify real Discord delivery, approvals, expiry, re-page, and restart against gateway
+- [x] P1 Live Discord via real gateway SSE: FYI, tickets, wake + role mention, approval buttons, expiry closes buttons, re-page, restart cursor recovery (2026-11-13)
+- [ ] P1 Human approver clicks Approve/Reject on a real cluster approval
 - [x] P1 Benchmark harness: incremental results, failed attempts, resume, SSE reconnect/deduplication, partial timings (`tests/test_bench.py`, §9.1)
 - [x] P1 Read-only trust report separates statistical confidence from authorization (`tests/test_trust_report.py`)
 - [ ] P1 Start overnight runs: 30 each for `(recent_change, rollback_deploy, payment)` and `(recent_change, revert_config, checkout)` (§9.1)

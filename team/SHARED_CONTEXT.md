@@ -527,6 +527,18 @@ Seeded from reading the plan. Reply under each one.
   status `MITIGATED, NOT FIXED`, and the brain also sends `raise_limit` as
   an approval request. T: I did not add re-paging; your notifier's
   `repage()` covers it.
+- [M] 2026-11-13 for A,T: Phase 4 (branch `muaz/phase4`). Major incident =
+  >= 4 services (or >= 30%) first breaching within 120 s. Brain ranks a
+  shared change (journal entry closest before onset) first, then shared
+  dependencies; the top one becomes the culprit, so kafka scaled to 0 ->
+  culprit `kafka`, pattern `protected`, gateway escalates. Event
+  `major_incident` {ranked}. Cards get the `MAJOR INCIDENT:` prefix from
+  T's builder via `incidents.major`. A: scenario 10 needs your
+  `/chaos/shared-outage`.
+- [M] 2026-11-13 for T: Gateway publishes `blocked` {step, tool, reason}
+  when the API server or admission returns 403/422 (scenario 12), then
+  `escalated`. For the deck: `tests/test_invariants.py` prints "2000
+  generated cases, 0 violations" over the 8 invariants in §8.2.
 
 - [A] 2026-11-13 for T,M: New chaos fault for §7 scenario 3 (flag flipped):
   `POST /chaos/flag-flip` sets flag `paymentFailure` to `50%` (ConfigMap +
@@ -536,6 +548,39 @@ Seeded from reading the plan. Reply under each one.
   per minute from the load generator, so use 5m windows, not 1m. T: the
   bench has no `flag-flip` scenario yet; suggested pattern `recent_change`,
   `should_wake` False.
+
+- [M] 2026-11-13 for A: Load rate decision (Muaz chose): please raise the
+  load generator rate so `payment` gets several requests per second, not
+  ~1 per minute. `config/queries.yaml` keeps `[1m]` windows for fast
+  detection; at ~1 req/min the 1 m error ratio jumps between 0, 1 and NaN
+  and the 30 s sustain rule will flap. Tell me the new rate and the payment
+  `err_ratio` you see during a bad deploy.
+- [M] 2026-11-13 for A: Known gap for scenario 3 (flag-flip): the rule only
+  links changes on the culprit's own Deployment, so a `flag` journal entry
+  on `flagd-config` is evidence but not yet matched to `payment`. Needs a
+  flag -> service map; proposal: `config/services.yaml` gets
+  `flags: {paymentFailure: payment, recommendationCacheFailure:
+  recommendation, ...}` (your file, C7). Reply `agreed` and I wire it.
+
+- [T] 2026-11-13 for M,A: Live checks without cluster: OpenCode Go real call OK
+  (`deepseek-v4.1-flash`, 16.6 s, 2209 tokens, valid diagnosis; JSON-only prompt
+  enough, no `response_format` needed yet). Gateway `gateway.main:app` publish ->
+  SSE -> replay -> audit verified across processes. Discord delivery, buttons,
+  expiry, re-page and restart verified against the real gateway SSE.
+- [T] 2026-11-13 for M: Notifier fix: an `approved` decision now stops the
+  approval re-page; on local expiry the re-page text says "Approval expired; no
+  action taken" until your sweep's `escalated` replaces it. Works with your
+  Phase 3 expiry sweep; no gateway change needed.
+- [M] 2026-11-13 for A,T: Two fixes (branch `muaz/fix-flood-dep`). (1)
+  Observer: after an incident closes, its services do not open a new
+  incident until they recover once; a different sick service still opens
+  one. Stops an escalated, still-broken service re-paging every 5 s. (2)
+  Brain: if the trace culprit had no change of its own, a recent non-agent
+  change on a dependency wins; stateful services count as dependencies
+  because datastores emit no spans. So `/chaos/datastore-down` -> culprit
+  `valkey-cart`, pattern `protected`. `culprit_found` gets `moved_from`.
+  T: bench `diagnosis_ready.culprit` for datastore-down is now
+  `valkey-cart`, matching your expected `failing_dependency` target.
 - [A] 2026-11-13 for M,T: UI (Phase 3) on `anirudh/phase3-ui`: `/` live
   incident page and `/chaos`. Run: `cd ui && npm ci && npm run dev` (port
   3000). The browser never calls :7001/:7003/:7004 directly: Next rewrites

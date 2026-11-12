@@ -35,7 +35,7 @@ class NotificationConsumer:
                 await self.notifier.request_approval(payload["approval_id"], card,
                                                      payload["diff"], payload["forecast"], payload["expires_at"])
                 pending[incident_id] = {"card": card.model_dump(), "briefing": "Approval pending",
-                                        "last_page": time.time()}
+                                        "last_page": time.time(), "approval_id": payload["approval_id"]}
             elif kind == "incident_resolved":
                 if card.status == "MITIGATED, NOT FIXED":
                     await self.notifier.ticket(card)
@@ -53,6 +53,10 @@ class NotificationConsumer:
             if row:
                 row["decision"] = payload["decision"]
                 self.state.set(f"approval:{approval_id}", row)
+            # human said yes: stop paging; reject/expiry is followed by gateway escalation
+            wake = pending.get(incident_id)
+            if payload["decision"] == "approved" and wake and wake.get("approval_id") == approval_id:
+                pending.pop(incident_id)
         if payload.get("acknowledged"):
             pending.pop(incident_id, None)
         self.state.set("wakes", pending)
@@ -81,6 +85,7 @@ class NotificationConsumer:
                 decision = "expired"
                 row["decision"] = decision
                 self.state.set(f"approval:{approval_id}", row)
+                self.mark_wake_expired(approval_id)
             if decision and not row.get("view_closed"):
                 try:
                     await self.notifier.close_approval(approval_id, row, decision)
@@ -88,6 +93,14 @@ class NotificationConsumer:
                     continue
                 row["view_closed"] = True
                 self.state.set(f"approval:{approval_id}", row)
+
+    # gateway sends nothing on silent expiry; keep paging but stop saying "pending"
+    def mark_wake_expired(self, approval_id: str):
+        pending = self.state.get("wakes", {})
+        for row in pending.values():
+            if row.get("approval_id") == approval_id:
+                row["briefing"] = "Approval expired; no action taken"
+        self.state.set("wakes", pending)
 
     async def expire_approvals(self):
         while True:

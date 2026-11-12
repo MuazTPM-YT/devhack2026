@@ -17,7 +17,8 @@ from fastapi import FastAPI, HTTPException
 
 from brain import rules
 from brain.bundle import build_bundle, collect_k8s
-from brain.culprit import fetch_error_traces, find_culprit
+from brain import major
+from brain.culprit import dependency_change, fetch_error_traces, find_culprit
 from brain.gateway_client import call_tool
 from brain.graph import DependencyGraph
 from brain.llm import DiagnosisService
@@ -83,11 +84,25 @@ class Brain:
             log.warning("trace fetch failed: %s", type(e).__name__)
             traces = []
         culprit, victims = find_culprit(traces, incident.unhealthy, edges, first_breach)
-        incident = incident.model_copy(update={"culprit": culprit, "victims": victims})
-        await self.publish("culprit_found", incident.id, {"culprit": culprit, "victims": victims,
-                                                          "from_traces": bool(traces)})
-
         journal_rows = await self._get_json(f"{self.observer_url}/journal", [], since=incident.onset_at - window_s)
+        is_major = major.is_major(incident.unhealthy, first_breach, len(self.services), self.policy)
+        if is_major:
+            # many services at once: the ranked shared cause beats the per-trace culprit
+            ranked = major.analyse(incident.unhealthy, edges, first_breach, journal_rows, incident.onset_at, window_s)
+            if ranked:
+                culprit = ranked[0]["target"]
+                victims = sorted(set(incident.unhealthy) - {culprit})
+            await self.publish("major_incident", incident.id, {"ranked": ranked})
+        moved_from = None
+        if not is_major and culprit:
+            dep = dependency_change(journal_rows, culprit, edges, self.services, incident.onset_at, window_s)
+            if dep:
+                moved_from, culprit = culprit, dep["object"].split("/", 1)[1]
+                victims = sorted((set(victims) | {moved_from}) - {culprit})
+        incident = incident.model_copy(update={"culprit": culprit, "victims": victims, "major": is_major})
+        await self.publish("culprit_found", incident.id, {"culprit": culprit, "victims": victims,
+                                                          "from_traces": bool(traces), "moved_from": moved_from})
+
         k8s: dict = {"events": [], "logs": [], "memory_ratio": None, "memory_limit": None}
         if culprit:
             try:
@@ -113,8 +128,8 @@ class Brain:
         await self.publish("diagnosis_ready", incident.id, {"pattern": pattern, "culprit": culprit})
 
         with self.lock:
-            self.conn.execute("UPDATE incidents SET culprit=?, victims_json=?, pattern=? WHERE id=?",
-                              (culprit, json.dumps(victims), pattern, incident.id))
+            self.conn.execute("UPDATE incidents SET culprit=?, victims_json=?, pattern=?, major=? WHERE id=?",
+                              (culprit, json.dumps(victims), pattern, int(is_major), incident.id))
             self.conn.commit()
         record = {"incident": incident.model_dump(mode="json"), "pattern": pattern,
                   "action": action.model_dump(mode="json") if action else None,

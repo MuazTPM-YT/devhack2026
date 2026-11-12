@@ -1,12 +1,30 @@
 # Twaha [T]: state
 
 **Last updated:** 2026-11-13
-**Current phase:** Phase 4 report tooling implemented; runtime integration and live proof pending
-**Branch:** `codex/twaha-measurement-reports`
-**Source baseline:** `origin/main` at `7457a56` (includes status PR #13 and all implementation dependencies)
-**Implementation:** PRs #8 and [#12](https://github.com/MuazTPM-YT/devhack2026/pull/12) merged; #12 merge commit `c6091f7`
+**Current phase:** Cluster-free live checks done; cluster-bound phases waiting on cluster access
+**Branch:** `codex/twaha-live-phases` (from `origin/main` `98b8ade`, includes gateway PR #16 and verify loop PR #17)
+**Implementation:** PRs #8, #12, #15 merged
 
 ## Done (with proof)
+
+- Live checks 2026-11-13, isolated scratch dir (own `data/`, not repo `data/`),
+  gateway started with an unreachable dummy kubeconfig (no cluster on this host):
+  - OpenCode Go: one real `DiagnosisService` call, model `deepseek-v4.1-flash`,
+    16.6 s, 2209 tokens (829 reasoning), valid diagnosis (rollback payment,
+    confidence 0.82, cites journal + metric IDs). JSON-only prompt was enough.
+  - Cross-process events: curl publish -> SSE ids 1-3 live; `Last-Event-ID: 1`
+    replays 2-3; typed payload rejects bad `checklist_step`; audit verified 13.
+  - Discord through real gateway SSE: FYI silent, ticket silent, wake with role
+    mention, approval with 2 buttons, expiry edits message and removes buttons,
+    re-page every 30 s, restart resumes at cursor 7 -> 9 with no duplicates.
+    All smoke messages say `[SMOKE TEST, ignore]`. No human button click yet.
+- Live smoke found 2 notifier bugs; fixed in `30af608` with tests that failed first:
+  approved approvals kept re-paging "Approval pending"; silently expired approvals
+  kept saying "pending". Gateway emits nothing on silent expiry.
+- `tests/test_policy.py` (19 cases, `c46c301`): tool/target gates, protected beats
+  actable flag, budget boundaries, every actable pair passes, policy tools equal
+  schema tools, config invariants, auto-eligibility, `usage()` counts.
+- Checks after: 260 passed; Ruff passed; mypy passed across 60 files.
 
 - PR #13 merged into main as `7457a56`. Its shared-note conflict preserved both
   teams' entries. PR #15 includes that merge without further conflicts. Final
@@ -80,33 +98,25 @@
 
 ## In progress
 
-- Available report tooling is implemented on the current branch. Live integration
-  and measured evidence remain the next gates; all relevant TASK.md boxes stay open.
+- Nothing running. Cluster-bound work waits on access (below).
 
 ## Blocked / waiting on
 
-- M's gateway runtime must mount event/receipt routes and connect brain action
-  handoff to the executor/verifier loop. Brain service and event forwarding exist.
-- Authoritative approvals, policy/checklist/budget checks, usable undo snapshots,
-  and rehearsal handlers remain required. Trust, freshness, and verifier core
-  implementations and tests already exist; they are not missing dependencies.
-- A reports cluster `oncall` and the shop running on A's machine. Real smoke,
-  security, and benchmark runs need access to those services and agreed chaos
-  responses. This host has not verified that cluster.
-- Live OpenCode Go and Discord configuration still need verification. No
-  secrets were inspected or real provider/notifier checks performed here.
-- Remaining event payloads and shared contracts need the listed owners'
-  agreement. T accepted M's Q2/Q3/Q7/Q8/Q11; no A agreement is inferred.
-- Accuracy trials, overnight runs, manual baselines, five-person card study,
-  live security acceptance, deck, and video remain open. No results invented.
+- No `oncall` cluster on Twaha's host (`kubectl` contexts: `k3d-workshop`,
+  `kind-foss`; `AGENT_KUBECONFIG` path in `.env` does not exist here). A's
+  cluster is on A's machine. Blocks: brain -> gateway live run, `scripts/smoke.sh`,
+  live RBAC/admission acceptance, overnight trust runs, accuracy runs.
+- Human-only: approver button click on a real approval, manual baseline (3 runs
+  per scenario), five-person card study, deck, video.
+- `brain/major.py` not built yet, so major-incident policy tests are not written.
 
 ## Next
 
-1. Connect M's brain to the gateway runtime and authoritative handlers.
-2. Verify local Go/Discord configuration, then run provider and notifier smoke checks.
-3. Run end-to-end smoke and live security acceptance on A's cluster.
-4. Collect overnight, accuracy, and manual trials in separate result files.
-5. Generate measured reports, run the card study, and finish submission materials.
+1. Get cluster access (local k3d rebuild from A's scripts, or A's machine).
+2. Run observer/brain/gateway/notifier against it; `scripts/smoke.sh`.
+3. Live security acceptance table (§8.3); real approval click.
+4. Overnight trust runs, accuracy runs, separate result files; then reports.
+5. Manual baseline, card study, final README, deck, video.
 
 ## Notes for next session
 
