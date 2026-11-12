@@ -5,6 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { words } from "@/lib/format";
 import { type Link, useLive } from "@/lib/use-live";
 
+import { Blast } from "./blast";
+import { Checklist } from "./checklist";
 import { StageStrip } from "./stage-strip";
 import styles from "./live-view.module.css";
 
@@ -45,6 +47,11 @@ export function LiveView() {
       </div>
 
       <StageStrip incident={incident} />
+
+      <div className={styles.grid}>
+        <Blast incident={incident} className={styles.span4} />
+        <Checklist incident={incident} className={styles.span3} />
+      </div>
     </div>
   );
 }
