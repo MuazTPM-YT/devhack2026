@@ -33,3 +33,38 @@ async def test_diagnosis_audit_and_receipt_round_trip(bundle, action, tmp_path):
         response = await client.get(f"/receipts/{receipt_id}")
         assert response.json()["card"]["status"] == "FIXED"
     assert verify(audit.path)[0]["event"]["payload"]["usage"]["prompt_tokens"] == 14
+
+
+async def test_mountable_event_router_shares_in_process_and_http_bus(tmp_path):
+    import pytest
+    from gateway import events
+    app = FastAPI()
+    app.state.audit_path = tmp_path / "audit.jsonl"
+    app.include_router(events.router)
+    async with app.router.lifespan_context(app):
+        first = await events.publish({"type": "blocked", "payload": {"source": "gateway"}})
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+            response = await client.post("/events/publish", json={"type": "blocked"})
+        assert first["seq"] == 1
+        assert response.json()["seq"] == 2
+        assert response.json()["prev_hash"] == first["hash"]
+    assert len(verify(app.state.audit_path)) == 2
+    with pytest.raises(RuntimeError, match="not started"):
+        await events.publish({"type": "blocked"})
+    async with app.router.lifespan_context(app):
+        assert (await events.publish({"type": "blocked"}))["seq"] == 3
+
+
+async def test_event_router_rejects_second_active_application(tmp_path):
+    import pytest
+    from gateway import events
+    first, second = FastAPI(), FastAPI()
+    for index, app in enumerate((first, second)):
+        app.state.audit_path = tmp_path / f"audit-{index}.jsonl"
+        app.include_router(events.router)
+    async with first.router.lifespan_context(first):
+        with pytest.raises(RuntimeError, match="already active"):
+            async with second.router.lifespan_context(second):
+                pass
+        assert (await events.publish({"type": "blocked"}))["seq"] == 1
+    assert not second.state.audit_path.exists()
