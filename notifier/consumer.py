@@ -34,6 +34,8 @@ class NotificationConsumer:
             if kind == "approval_requested":
                 await self.notifier.request_approval(payload["approval_id"], card,
                                                      payload["diff"], payload["forecast"], payload["expires_at"])
+                pending[incident_id] = {"card": card.model_dump(), "briefing": "Approval pending",
+                                        "last_page": time.time()}
             elif kind == "incident_resolved":
                 if card.status == "MITIGATED, NOT FIXED":
                     await self.notifier.ticket(card)
@@ -56,34 +58,40 @@ class NotificationConsumer:
         self.state.set("wakes", pending)
         self.state.set("cursor", seq)
 
+    async def repage_once(self):
+        pending = self.state.get("wakes", {})
+        for row in pending.values():
+            if time.time() - row["last_page"] >= self.repage_s:
+                try:
+                    await self.notifier.wake(Card.model_validate(row["card"]), row["briefing"])
+                except (discord.HTTPException, httpx.HTTPError):
+                    continue
+                row["last_page"] = time.time()
+        self.state.set("wakes", pending)
+
     async def repage(self):
         while True:
             await asyncio.sleep(min(10, self.repage_s))
-            pending = self.state.get("wakes", {})
-            for row in pending.values():
-                if time.time() - row["last_page"] >= self.repage_s:
-                    try:
-                        await self.notifier.wake(Card.model_validate(row["card"]), row["briefing"])
-                    except (discord.HTTPException, httpx.HTTPError):
-                        continue
-                    row["last_page"] = time.time()
-            self.state.set("wakes", pending)
+            await self.repage_once()
+
+    async def expire_once(self):
+        for approval_id, row in self.state.approvals().items():
+            decision = row.get("decision")
+            if not decision and row["expires_at"] <= time.time():
+                decision = "expired"
+                row["decision"] = decision
+                self.state.set(f"approval:{approval_id}", row)
+            if decision and not row.get("view_closed"):
+                try:
+                    await self.notifier.close_approval(approval_id, row, decision)
+                except discord.HTTPException:
+                    continue
+                row["view_closed"] = True
+                self.state.set(f"approval:{approval_id}", row)
 
     async def expire_approvals(self):
         while True:
-            for approval_id, row in self.state.approvals().items():
-                decision = row.get("decision")
-                if not decision and row["expires_at"] <= time.time():
-                    decision = "expired"
-                    row["decision"] = decision
-                    self.state.set(f"approval:{approval_id}", row)
-                if decision and not row.get("view_closed"):
-                    try:
-                        await self.notifier.close_approval(approval_id, row, decision)
-                    except discord.HTTPException:
-                        continue
-                    row["view_closed"] = True
-                    self.state.set(f"approval:{approval_id}", row)
+            await self.expire_once()
             await asyncio.sleep(5)
 
     async def run(self):

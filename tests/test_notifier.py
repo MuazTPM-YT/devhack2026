@@ -68,3 +68,34 @@ async def test_success_status_with_refusal_body_is_not_approval(tmp_path):
         controller = ApprovalController(client, "http://gateway", {"approver"}, state)
         assert await controller.decide("a", "approver", "approved") == "gateway refused decision"
     assert not state.get("approval:a").get("decision")
+
+
+async def test_repage_expiry_and_persistent_buttons(tmp_path, monkeypatch):
+    from notifier.discord_bot import ApprovalView
+    class FakeNotifier:
+        def __init__(self):
+            self.pages, self.closed = [], []
+        async def wake(self, card, briefing):
+            self.pages.append(card.incident_id)
+        async def close_approval(self, approval_id, row, decision):
+            self.closed.append((approval_id, decision))
+    monkeypatch.setattr("notifier.consumer.time.time", lambda: 100)
+    state = NotifierState(tmp_path / "state.db")
+    state.set("approval:a", {"expires_at": 99, "message_id": 1, "channel_id": 2})
+    state.set("wakes", {"i": {"card": {"incident_id": "i", "status": "ESCALATED",
+                                         "text": "needs help", "evidence_ids": []},
+                               "briefing": "help", "last_page": 0}})
+    notifier = FakeNotifier()
+    async with httpx.AsyncClient() as client:
+        consumer = NotificationConsumer(client, "http://gateway", notifier, state, repage_s=10)
+        await consumer.repage_once()
+        await consumer.repage_once()
+        assert notifier.pages == ["i"]
+        await consumer.expire_once()
+        await consumer.expire_once()
+        assert notifier.closed == [("a", "expired")]
+        assert state.get("approval:a")["view_closed"]
+        controller = ApprovalController(client, "http://gateway", {"approver"}, state)
+        view = ApprovalView("a", controller)
+        assert view.is_persistent()
+        assert {button.custom_id for button in view.children} == {"approval:a:approved", "approval:a:rejected"}
