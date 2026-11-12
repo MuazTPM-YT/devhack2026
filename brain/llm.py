@@ -44,6 +44,8 @@ class DiagnosisService:
             services.add(bundle.incident.culprit)
         services.update(s for edge in bundle.dependency_edges for s in edge[:2])
         for cause in diagnosis.causes:
+            if cause.cause_class != "unknown" and not cause.evidence_ids:
+                raise ValueError("cause_requires_evidence")
             if not set(cause.evidence_ids) <= evidence or cause.culprit not in services:
                 raise ValueError("unsupported_cause")
         action = diagnosis.proposed

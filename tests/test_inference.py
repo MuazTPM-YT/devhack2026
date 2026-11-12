@@ -128,3 +128,11 @@ async def test_cache_disk_failure_does_not_discard_diagnosis(bundle, action, tmp
 async def test_unknown_proposal_cannot_claim_trusted_pattern(bundle, action, tmp_path):
     result = await DiagnosisService(FakeProvider([diagnosis(action)]), tmp_path).diagnose(bundle, "unknown")
     assert result.action.pattern == "unknown"
+
+
+async def test_known_cause_requires_evidence(bundle, tmp_path):
+    raw = json.dumps({"causes": [{"cause_class": "recent_change", "culprit": "payment",
+                                   "evidence_ids": [], "explanation": "unsupported claim"}],
+                      "confidence": 1})
+    result = await DiagnosisService(FakeProvider([raw, raw]), tmp_path).diagnose(bundle, "unknown")
+    assert result.diagnosis is None
