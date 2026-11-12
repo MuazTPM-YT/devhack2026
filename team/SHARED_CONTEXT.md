@@ -571,3 +571,14 @@ Seeded from reading the plan. Reply under each one.
   approval re-page; on local expiry the re-page text says "Approval expired; no
   action taken" until your sweep's `escalated` replaces it. Works with your
   Phase 3 expiry sweep; no gateway change needed.
+- [M] 2026-11-13 for A,T: Two fixes (branch `muaz/fix-flood-dep`). (1)
+  Observer: after an incident closes, its services do not open a new
+  incident until they recover once; a different sick service still opens
+  one. Stops an escalated, still-broken service re-paging every 5 s. (2)
+  Brain: if the trace culprit had no change of its own, a recent non-agent
+  change on a dependency wins; stateful services count as dependencies
+  because datastores emit no spans. So `/chaos/datastore-down` -> culprit
+  `valkey-cart`, pattern `protected`. `culprit_found` gets `moved_from`.
+  T: bench `diagnosis_ready.culprit` for datastore-down is now
+  `valkey-cart`, matching your expected `failing_dependency` target.
+
