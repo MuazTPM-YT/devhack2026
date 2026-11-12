@@ -474,16 +474,75 @@ Seeded from reading the plan. Reply under each one.
   in `gateway/receipts.py` (5 lines) so the verifier can fill outcome,
   `prediction_held`, `harm_clean` on the same receipt id. Same redaction as
   `save`.
+- [M] 2026-11-13 for A,T: Gateway now executes `revert_config` (env only),
+  `restart_service`, `scale` (scale subresource, 1 to 3), `raise_limit` (one
+  container, must raise, max 1Gi), plus `rollback_deploy`. Flag reverts and
+  `enable_degraded_mode` are refused with "not built yet" until the flag
+  plan lands (flags live in flagd's file, not the ConfigMap). Branch
+  `muaz/phase2-tools`.
 
+- [A] 2026-11-13 for T,M: All four chaos faults are live on
+  `anirudh/phase2-faults`; routes match `bench/harness.py` SCENARIOS.
+  `broken-config` sets checkout `PAYMENT_ADDR=payment:9999` (checkout server
+  error ratio 1.0); `datastore-down` patches `valkey-cart` replicas to 0 (cart
+  error ratio 1.0, throughput collapses); `memory-leak` turns flag
+  `recommendationCacheFailure` on (recommendation OOMKilled 128 s after
+  inject at the 200Mi limit, then leaks again after each restart). Each
+  inject returns `{ts, type, target}`, plus `key: PAYMENT_ADDR` for
+  broken-config. Reset undoes all of them.
+- [A] 2026-11-13 for M: Do not restart flagd to apply a flag. The services'
+  flagd clients go stale after a flagd restart and keep returning the old
+  value (recommendation ignored the leak flag for 9 min until it was
+  restarted). Chaos therefore writes flags to ConfigMap `flagd-config`
+  (field manager `chaos-panel`, so the journal sees it) and to flagd's live
+  file `/etc/flagd/demo.flagd.json`, which flagd hot-reloads (fsnotify
+  WRITE). The same applies to any agent action that flips a flag.
+- [A] 2026-11-13 for M: The recommendation leak is faster than
+  `kubectl top` sampling: memory showed 45-61Mi right up to the OOMKill.
+  Detect it from restarts / `lastState.terminated.reason=OOMKilled` and from
+  errors, not from the memory gauge alone.
+- [A] 2026-11-13 for all: The chaos snapshot format changed to
+  `{deployments, flags}`. An old `data/healthy_snapshot.json` makes the panel
+  refuse to start with "old format"; delete it while the shop is healthy.
+- [M] 2026-11-13 for A: Flag decision (Muaz chose): flagd should read
+  ConfigMap `flagd-config` directly, so agent flag writes go through RBAC +
+  admission and the journal's ConfigMap watch. Ask: change `k8s/values.yaml`
+  so flagd mounts the ConfigMap (no init copy to the emptyDir) and drop the
+  agent-facing need to write `/etc/flagd/demo.flagd.json`. Known costs:
+  flagd-ui edits stop applying; kubelet takes up to ~1 min to swap the
+  mounted file. Risk to check first: your note says flagd hot-reloads on
+  fsnotify WRITE; a ConfigMap update is a symlink swap, not a WRITE. Please
+  test one ConfigMap patch and say whether flagd picks it up without a
+  restart. If it does not, tell me and we pick again.
+- [M] 2026-11-13 for A: Thanks for the OOM note. The resource rule already
+  keys on `lastState.terminated.reason=OOMKilled` (bundle event) first; the
+  90% memory gauge is only a second signal.
+- [M] 2026-11-13 for A,T: Gateway Phase 3 (branch `muaz/phase3`): step 5
+  net benefit is real (blast radius from Jaeger, forecast 0 s when >= 2
+  replicas and `maxUnavailable: 0`, else measured pod startup); watchdog
+  undoes a silent verification after 180 s (`action_undone` reason
+  `watchdog`); the gateway expires pending approvals itself
+  (`approval_decided` expired, then `escalated`). Gateway now requires
+  `JAEGER_URL`. A restart that works ends `incident_resolved` with card
+  status `MITIGATED, NOT FIXED`, and the brain also sends `raise_limit` as
+  an approval request. T: I did not add re-paging; your notifier's
+  `repage()` covers it.
+
+- [A] 2026-11-13 for T,M: New chaos fault for §7 scenario 3 (flag flipped):
+  `POST /chaos/flag-flip` sets flag `paymentFailure` to `50%` (ConfigMap +
+  live file, no flagd restart). Returns `{ts, type: "broken_config", target:
+  "payment", key: "paymentFailure"}`. Live: 45% of payment charges failed
+  over 5 min; reset turned it off instantly. Payment only gets ~1 request
+  per minute from the load generator, so use 5m windows, not 1m. T: the
+  bench has no `flag-flip` scenario yet; suggested pattern `recent_change`,
+  `should_wake` False.
 
 - [T] 2026-11-13 for M,A: Live checks without cluster: OpenCode Go real call OK
   (`deepseek-v4.1-flash`, 16.6 s, 2209 tokens, valid diagnosis; JSON-only prompt
   enough, no `response_format` needed yet). Gateway `gateway.main:app` publish ->
   SSE -> replay -> audit verified across processes. Discord delivery, buttons,
   expiry, re-page and restart verified against the real gateway SSE.
-- [T] 2026-11-13 for M: Gateway marks an approval `expired` only when someone
-  calls decide after expiry; silent expiry publishes nothing, so the incident stays
-  open with no terminal event. Notifier now keeps paging with "Approval expired; no
-  action taken". Consider a gateway sweep that publishes `approval_decided`
-  {decision: expired} plus `escalated`. Also: approved decisions now stop the
-  notifier's approval re-page.
+- [T] 2026-11-13 for M: Notifier fix: an `approved` decision now stops the
+  approval re-page; on local expiry the re-page text says "Approval expired; no
+  action taken" until your sweep's `escalated` replaces it. Works with your
+  Phase 3 expiry sweep; no gateway change needed.

@@ -2,13 +2,14 @@ import json
 from pathlib import Path
 from typing import Any
 
-from chaos.faults import FIELD_MANAGER, Kubectl, kubectl
+from chaos.faults import (FIELD_MANAGER, FLAG_CONFIGMAP, Kubectl, kubectl, read_flags,
+                          read_live_flags, write_flags)
+from schemas import config
 
-# shortcut: copy of config/services.yaml names (no YAML lib yet); read the file once pyyaml lands
-TARGETS = ["payment", "checkout", "cart", "frontend", "recommendation", "ad", "email",
-           "valkey-cart", "kafka"]
+TARGETS = list(config.load("services")["services"])
 
-Snapshot = dict[str, dict[str, Any]]
+# {"deployments": {name: state}, "flags": flagd-config file text}
+Snapshot = dict[str, Any]
 
 
 def _state(deployment: dict[str, Any]) -> dict[str, Any]:
@@ -20,7 +21,7 @@ def _state(deployment: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def read_cluster(run: Kubectl = kubectl) -> Snapshot:
+def read_cluster(run: Kubectl = kubectl) -> dict[str, dict[str, Any]]:
     items = json.loads(run("get", "deployments", "-o", "json"))["items"]
     return {d["metadata"]["name"]: _state(d) for d in items if d["metadata"]["name"] in TARGETS}
 
@@ -28,11 +29,15 @@ def read_cluster(run: Kubectl = kubectl) -> Snapshot:
 # first start only: an existing file is the known-healthy state, never overwrite it
 def ensure_snapshot(path: Path, run: Kubectl = kubectl) -> Snapshot:
     if path.exists():
-        return json.loads(path.read_text())
-    snapshot = read_cluster(run)
-    missing = sorted(set(TARGETS) - snapshot.keys())
+        snapshot = json.loads(path.read_text())
+        if set(snapshot) != {"deployments", "flags"}:
+            raise RuntimeError(f"{path} is an old format; delete it while the shop is healthy")
+        return snapshot
+    deployments = read_cluster(run)
+    missing = sorted(set(TARGETS) - deployments.keys())
     if missing:
         raise RuntimeError(f"cannot snapshot, deployments missing: {missing}")
+    snapshot = {"deployments": deployments, "flags": read_flags(run)}
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(snapshot, indent=2, sort_keys=True))
     return snapshot
@@ -55,16 +60,21 @@ def diff_ops(healthy: dict[str, Any], current: dict[str, Any]) -> list[dict[str,
     return ops
 
 
-# shortcut: waits for rollouts, not observer severity 0 (C4 /health/now not built); switch when it is
+# shortcut: waits for rollouts, not observer severity 0 (C4 /health/now not wired); switch when it is
 def reset(snapshot: Snapshot, run: Kubectl = kubectl) -> list[str]:
     current = read_cluster(run)
     restored = []
-    for name, healthy in snapshot.items():
+    for name, healthy in snapshot["deployments"].items():
         ops = diff_ops(healthy, current[name])
         if ops:
             run("patch", "deployment", name, "--type=json", "-p", json.dumps(ops),
                 f"--field-manager={FIELD_MANAGER}")
             restored.append(name)
+    # live file too: a judge may have flipped a flag in the flagd UI
+    if snapshot["flags"] != read_flags(run) or snapshot["flags"] != read_live_flags(run):
+        write_flags(snapshot["flags"], run)
+        restored.append(f"configmap/{FLAG_CONFIGMAP}")
     for name in restored:
-        run("rollout", "status", f"deployment/{name}", "--timeout=5m")
+        if not name.startswith("configmap/"):
+            run("rollout", "status", f"deployment/{name}", "--timeout=5m")
     return restored

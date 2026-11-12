@@ -5,11 +5,41 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** 1 (my parts done; exit blocked on M's spine). Branch
-`anirudh/phase1-chaos`, not pushed. Phase 0 merged in PR #9.
+**Current phase:** 2 done (branch `anirudh/phase2-faults`, not pushed).
+Phase 0 merged in PR #9, Phase 1 in PR #10. Phase 1 exit (real smoke)
+still waits on M's gateway.
 
 ## Done (with proof)
 
+- `POST /chaos/flag-flip` (scenario 3): `paymentFailure` set to `50%`;
+  flagd OFREP returned `value: 0.5`; payment failed 5.1 of 11.2 charges
+  (45%) over 5 min; reset restored `["configmap/flagd-config"]` in 0 s,
+  and the next 2 min showed 0 errors. flagd was not restarted. Tests:
+  `tests/test_chaos.py` 23 pass, full suite 258 passed, ruff and mypy
+  clean. Phase 2 exit: scenarios 1-5 inject and reset; scenario 6 comes
+  with the raw `kubectl` box on `/chaos` (Phase 3).
+- Phase 2 faults, all live on the cluster, each injected then reset:
+  - `broken-config`: checkout `PAYMENT_ADDR=payment:9999`; checkout error
+    ratio went from 0 to 1.0; reset restored `["checkout"]` in 15 s and
+    the errors were back to 0 within 60 s.
+  - `datastore-down`: `valkey-cart` replicas went to 0; cart error ratio
+    1.0 (throughput collapsed). Reset restored `["valkey-cart"]` in 2 s;
+    cart was back at 3.6 successful req/s with 0 errors.
+  - `memory-leak`: flag `recommendationCacheFailure` turned on in the
+    ConfigMap and the live flagd file; recommendation hit `OOMKilled` 128 s
+    after inject and leaked again after its restart (persists). Reset
+    restored `["configmap/flagd-config"]` in 1 s and the leak stopped 21 s
+    later. flagd was never restarted.
+  - managedFields show `chaos-panel` on `cm/flagd-config`,
+    `deploy/checkout` and `deploy/valkey-cart`.
+- Bug found and fixed: the first leak design restarted flagd, and
+  recommendation then ignored the flag for 9 min (stale flagd client).
+  Fixed by writing the live file. New test
+  `test_reset_restores_flag_flipped_only_in_flagd_ui` fails without the
+  live-file check and passes with it.
+- Checks: `tests/test_chaos.py` 21 pass; full suite 195 passed; ruff
+  clean; `uv run mypy schemas brain gateway notifier bench observer chaos`
+  clean (49 files).
 - `scripts/smoke.sh`: against a stub `curl`, it prints
   `incident=inc-7 outcome=incident_resolved` and
   `detect=12.5s diagnose=40.0s recover=90.2s` with rc 0. It ignores
@@ -69,12 +99,15 @@ section. Only my own work here; cross-team facts go in
 1. Run `scripts/smoke.sh` for real once M's observer + gateway run.
 2. Switch the reset wait to severity 0 once C4 exists (`shortcut:` in
    `chaos/reset.py`).
-3. Phase 2 faults: `broken-config`, `memory-leak`, `datastore-down`.
-   Reset must also restore flagd flags (they live in an emptyDir).
+3. Phase 3 UI: `/` live incident page and `/chaos` page (§6.8).
 4. Get the cold rebuild under 10 min (image cache).
 
 ## Notes for my next session
 
+- Snapshot format is now `{deployments, flags}`; the current
+  `data/healthy_snapshot.json` was taken on 2026-11-13 from a healthy shop.
+- Port 8016 (flagd OFREP) is port-forwarded for flag checks:
+  `curl -X POST localhost:8016/ofrep/v1/evaluate/flags/<flag> -d '{"context":{}}'`.
 - `kubectl` 1.37 vs server 1.31 prints a skew warning (more than ±1
   minor). It works so far.
 - shellcheck is not installed (pacman 404, stale package DB); scripts

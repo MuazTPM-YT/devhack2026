@@ -26,6 +26,11 @@ class DependencyGraph:
         return self.edges
 
 
+# everything that calls svc, directly or not (who breaks if svc does)
+def upstream(edges: list[tuple[str, str, float]], svc: str) -> set[str]:
+    return downstream([(callee, caller, n) for caller, callee, n in edges], svc)
+
+
 # everything svc calls, directly or not (its dependencies)
 def downstream(edges: list[tuple[str, str, float]], svc: str) -> set[str]:
     out: set[str] = set()
