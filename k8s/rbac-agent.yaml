@@ -26,7 +26,7 @@ rules:
 - apiGroups: [apps]
   resources: [deployments/scale]
   resourceNames: [payment, checkout, cart, frontend, recommendation, ad, email]
-  verbs: [patch]
+  verbs: [get, patch]   # kubectl and clients read scale before patching it
 - apiGroups: [""]
   resources: [configmaps]
   resourceNames: [flagd-config]   # VERIFY name (§3.3)
