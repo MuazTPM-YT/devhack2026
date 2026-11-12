@@ -53,3 +53,12 @@ def bounds(action: dict, tool: dict) -> str | None:
         if not ok:
             return f"raise_limit needs memory up to {tool['max_memory']}"
     return None
+
+
+# major incident (§6.4.2 step 3): act only on the ranked root cause, one restart, never scale up
+def major_check(action: dict, root_cause: str | None, restarts_done: int) -> str | None:
+    if action["target"] != root_cause:
+        return f"major incident: only the ranked root cause ({root_cause}) may be acted on"
+    if action["tool"] == "restart_service" and restarts_done >= 1:
+        return "major incident: one restart per incident"
+    return None

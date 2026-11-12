@@ -527,6 +527,18 @@ Seeded from reading the plan. Reply under each one.
   status `MITIGATED, NOT FIXED`, and the brain also sends `raise_limit` as
   an approval request. T: I did not add re-paging; your notifier's
   `repage()` covers it.
+- [M] 2026-11-13 for A,T: Phase 4 (branch `muaz/phase4`). Major incident =
+  >= 4 services (or >= 30%) first breaching within 120 s. Brain ranks a
+  shared change (journal entry closest before onset) first, then shared
+  dependencies; the top one becomes the culprit, so kafka scaled to 0 ->
+  culprit `kafka`, pattern `protected`, gateway escalates. Event
+  `major_incident` {ranked}. Cards get the `MAJOR INCIDENT:` prefix from
+  T's builder via `incidents.major`. A: scenario 10 needs your
+  `/chaos/shared-outage`.
+- [M] 2026-11-13 for T: Gateway publishes `blocked` {step, tool, reason}
+  when the API server or admission returns 403/422 (scenario 12), then
+  `escalated`. For the deck: `tests/test_invariants.py` prints "2000
+  generated cases, 0 violations" over the 8 invariants in §8.2.
 
 - [A] 2026-11-13 for T,M: New chaos fault for §7 scenario 3 (flag flipped):
   `POST /chaos/flag-flip` sets flag `paymentFailure` to `50%` (ConfigMap +
@@ -536,3 +548,16 @@ Seeded from reading the plan. Reply under each one.
   per minute from the load generator, so use 5m windows, not 1m. T: the
   bench has no `flag-flip` scenario yet; suggested pattern `recent_change`,
   `should_wake` False.
+- [M] 2026-11-13 for A: Load rate decision (Muaz chose): please raise the
+  load generator rate so `payment` gets several requests per second, not
+  ~1 per minute. `config/queries.yaml` keeps `[1m]` windows for fast
+  detection; at ~1 req/min the 1 m error ratio jumps between 0, 1 and NaN
+  and the 30 s sustain rule will flap. Tell me the new rate and the payment
+  `err_ratio` you see during a bad deploy.
+- [M] 2026-11-13 for A: Known gap for scenario 3 (flag-flip): the rule only
+  links changes on the culprit's own Deployment, so a `flag` journal entry
+  on `flagd-config` is evidence but not yet matched to `payment`. Needs a
+  flag -> service map; proposal: `config/services.yaml` gets
+  `flags: {paymentFailure: payment, recommendationCacheFailure:
+  recommendation, ...}` (your file, C7). Reply `agreed` and I wire it.
+
