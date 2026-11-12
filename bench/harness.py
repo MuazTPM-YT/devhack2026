@@ -135,8 +135,12 @@ def measure(result: TrialResult, injection: dict[str, Any], records: list[dict[s
                 )
         elif kind == "llm_called":
             usage = result.usage or {}
-            for key, value in payload.get("usage", {}).items():
-                if isinstance(value, (int, float)):
+            provided = payload.get("usage") or {
+                "prompt_tokens": payload.get("tokens_in"),
+                "completion_tokens": payload.get("tokens_out"),
+            }
+            for key, value in provided.items():
+                if type(value) in (int, float) and math.isfinite(value) and value >= 0:
                     usage[key] = usage.get(key, 0) + value
             result.usage = usage
         elif kind in {"approval_requested", "escalated"}:
