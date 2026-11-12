@@ -5,12 +5,27 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** 2 done (branch `anirudh/phase2-faults`, not pushed).
-Phase 0 merged in PR #9, Phase 1 in PR #10. Phase 1 exit (real smoke)
-still waits on M's gateway.
+**Current phase:** 3 done (branch `anirudh/phase3-ui`, not pushed).
+Phases 0-2 merged (PRs #9, #10, #16, #21). Real smoke run still waits on
+M's spine.
 
 ## Done (with proof)
 
+- Phase 3 UI (`ui/`, Next 16.4.3, React 19.2.9, TypeScript 6.0.3; no other
+  deps): `/` live incident page (six stage tiles, blast radius, severity
+  chart with predicted vs actual recovery, checklist, evidence, outcome
+  card + receipt, event log) and `/chaos` (5 fault buttons, reset, observer
+  health gauge, raw kubectl box, ground truth log). Proof: `npm test` 9
+  pass (reducer + demo script), `tsc --noEmit` clean, `next build` builds
+  `/` and `/chaos`. Screenshots checked at 1440 px and phone width.
+  Live mode tested against a stub gateway with the real SSE wire format:
+  link `live`, check tile `stopped`, outcome `handed off`.
+- `POST /chaos/kubectl` (scenario 6): live `get deploy payment cart` and
+  a NotFound error both returned through the Next proxy; tests prove shell
+  metacharacters stay plain args. Chaos tests 30 pass; full suite 276
+  passed; ruff and mypy clean.
+- Muted text colour changed to `#736359`: 4.6-5.2:1 contrast on every
+  surface (was 3.2-3.7:1, failing WCAG AA).
 - `POST /chaos/flag-flip` (scenario 3): `paymentFailure` set to `50%`;
   flagd OFREP returned `value: 0.5`; payment failed 5.1 of 11.2 charges
   (45%) over 5 min; reset restored `["configmap/flagd-config"]` in 0 s,
@@ -96,10 +111,16 @@ still waits on M's gateway.
 
 ## Next
 
+0. **REMINDER for Anirudh: remove the `?demo=1` replay before submission**
+   (`ui/lib/demo.ts`, the demo branch in `ui/lib/use-live.ts` and
+   `ui/lib/use-receipt.ts`, the Replay button in
+   `ui/components/live/live-view.tsx`, and the demo test in
+   `ui/lib/live.test.ts`). Asked for on 2026-11-13.
 1. Run `scripts/smoke.sh` for real once M's observer + gateway run.
 2. Switch the reset wait to severity 0 once C4 exists (`shortcut:` in
    `chaos/reset.py`).
-3. Phase 3 UI: `/` live incident page and `/chaos` page (§6.8).
+3. Phase 4: `/trust`, `/receipts` (verify audit log), `/benchmark`;
+   `POST /chaos/shared-outage` (Q6 agreed).
 4. Get the cold rebuild under 10 min (image cache).
 
 ## Notes for my next session

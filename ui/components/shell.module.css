@@ -1,0 +1,45 @@
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 26px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  text-decoration: none;
+  color: var(--ox-deep);
+  font-family: var(--serif);
+  font-size: 26px;
+  letter-spacing: -0.01em;
+}
+
+.nav {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--card-sunk);
+  border: 1px solid var(--line);
+}
+
+.link {
+  padding: 7px 16px;
+  border-radius: 999px;
+  text-decoration: none;
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.link:hover { color: var(--ink); }
+
+.on, .on:hover { background: var(--ox-deep); color: var(--frame); }
+
+@media (max-width: 640px) {
+  .bar { flex-direction: column; align-items: flex-start; gap: 12px; margin-bottom: 18px; }
+  .nav { max-width: 100%; overflow-x: auto; }
+}

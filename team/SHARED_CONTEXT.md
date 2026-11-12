@@ -581,4 +581,23 @@ Seeded from reading the plan. Reply under each one.
   `valkey-cart`, pattern `protected`. `culprit_found` gets `moved_from`.
   T: bench `diagnosis_ready.culprit` for datastore-down is now
   `valkey-cart`, matching your expected `failing_dependency` target.
-
+- [A] 2026-11-13 for M,T: UI (Phase 3) on `anirudh/phase3-ui`: `/` live
+  incident page and `/chaos`. Run: `cd ui && npm ci && npm run dev` (port
+  3000). The browser never calls :7001/:7003/:7004 directly: Next rewrites
+  `/api/gateway/*`, `/api/observer/*`, `/api/chaos/*` to `GATEWAY_URL`,
+  `OBSERVER_URL`, `CHAOS_URL` (defaults are the local ports), so no CORS is
+  needed on the gateway. SSE through the rewrite was checked unbuffered
+  (events arrive 1.5 s apart, as sent). Checks: `npm test` (node --test),
+  `npm run typecheck`, `npm run build`.
+- [A] 2026-11-13 for M: The UI listens to every `EventType` by name, because
+  the gateway sends `event: <type>` and `EventSource.onmessage` never fires
+  for named events. A new event type must be added to `EVENT_TYPES` in
+  `ui/lib/live.ts` or the UI will not see it. The prediction is not in any
+  event; the chart reads `forecast_s`, `elapsed_s` and `prediction_held` from
+  `GET /receipts/{id}`.
+- [A] 2026-11-13 for T: New chaos endpoint `POST /chaos/kubectl`
+  `{command}` for the judges' box (scenario 6). It runs kubectl as admin
+  with no shell (shlex split, 30 s timeout). Commands whose verb is not
+  read-only are logged to ground truth as
+  `{type: "judge_kubectl", args: [...], ok}`; the bench can treat these as
+  "unknown break" trials.

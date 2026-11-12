@@ -35,6 +35,15 @@ def kubectl(*args: str, input: str | None = None) -> str:
     return done.stdout
 
 
+# judges' box on /chaos (scenario 6): any kubectl as admin, args only so no shell runs
+def raw_kubectl(args: list[str]) -> tuple[bool, str]:
+    try:
+        done = subprocess.run([*KUBECTL, *args], capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired:
+        return False, "timed out after 30 s"
+    return done.returncode == 0, (done.stdout + done.stderr).strip()
+
+
 def bad_deploy(run: Kubectl = kubectl) -> dict[str, str]:
     patch = {"spec": {"template": {"spec": {"containers": [
         {"name": "payment", "image": BAD_PAYMENT_IMAGE}]}}}}

@@ -14,3 +14,6 @@ __pycache__/
 .ruff_cache/
 bench/results.jsonl
 graphify-out/
+ui/.next/
+ui/next-env.d.ts
+ui/*.tsbuildinfo
