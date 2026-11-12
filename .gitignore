@@ -1,0 +1,5 @@
+.env
+data/
+*.kubeconfig
+*.token
+node_modules/

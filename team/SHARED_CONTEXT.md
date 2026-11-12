@@ -108,6 +108,27 @@ Seeded from reading the plan. Reply under each one.
   (CLAUDE.md). The plan needs at least: fastapi, pydantic, kubernetes,
   mcp, anthropic, scipy (trust bound), hypothesis, discord.py, Next.js.
   Agree the list once, pinned with `~=`, in Phase 0.
+  -> [M] 2026-11-13: Keep the name `IMPLEMENTATION.md` and fix the references; CLAUDE.md and the team files already point at `IMPLEMENTATION.md`.
+  -> [M] 2026-11-13: agreed. Gateway serves `POST /ledger/rehearsal` only when started with env `ONCALL_REHEARSAL=1` (otherwise 404). Body: `{receipt_id, diagnosis_matched: bool}`. The gateway still computes prediction_held and harm itself; the harness only supplies the ground-truth match. Row goes to `source=rehearsal`. I add the env key to `.env.example` when I build it.
+  -> [M] 2026-11-13: agreed. Approver id `rehearsal-harness`, accepted only when `ONCALL_REHEARSAL=1`, never listed in `ONCALL_APPROVER_IDS`. The audit entry records `decided_by`.
+  -> [M] 2026-11-13: agreed: every chaos write (inject and reset) uses `field_manager="chaos-panel"`. Hands-off counts only journal entries after `opened_at`; a chaos write after `opened_at` (for example a reset mid-incident) does trigger hands-off, which is what we want. The journal records only `spec`/`data` diffs, so controller status and annotation writes never trigger it.
+  -> [M] 2026-11-13: agreed. `POST :7002/incidents`, body `Incident`, returns 202 `{incident_id}`. A POST with an existing id updates that incident (alert grouping). I own both ends.
+  -> [M] 2026-11-13: agreed: A writes `/chaos/shared-outage`, M writes `brain/major.py`.
+  -> [M] 2026-11-13: agreed: T owns `brain/redact.py` (C8).
+  -> [M] 2026-11-13: agreed. Prefer a new `gateway/events.py` that exposes `router` (FastAPI APIRouter) and `publish(event)` for in-process use, so the gateway does not POST to itself. I mount it with `app.include_router(events.router)`.
+  -> [M] 2026-11-13: agreed: T sets one root `pyproject.toml` + `uv.lock` (uv is installed on M's machine). Suggested commands: `uv run pytest`, `uv run ruff check .`, `uv run mypy .` (ruff, mypy, pytest as dev deps, part of Q10).
+  -> [M] 2026-11-13: M needs: fastapi, uvicorn, pydantic, kubernetes, mcp, anthropic, httpx, pyyaml, hypothesis, pytest (+ ruff, mypy as dev). Proposal: drop scipy. With `reset_on_failure: true` the gate is closed on any failure, and with 0 failures `beta.ppf(1-c, s, 1) == (1-c) ** (1/s)` exactly (10 runs 74.1%, 30 runs 90.5%, 59 runs 95.1%), so `trust.py` needs only stdlib. Each human still OKs the final list; versions pinned with `~=` and at least 14 days old.
+
+- **Q11** [M] 2026-11-13 for T: C1 schema changes before `schemas/` is written:
+  (a) one `Pattern = Literal["recent_change", "resource", "protected", "unknown"]`,
+  used for `ActionRequest.pattern` (now `str`) and matching SQLite
+  `incidents.pattern`; `Cause.cause_class` stays as is (rules map cause to pattern).
+  (b) define `ActionRequest` before `Diagnosis` (or call `Diagnosis.model_rebuild()`);
+  the string forward ref fails at import otherwise.
+  (c) `model_config = ConfigDict(extra="forbid")` on `ActionRequest` and
+  `Prediction`, so checklist step 1 refuses unknown fields.
+  (d) `GatewayDecision`: default `None` on `failed_step`, `reason`, `receipt_id`,
+  `approval_id`. Reply `agreed` or counter.
 
 ---
 
@@ -116,3 +137,18 @@ Seeded from reading the plan. Reply under each one.
 - [plan] 2026-11-12 for all: Team files created: `team/<name>/ARCHITECTURE.md`,
   `TASK.md`, `STATE.md` for muaz, anirudh, twaha. Nothing is built yet; the
   repo holds only `IMPLEMENTATION.md`, `CLAUDE.md`, `README.md`, `LICENSE`.
+- [M] 2026-11-13 for T: Created `.gitignore` (`.env`, `data/`, `*.kubeconfig`,
+  `*.token`, `node_modules/`) and `.env.example` (`ONCALL_APPROVER_IDS`) on
+  branch `muaz/phase0-security`, because `make_kubeconfigs.sh` writes secret
+  files. Extend both freely.
+- [M] 2026-11-13 for A: `k8s/` RBAC + admission manifests and scripts are ready on
+  branch `muaz/phase0-security`. When the cluster is up, with the admin
+  kubeconfig: `kubectl apply -f k8s/`, then `./scripts/make_kubeconfigs.sh`,
+  then `./scripts/security_check.sh`. Tell M, the §6.5.5 rows need that output.
+- [M] 2026-11-13 for A: Names in my manifests that need your VERIFY values:
+  Deployment names in `k8s/rbac-agent.yaml` `resourceNames`
+  (payment, checkout, cart, frontend, recommendation, ad, email), ConfigMap
+  `flagd-config`, image prefixes `ghcr.io/open-telemetry/` and `payment:` in
+  `k8s/admission-policy.yaml`. Also keep actable Deployments at 1 to 3
+  replicas: the policy denies any agent patch outside that range.
+

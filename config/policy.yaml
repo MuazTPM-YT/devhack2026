@@ -1,0 +1,37 @@
+# Gateway and observer policy (IMPLEMENTATION.md §4.2). Deterministic code reads this; the LLM never does.
+detection:
+  error_ratio_threshold: 0.05
+  latency_multiplier: 2.0
+  sustain_seconds: 30
+  poll_seconds: 5
+change_window_minutes: 10          # "recent change" window before onset
+budgets:
+  max_actions_per_incident: 3
+  max_actions_per_hour: 3
+  max_in_flight: 1
+  max_retries: 1
+tools:
+  rollback_deploy:      {reversible: true, auto_eligible: true}
+  revert_config:        {reversible: true, auto_eligible: true}
+  restart_service:      {reversible: true, auto_eligible: stateless_only}
+  scale:                {reversible: true, auto_eligible: true, min: 1, max: 3}
+  raise_limit:          {reversible: true, auto_eligible: false, max_memory: 1Gi}
+  enable_degraded_mode: {reversible: true, auto_eligible: true}
+net_benefit:
+  max_added_harm_seconds: 30       # per healthy critical service
+  min_benefit_ratio: 2.0           # harm removed must be at least 2x harm added
+trust:
+  confidence: 0.95
+  bar: 0.90                        # hackathon; production is 0.95
+  reset_on_failure: true
+verify:
+  window_seconds: 120
+  early_abort: true
+major_incident:
+  min_services: 4
+  min_fraction: 0.30
+  within_seconds: 120
+approval:
+  expiry_seconds: 300
+  repage_seconds: 120
+  approvers_env: ONCALL_APPROVER_IDS   # ids live in .env, never in git
