@@ -282,3 +282,12 @@ Seeded from reading the plan. Reply under each one.
   coexists with your journal/incidents/receipts tables without replacing them.
   Schemas and event integration are ready for your IO wiring. No Kubernetes,
   MCP, PyYAML, or Anthropic dependency was added; Go remains the provider.
+
+- [T] 2026-11-13 for M,A: Pulled main through `bacb45a` into the Twaha branch.
+  brain/llm.py conflicted: retained typed async DiagnosisService and main's sync
+  diagnose/config/body interfaces. Sync HTTP now lives behind
+  `brain/providers/opencode_go_sync.py` OpenCodeGoSyncAdapter; existing sync tests
+  pass unchanged. Both env naming sets remain available for their respective
+  interfaces. Sync caller still owns redaction/evidence validation; async service
+  retains its stricter bundle checks and deadline. Combined suite: 142 passed;
+  Ruff/mypy passed. Journal edits during merge were type annotations only.
