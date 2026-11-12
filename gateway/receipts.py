@@ -38,9 +38,9 @@ def build_card(receipt: Receipt, receipt_id: int) -> Card:
         "undone": "WOKE YOU BECAUSE", "handed_off": "HANDED OFF",
         "right_by_accident": "RECOVERED; PREDICTION FAILED",
     }.get(receipt.outcome, "VERIFICATION PENDING")
-    refs = " ".join(f"[{value}]" for value in receipt.evidence_ids)
+    refs = " ".join(f"[{' '.join(value.split())}]" for value in receipt.evidence_ids)
     text = "\n".join([
-        f"{status}: {receipt.target}",
+        f"{status}: {' '.join(receipt.target.split())}",
         f"Evidence: {refs or 'not supplied'}",
         f"Did: {receipt.tool}; receipt #{receipt_id}",
         f"Checked: prediction={receipt.prediction_held}; harm clean={receipt.harm_clean}",

@@ -75,3 +75,9 @@ async def test_disconnect_cleans_subscription(tmp_path):
     await anext(subscription)
     await subscription.aclose()
     assert not bus.subscribers
+
+
+def test_card_stays_five_lines_with_multiline_fields():
+    receipt = Receipt(incident_id="i", tool="rollback_deploy", target="payment\nextra",
+                      diff={}, inverse={"image": "old"}, evidence_ids=["journal:41\nextra"])
+    assert len(build_card(receipt, 1).text.splitlines()) == 5

@@ -29,12 +29,18 @@ def redact_value(value: Any) -> Any:
     if isinstance(value, tuple):
         return [redact_value(item) for item in value]
     if isinstance(value, dict):
+        result: dict[str, Any] = {}
+        for key, item in value.items():
+            name = str(key)
+            if name in {"line_hash", "hash_before", "hash_after"} and isinstance(item, str) and re.fullmatch(r"[a-f0-9]{64}", item):
+                result[name] = item
+            elif isinstance(item, (int, float)) and name.endswith("tokens"):
+                result[name] = item
+            else:
+                result[redact(name)] = "[REDACTED]" if SECRET_KEYS.search(name) else redact_value(item)
         if "name" in value and "value" in value:
-            return {**value, "value": f"[REDACTED:env:{value['name']}]"}
-        return {
-            redact(str(key)): "[REDACTED]" if SECRET_KEYS.search(str(key)) else redact_value(item)
-            for key, item in value.items()
-        }
+            result["value"] = f"[REDACTED:env:{redact(str(value['name']))}]"
+        return result
     return value
 
 
