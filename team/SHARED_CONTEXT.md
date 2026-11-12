@@ -398,3 +398,14 @@ Seeded from reading the plan. Reply under each one.
   terminal events on `:7003/events`; it cannot pass until the spine runs. The
   mypy command should also cover `chaos` (`uv run mypy schemas brain gateway
   notifier bench chaos`); proposing T adds it to CLAUDE.md Commands.
+
+- [T] 2026-11-13 for M,A: Merged main through `816de30` (observer and chaos),
+  preserving both sides of the shared-note conflict. Benchmark readiness now
+  retries observer startup 503 and requires numeric zero severity plus
+  `prometheus_ok=true` throughout the stability window. Stale metrics reset it.
+- [T] 2026-11-13 for A,M: `python -m bench.report <results.jsonl> --manual
+  <manual.jsonl> --output-dir data/report` exports summary JSON, CSV, Markdown,
+  and SVG timing charts. Manual input is optional. Exports show failures, missing
+  measurements, sample counts, and rehearsal sources; no live evidence claimed.
+  Checks: 203 tests passed, Ruff passed, mypy passed across 50 files. README and
+  both repo guidance type-check commands now include observer and chaos.
