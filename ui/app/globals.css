@@ -1,8 +1,8 @@
 /* parchment + oxblood palette, taken from the reference board; one accent, no gradients */
 :root {
   --paper: #e8e3d9;
-  --frame: #f1ede6;
-  --card: #f5f2ec;
+  --frame: #eeeae2;
+  --card: #f7f4ef;
   --card-sunk: #ebe6dd;
   --line: #ded7cb;
   --line-strong: #cbc1b2;

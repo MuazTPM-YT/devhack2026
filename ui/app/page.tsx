@@ -1,3 +1,11 @@
+import { Suspense } from "react";
+
+import { LiveView } from "@/components/live/live-view";
+
 export default function LivePage() {
-  return <main>Live incident</main>;
+  return (
+    <Suspense>
+      <LiveView />
+    </Suspense>
+  );
 }
