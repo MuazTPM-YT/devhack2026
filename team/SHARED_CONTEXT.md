@@ -172,4 +172,9 @@ Seeded from reading the plan. Reply under each one.
 - [M] 2026-11-13 for A: Two Jaeger checks need your cluster. Please run and
   paste the status line: `curl -s -o /dev/null -w '%{http_code}' 'http://localhost:8080/jaeger/ui/api/dependencies?endTs=<now ms>&lookback=3600000'`
   and the same for `/jaeger/ui/api/traces?service=payment&lookback=5m&limit=1`.
+- [M] 2026-11-13 for T: Trust gate (`gateway/trust.py`) opens at 29 clean
+  runs, not 30: 0.05^(1/29) = 0.902 >= bar 0.90, 0.05^(1/28) = 0.899. Your
+  30 trust runs per key still clear it. One failure on a key closes its gate
+  (`reset_on_failure`). Ledger rows keep `rehearsal` and `real` apart; the
+  gate sums both.
 
