@@ -7,7 +7,7 @@ import os
 import sqlite3
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -18,11 +18,12 @@ from fastapi import FastAPI, HTTPException
 from brain import rules
 from brain.bundle import build_bundle, collect_k8s
 from brain.culprit import fetch_error_traces, find_culprit
+from brain.gateway_client import call_tool
 from brain.graph import DependencyGraph
 from brain.llm import DiagnosisService
 from schemas import config
 from schemas.db import DEFAULT_PATH, connect
-from schemas.models import ActionRequest, Incident
+from schemas.models import ActionRequest, GatewayDecision, Incident
 
 log = logging.getLogger("brain")
 
@@ -37,13 +38,15 @@ def require_env(*names: str) -> list[str]:
 class Brain:
     def __init__(self, http: httpx.AsyncClient, observer_url: str, gateway_url: str, jaeger_url: str,
                  diagnoser: Any, k8s: Callable[[str, float], dict], conn: sqlite3.Connection,
-                 services: dict, policy: dict, clock: Callable[[], float] = time.time):
+                 services: dict, policy: dict, clock: Callable[[], float] = time.time,
+                 submit: Callable[[ActionRequest], Awaitable[GatewayDecision]] | None = None):
         self.http, self.observer_url, self.gateway_url, self.jaeger_url = http, observer_url, gateway_url, jaeger_url
         self.graph = DependencyGraph(http, jaeger_url, clock=clock)
         self.diagnoser, self.k8s, self.conn = diagnoser, k8s, conn
         self.services, self.policy, self.clock = services, policy, clock
         self.results: dict[str, dict] = {}
         self.lock = threading.Lock()
+        self.submit = submit or (lambda a: call_tool(self.gateway_url, a))
 
     async def publish(self, kind: str, incident_id: str | None, payload: dict) -> None:
         try:
@@ -119,7 +122,32 @@ class Brain:
                   "diagnosis": result.diagnosis.model_dump(mode="json") if result.diagnosis else None,
                   "llm_error": result.error, "cached": result.cached}
         self.results[incident.id] = record
+        record["gateway"] = await self.hand_over(incident, action, result.diagnosis, pattern)
         return record
+
+    # the gateway decides from here; with nothing safe to do, wake a human ourselves
+    async def hand_over(self, incident: Incident, action: ActionRequest | None, diagnosis: Any,
+                        pattern: str) -> dict:
+        from gateway.receipts import build_incident_card  # pure card builder, no cluster access
+
+        if action is None:
+            decision = GatewayDecision(decision="escalated", failed_step="rules", reason=f"no safe action ({pattern})")
+            card = build_incident_card(incident, diagnosis, decision=decision)
+            with self.lock:
+                self.conn.execute("UPDATE incidents SET state='escalated' WHERE id=?", (incident.id,))
+                self.conn.commit()
+            await self.publish("escalated", incident.id, {"card": card.model_dump(mode="json"),
+                                                          "briefing": decision.reason})
+            return decision.model_dump(mode="json")
+        try:
+            return (await self.submit(action)).model_dump(mode="json")
+        except Exception as e:  # gateway down: a human must look, the brain never acts itself
+            log.error("gateway call failed: %r", e)
+            decision = GatewayDecision(decision="escalated", failed_step="gateway", reason=type(e).__name__)
+            card = build_incident_card(incident, diagnosis, decision=decision)
+            await self.publish("escalated", incident.id, {"card": card.model_dump(mode="json"),
+                                                          "briefing": "gateway unreachable"})
+            return decision.model_dump(mode="json")
 
 
 def build_from_env() -> Brain:

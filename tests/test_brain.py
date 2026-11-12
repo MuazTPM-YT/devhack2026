@@ -10,7 +10,7 @@ from brain.main import Brain, create_app
 from brain.providers.base import InferenceResponse
 from schemas import config
 from schemas.db import connect
-from schemas.models import Incident
+from schemas.models import GatewayDecision, Incident
 
 SERVICES = config.load("services")["services"]
 POLICY = config.load("policy")
@@ -43,7 +43,7 @@ class World:
     """Fake observer + Jaeger + gateway behind one MockTransport."""
 
     def __init__(self, jaeger_up=True):
-        self.jaeger_up, self.published, self.requests = jaeger_up, [], []
+        self.jaeger_up, self.published, self.requests, self.gateway_down = jaeger_up, [], [], False
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -82,9 +82,19 @@ def make(world, responses, tmp_path):
     conn.execute("INSERT INTO incidents (id, state) VALUES ('inc-1', 'open')")
     http = httpx.AsyncClient(transport=httpx.MockTransport(world))
     k8s = {"events": [], "logs": [], "memory_ratio": None, "memory_limit": None}
-    return Brain(http, "http://obs", "http://gw", "http://p/jaeger/ui",
-                 DiagnosisService(FakeProvider(responses), tmp_path), lambda svc, now: k8s,
-                 conn, SERVICES, POLICY, clock=lambda: NOW)
+    submitted = []
+
+    async def submit(action):
+        submitted.append(action)
+        if world.gateway_down:
+            raise httpx.ConnectError("down")
+        return GatewayDecision(decision="awaiting_approval", approval_id="a1")
+
+    brain = Brain(http, "http://obs", "http://gw", "http://p/jaeger/ui",
+                  DiagnosisService(FakeProvider(responses), tmp_path), lambda svc, now: k8s,
+                  conn, SERVICES, POLICY, clock=lambda: NOW, submit=submit)
+    brain.submitted = submitted  # type: ignore[attr-defined]
+    return brain
 
 
 INC = Incident(id="inc-1", opened_at=990, onset_at=960, unhealthy=["checkout", "payment"], severity=6)
@@ -161,3 +171,26 @@ def test_post_incident_accepts_once(tmp_path):
             time.sleep(0.01)
         assert r.json()["pattern"] == "recent_change"
         assert client.get("/incidents/nope").status_code == 404
+
+
+async def test_action_goes_to_gateway(tmp_path):
+    brain = make(World(), [diagnosis_json()], tmp_path)
+    record = await brain.handle(INC)
+    assert [a.tool for a in brain.submitted] == ["rollback_deploy"]
+    assert record["gateway"]["decision"] == "awaiting_approval"
+
+
+async def test_no_action_escalates_without_gateway(tmp_path):
+    world = World(jaeger_up=False)  # fallback culprit = ad, no change on ad -> unknown, no rule action
+    brain = make(world, [diagnosis_json(causes=[], prediction=None)], tmp_path)
+    inc = INC.model_copy(update={"unhealthy": ["ad"]})
+    record = await brain.handle(inc)
+    assert record["pattern"] == "unknown" and brain.submitted == []
+    assert record["gateway"]["decision"] == "escalated" and world.published[-1]["type"] == "escalated"
+
+
+async def test_gateway_down_escalates(tmp_path):
+    world = World()
+    world.gateway_down = True
+    record = await make(world, [diagnosis_json()], tmp_path).handle(INC)
+    assert record["gateway"]["failed_step"] == "gateway" and world.published[-1]["type"] == "escalated"
