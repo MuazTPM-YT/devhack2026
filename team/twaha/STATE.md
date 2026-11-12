@@ -3,10 +3,14 @@
 **Last updated:** 2026-11-13
 **Current phase:** Phase 4 report tooling implemented; runtime integration and live proof pending
 **Branch:** `codex/twaha-measurement-reports`
-**Source baseline:** `origin/main` at `1b980a0` (includes observer #11, chaos #10, and brain #14)
+**Source baseline:** `origin/main` at `7457a56` (includes status PR #13 and all implementation dependencies)
 **Implementation:** PRs #8 and [#12](https://github.com/MuazTPM-YT/devhack2026/pull/12) merged; #12 merge commit `c6091f7`
 
 ## Done (with proof)
+
+- PR #13 merged into main as `7457a56`. Its shared-note conflict preserved both
+  teams' entries. PR #15 includes that merge without further conflicts. Final
+  pre-merge checks: 215 tests passed; Ruff passed; mypy passed across 53 files.
 
 - PR #15: https://github.com/MuazTPM-YT/devhack2026/pull/15. Merged the later
   main `1b980a0`, including M's brain runtime. Preserved both shared handoffs and
