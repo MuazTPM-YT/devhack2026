@@ -57,13 +57,14 @@ Fill the value once checked against the real cluster. Then copy it into
 | Kubernetes server version >= 1.30, ValidatingAdmissionPolicy present | A | Server v1.31.5+k3s1; `validatingadmissionpolicies` and `...bindings` in `admissionregistration.k8s.io/v1` | [A] 2026-11-13 |
 | Span-metric names (`traces_span_metrics_calls_total`, `..._duration_milliseconds_bucket`, label `service_name`) | A + M | Confirmed as written, plus `..._duration_milliseconds_count` / `_sum`. Label `service_name` present for all shop services (also `frontend-web`). Metrics reach Prometheus by OTLP push, not scrape; span_metrics flush set to 5 s | [A] 2026-11-13 (A; M to confirm) |
 | Where flagd stores flags (ConfigMap name, or file on a volume) — decides §6.2.5 | A + M | File on a volume. ConfigMap `flagd-config` is only a seed: init container copies it to emptyDir `config-rw`; flagd reads and the flagd-ui sidecar writes `/etc/flagd/demo.flagd.json` there. UI edits are lost on flagd pod restart. So §6.2.5 polling case applies | [A] 2026-11-13 (A; M to confirm) |
-| Jaeger dependencies API path | M | | |
-| Jaeger traces API path and error tag query | M | | |
+| Jaeger dependencies API path | M | `GET /api/dependencies?endTs=<ms>&lookback=<ms>` on query port 16686, returns `(caller, callee, callCount)`. Jaeger docs: internal UI API, "intentionally undocumented and subject to change". Prefix through frontend-proxy (`/jaeger/ui`) still to check on A's cluster | M, docs/source 2026-11-13 |
+| Jaeger traces API path and error tag query | M | Partly: same internal API, `GET /api/traces?service=<svc>&tags={"error":"true"}&lookback=5m&limit=20` (search params not in the docs page). Stable alternative: `/api/v3/*` (OTLP JSON). Must curl it once on A's cluster | M, docs/source 2026-11-13 |
 | Helm values keys for replicas, rolling strategy, memory limit, scrape interval | A | `components.<name>.replicas`; `components.<name>.resources.limits.memory`; no chart key for strategy (patched in `scripts/install_shop.sh`); intervals: `opentelemetry-collector.config.connectors.span_metrics.metrics_flush_interval` and env `OTEL_METRIC_EXPORT_INTERVAL` via `default.envOverrides`. See `k8s/values.yaml` | [A] 2026-11-13 |
 | Image prefix of shop images (admission policy rule, §6.5.3) | A | `ghcr.io/open-telemetry/demo:3.1.0-<service>` (19 Deployments). Others: `ghcr.io/open-feature/flagd`, `ghcr.io/valkey-io/valkey`, `jaegertracing/jaeger`, `postgres`, `quay.io/prometheus/prometheus`. Bad image `payment:v2-bad` will be local, no registry prefix | [A] 2026-11-13 |
-| MCP SDK transport call for local HTTP | M | | |
-| Python client JSON Patch content type | M | | |
-| Claude model id for `CLAUDE_MODEL` and price per token | M | | |
+| MCP SDK transport call for local HTTP | M | mcp 2.3.0 (2026-10-02): **`FastMCP` is gone**, use `from mcp.server.mcpserver import MCPServer`; `mcp.run(transport="streamable-http", host=, port=)` or mount `mcp.streamable_http_app(streamable_http_path="/mcp")`; client `from mcp import Client` (`Client("http://host:port/mcp")`) or `mcp.client.streamable_http.streamable_http_client(url)` | M, docs/source 2026-11-13 (wheel source) |
+| Python client JSON Patch content type | M | kubernetes 37.0.1: **default is always `application/json-patch+json`**, whatever the body type (`select_header_content_type` takes the first `json` match). Pass `_content_type=` on every patch: `application/json-patch+json` (list) or `application/strategic-merge-patch+json` (dict). `dry_run="All"`, `field_manager=` are kwargs | M, docs/source 2026-11-13 (wheel source) |
+| Claude model id for `CLAUDE_MODEL` and price per token | M | Superseded 2026-11-13: the team uses OpenCode Go, not Claude. See next row | M 2026-11-13 |
+| OpenCode Go endpoint, headers, model, price | M | Chat Completions at `https://opencode.ai/inference/go/openai/v1/chat/completions` (from public `GET /inference/go/v1/models`). Needs header `x-opencode-session` (without it: 400 `MissingSessionID`), own User-Agent, and the key (without it: `OpenCode Go requires an API key`). Key header format not documented; check with the real key. Model: see log | M, live probe 2026-11-13 |
 
 ---
 
@@ -111,6 +112,34 @@ Seeded from reading the plan. Reply under each one.
   (CLAUDE.md). The plan needs at least: fastapi, pydantic, kubernetes,
   mcp, anthropic, scipy (trust bound), hypothesis, discord.py, Next.js.
   Agree the list once, pinned with `~=`, in Phase 0.
+  -> [M] 2026-11-13: Keep the name `IMPLEMENTATION.md` and fix the references; CLAUDE.md and the team files already point at `IMPLEMENTATION.md`.
+  -> [M] 2026-11-13: agreed. Gateway serves `POST /ledger/rehearsal` only when started with env `ONCALL_REHEARSAL=1` (otherwise 404). Body: `{receipt_id, diagnosis_matched: bool}`. The gateway still computes prediction_held and harm itself; the harness only supplies the ground-truth match. Row goes to `source=rehearsal`. I add the env key to `.env.example` when I build it.
+  -> [M] 2026-11-13: agreed. Approver id `rehearsal-harness`, accepted only when `ONCALL_REHEARSAL=1`, never listed in `ONCALL_APPROVER_IDS`. The audit entry records `decided_by`.
+  -> [M] 2026-11-13: agreed: every chaos write (inject and reset) uses `field_manager="chaos-panel"`. Hands-off counts only journal entries after `opened_at`; a chaos write after `opened_at` (for example a reset mid-incident) does trigger hands-off, which is what we want. The journal records only `spec`/`data` diffs, so controller status and annotation writes never trigger it.
+  -> [M] 2026-11-13: agreed. `POST :7002/incidents`, body `Incident`, returns 202 `{incident_id}`. A POST with an existing id updates that incident (alert grouping). I own both ends.
+  -> [M] 2026-11-13: agreed: A writes `/chaos/shared-outage`, M writes `brain/major.py`.
+  -> [M] 2026-11-13: agreed: T owns `brain/redact.py` (C8).
+  -> [M] 2026-11-13: agreed. Prefer a new `gateway/events.py` that exposes `router` (FastAPI APIRouter) and `publish(event)` for in-process use, so the gateway does not POST to itself. I mount it with `app.include_router(events.router)`.
+  -> [M] 2026-11-13: agreed: T sets one root `pyproject.toml` + `uv.lock` (uv is installed on M's machine). Suggested commands: `uv run pytest`, `uv run ruff check .`, `uv run mypy .` (ruff, mypy, pytest as dev deps, part of Q10).
+  -> [M] 2026-11-13: M needs: fastapi, uvicorn, pydantic, kubernetes, mcp, anthropic, httpx, pyyaml, hypothesis, pytest (+ ruff, mypy as dev). Proposal: drop scipy. With `reset_on_failure: true` the gate is closed on any failure, and with 0 failures `beta.ppf(1-c, s, 1) == (1-c) ** (1/s)` exactly (10 runs 74.1%, 30 runs 90.5%, 59 runs 95.1%), so `trust.py` needs only stdlib. Each human still OKs the final list; versions pinned with `~=` and at least 14 days old.
+  -> [M] 2026-11-13: Candidate pins checked on PyPI (newest release at least 14 days old): `kubernetes~=37.0.1` (37.0.2 is from 2026-11-06, too new), `mcp~=2.3.0`, `anthropic~=2.3.0` (2.4 to 2.8 are under 14 days). mcp 2.x and anthropic 2.x are new majors; see the VERIFY rows.
+  -> [M] 2026-11-13: Drop `anthropic` from the list: the team uses OpenCode Go, an OpenAI-compatible HTTP API. One POST needs no SDK; `httpx` (already listed) or stdlib does it.
+
+- **Q11** [M] 2026-11-13 for T: C1 schema changes before `schemas/` is written:
+  (a) one `Pattern = Literal["recent_change", "resource", "protected", "unknown"]`,
+  used for `ActionRequest.pattern` (now `str`) and matching SQLite
+  `incidents.pattern`; `Cause.cause_class` stays as is (rules map cause to pattern).
+  (b) define `ActionRequest` before `Diagnosis` (or call `Diagnosis.model_rebuild()`);
+  the string forward ref fails at import otherwise.
+  (c) `model_config = ConfigDict(extra="forbid")` on `ActionRequest` and
+  `Prediction`, so checklist step 1 refuses unknown fields.
+  (d) `GatewayDecision`: default `None` on `failed_step`, `reason`, `receipt_id`,
+  `approval_id`. Reply `agreed` or counter.
+  -> [T] 2026-11-13: agreed to Q11 (a)-(d). Shared `Pattern` now types
+  `ActionRequest.pattern`, diagnosis event pattern, and diagnosis service input.
+  ActionRequest already precedes Diagnosis, extra fields are forbidden, and all
+  optional GatewayDecision fields default to None. No SQLite migration needed;
+  M's incidents.pattern column stays TEXT with these four application values.
 
 ---
 
@@ -119,4 +148,150 @@ Seeded from reading the plan. Reply under each one.
 - [plan] 2026-11-12 for all: Team files created: `team/<name>/ARCHITECTURE.md`,
   `TASK.md`, `STATE.md` for muaz, anirudh, twaha. Nothing is built yet; the
   repo holds only `IMPLEMENTATION.md`, `CLAUDE.md`, `README.md`, `LICENSE`.
+
+- [T] 2026-11-13 for M,A: User approved Twaha components plus inference adapter on
+  `codex/twaha-opencode-go`. Implementation is component-tested; no cluster code
+  or teammate entrypoints were changed. Existing C1-C10 statuses remain proposed.
+- [T] 2026-11-13 for M,A: User selected OpenCode Go subscription instead of Claude
+  API. Provider protocol and Go adapter are implemented. Required settings:
+  `INFERENCE_PROVIDER=opencode_go`, `INFERENCE_MODEL`, `OPENCODE_GO_API_KEY`.
+  No model default, CLI subprocess, Claude fallback, or paid-endpoint fallback.
+- [T] 2026-11-13 for M: Q7/Q8 implementation proposal: T owns `brain/redact.py`;
+  mount `create_events_router(EventBus(AuditLog(path)))` and
+  `create_receipts_router(ReceiptStore(path))` in your gateway. Use one audit
+  writer/worker. README contains exact imports and lifecycle boundaries.
+- [T] 2026-11-13 for M,A: C2/C3 wire proposal: SSE data is the audit envelope
+  `{seq, ts, event, prev_hash, hash}`; inner event is `{type, incident_id, payload}`.
+  SSE IDs equal audit sequences and support `Last-Event-ID` replay. UI must read
+  inner payload. Gateway must configure UI CORS if browser origins differ.
+- [T] 2026-11-13 for M: C2 payload proposal: `diagnosis_ready` includes `pattern`
+  and `culprit`; notification terminal events include `card`; approval requests
+  include `approval_id`, `card`, `diff`, `forecast`, `expires_at`. Typed payloads
+  live in `schemas/models.py`; remaining producer payloads stay extensible.
+- [T] 2026-11-13 for M: C9 storage proposal: receipt views use `receipt_views` in
+  SQLite. They contain redacted display data only. Executor must retain usable
+  inverses and verification state separately; no undo route was added here.
+- [T] 2026-11-13 for M: Approval contract proposal: notifier POSTs `decision`
+  (`approved` or `rejected`) and `decided_by`; endpoint returns `GatewayDecision`.
+  Notifier confirms approval only for `executed`. Gateway must independently
+  authenticate caller/identity, check expiry/state, and rerun safety checks.
+- [T] 2026-11-13 for M: Q2/Q3 proposal: rehearsal-only routes
+  `POST /rehearsal/approvals/{id}/decide` with `{decision: "approved"}` and
+  `POST /rehearsal/ledger` with `{incident_id, diagnosis_correct}`. Harness calls
+  them only with `--rehearsal` plus `REHEARSAL_ENABLED=true`. Server must disable
+  them by default, restrict known rehearsal incidents, and require its own
+  prediction/harm evidence before trust credit. No raw ground truth is sent.
+- [T] 2026-11-13 for A: C6 response proposal: injections return `ts`, `type`,
+  `target`; optional `should_wake` sets paging expectation. Harness needs observer
+  `/health/now` numeric severity and 60 seconds of stable health before injection.
+- [T] 2026-11-13 for M,A: User approved uv + FastAPI/Pydantic/HTTPX/discord.py/
+  Uvicorn, with pytest/pytest-asyncio/Ruff/mypy. Root `pyproject.toml`, `uv.lock`,
+  and Commands sections now exist. Other owner-specific dependencies still need
+  agreement. Run `uv sync --locked`, `uv run pytest`, `uv run ruff check .`,
+  `uv run mypy schemas brain gateway notifier bench`.
+- [T] 2026-11-13 for M,A: Offline red-team report covers 12 component checks.
+  It explicitly does not verify RBAC, admission policy, protected-target policy,
+  budgets, freshness, or auto-undo. Live runs and rehearsal trust credits remain
+  unperformed. README records integration contracts and current limitations.
+- [M] 2026-11-13 for T: Created `.gitignore` (`.env`, `data/`, `*.kubeconfig`,
+  `*.token`, `node_modules/`) and `.env.example` (`ONCALL_APPROVER_IDS`) on
+  branch `muaz/phase0-security`, because `make_kubeconfigs.sh` writes secret
+  files. Extend both freely.
+- [M] 2026-11-13 for A: `k8s/` RBAC + admission manifests and scripts are ready on
+  branch `muaz/phase0-security`. When the cluster is up, with the admin
+  kubeconfig: `kubectl apply -f k8s/`, then `./scripts/make_kubeconfigs.sh`,
+  then `./scripts/security_check.sh`. Tell M, the §6.5.5 rows need that output.
+- [M] 2026-11-13 for A: Names in my manifests that need your VERIFY values:
+  Deployment names in `k8s/rbac-agent.yaml` `resourceNames`
+  (payment, checkout, cart, frontend, recommendation, ad, email), ConfigMap
+  `flagd-config`, image prefixes `ghcr.io/open-telemetry/` and `payment:` in
+  `k8s/admission-policy.yaml`. Also keep actable Deployments at 1 to 3
+  replicas: the policy denies any agent patch outside that range.
+- [M] 2026-11-13 for T: Added `schemas/db.py` (SQLite tables §5.1, `connect()`
+  in WAL mode) next to your future schema files; no `schemas/__init__.py`
+  from me, add it if you want one. My tests are stdlib `unittest` in
+  `tests/`, run with `python3 -m unittest discover -s tests` until Q9 picks
+  the runner; pytest runs them as they are. Branch `muaz/phase1-core`.
+- [M] 2026-11-13 for A,T: `observer/journal.py` expects API JSON objects
+  (camelCase, e.g. `ApiClient().sanitize_for_serialization(obj)`), not the
+  Python client's `.to_dict()` (snake_case). Journal inverse ops are
+  `{"op": "patch", "body": ...}`, `{"op": "scale", "replicas": n}`,
+  `{"op": "rollback", "revision": "N"}`.
+- [M] 2026-11-13 for all: VERIFY rows filled for Jaeger, MCP, Python client
+  and Claude model. Three plan sketches are out of date with the pinned
+  versions: §6.4.1 (`mcp.server.fastmcp` no longer exists in mcp 2.x, use
+  `MCPServer`), §6.4.7 (kubernetes 37 always defaults to JSON Patch, so
+  strategic-merge patches must pass `_content_type`), §6.3.7 (forced
+  `tool_choice` and `temperature` return 400 on `claude-sonnet-5-5`). M
+  follows the VERIFY rows, not the sketches.
+- [M] 2026-11-13 for A: Two Jaeger checks need your cluster. Please run and
+  paste the status line: `curl -s -o /dev/null -w '%{http_code}' 'http://localhost:8080/jaeger/ui/api/dependencies?endTs=<now ms>&lookback=3600000'`
+  and the same for `/jaeger/ui/api/traces?service=payment&lookback=5m&limit=1`.
+- [M] 2026-11-13 for T: Trust gate (`gateway/trust.py`) opens at 29 clean
+  runs, not 30: 0.05^(1/29) = 0.902 >= bar 0.90, 0.05^(1/28) = 0.899. Your
+  30 trust runs per key still clear it. One failure on a key closes its gate
+  (`reset_on_failure`). Ledger rows keep `rehearsal` and `real` apart; the
+  gate sums both.
+- [M] 2026-11-13 for all: LLM provider is **OpenCode Go**, not Claude (Muaz
+  decision). Plan text that says Claude, `CLAUDE_MODEL` or Anthropic means
+  this now. Env keys (added to `.env.example` with `brain/llm.py`):
+  `OPENCODE_API_KEY`, `LLM_MODEL`. Endpoint and headers: VERIFY table.
+- [M] 2026-11-13 for T: Cost per incident for the bench: tokens x the
+  model's `cost` from `GET https://opencode.ai/inference/go/v1/models` (USD
+  per 1M tokens). Some models have a weekday multiplier there (DeepSeek:
+  2x at 01:00-04:00 and 06:00-10:00 UTC). The plan itself is a flat monthly
+  fee with per-model dollar limits (5 h: 20%, week: 50%, month: 100%).
+  Redaction (C8) still applies to every string sent to it.
+- [M] 2026-11-13 for all: Risk: OpenCode Go docs say it "is designed for
+  OpenCode and other coding agents" and clients should "Send typical coding
+  agent traffic"; "Traffic is monitored for abuse". Our brain is not a
+  coding agent. Low volume (one call per incident), but rehearsal runs add
+  up. If Go blocks us, the brain falls back to rules only (plan §6.3.7).
+- [M] 2026-11-13 for T: `brain/llm.py` `diagnose(rendered, schema, validate,
+  ...)` sends `rendered` as is. The brain must pass it through your
+  `redact()` (C8) first; llm.py does not redact. It returns token counts in
+  `meta` (`tokens_in`, `tokens_out`, `cached`) for the audit entry.
+- [M] 2026-11-13 for all: `brain/rules.py` returns `(pattern, actions)` with a
+  list, not one action: the resource case gives `restart_service` then
+  `raise_limit` (always approval). A recent change counts only on the
+  culprit's own Deployment for now; flag/ConfigMap changes are not linked
+  to a service yet (needs a mapping in `config/services.yaml`, A).
+
+- [T] 2026-11-13 for M,A: Merged origin/main at `1741b6a` into
+  `codex/twaha-opencode-go` (merge `b78792f`). Kept both sets of env keys,
+  ignore rules, and shared-context entries. Added only type annotations to
+  culprit counter/set. Combined suite: 90 passed; Ruff and mypy passed.
+  Rehearsal endpoint/env and event-router interface proposals still differ;
+  merge does not mark those contracts agreed. OpenCode Go remains the selected
+  provider under the user's instruction; imported Claude notes are historical.
+
+- [T] 2026-11-13 for M: agreed to your Q7/Q8 interface. `gateway.events.router`
+  and `await gateway.events.publish(event)` now exist. Router lifespan owns one
+  bus/audit writer; `app.include_router(events.router)` is sufficient. Optional
+  `app.state.audit_path` overrides data/audit.jsonl before startup. Explicit
+  factory injection remains supported for tests. Your gateway entrypoint was
+  not changed. Tests cover shared HTTP/in-process hash chain, restart, and SSE.
+- [T] 2026-11-13 for M: agreed to your Q2/Q3 names, superseding my earlier
+  rehearsal proposals. Client now uses `ONCALL_REHEARSAL=1`, normal
+  `/approvals/{id}/decide` with `decided_by=rehearsal-harness`, and
+  `POST /ledger/rehearsal` with `{receipt_id, diagnosis_matched}`. No receipt
+  means no credit submission; approval refusal stops the run. Server enforcement
+  and authoritative prediction/harm evidence remain yours to implement.
+- [T] 2026-11-13 for M,A: Notifier now shares `ONCALL_APPROVER_IDS` with the
+  gateway. Deprecated `DISCORD_APPROVER_IDS` and `REHEARSAL_ENABLED` are ignored;
+  update local .env files. Template uses `ONCALL_REHEARSAL=0` by default. The
+  reserved rehearsal identity is rejected in the notifier's human allowlist.
+- [T] 2026-11-13 for M: Shared database integration test confirms `receipt_views`
+  coexists with your journal/incidents/receipts tables without replacing them.
+  Schemas and event integration are ready for your IO wiring. No Kubernetes,
+  MCP, PyYAML, or Anthropic dependency was added; Go remains the provider.
+
+- [T] 2026-11-13 for M,A: Pulled main through `bacb45a` into the Twaha branch.
+  brain/llm.py conflicted: retained typed async DiagnosisService and main's sync
+  diagnose/config/body interfaces. Sync HTTP now lives behind
+  `brain/providers/opencode_go_sync.py` OpenCodeGoSyncAdapter; existing sync tests
+  pass unchanged. Both env naming sets remain available for their respective
+  interfaces. Sync caller still owns redaction/evidence validation; async service
+  retains its stricter bundle checks and deadline. Combined suite: 142 passed;
+  Ruff/mypy passed. Journal edits during merge were type annotations only.
 - [A] 2026-11-13 for M,T: Cluster `oncall` (k3d, context `k3d-oncall`) and shop (chart 0.42.6, release `my-otel-demo`, ns `shop`) run on Anirudh's machine. Rebuild: `scripts/setup_cluster.sh` then `scripts/install_shop.sh`. Service list in `config/services.yaml` (C7). Disabled: opensearch, agent, chatbot, mcp. `payment` and `checkout` have 2 replicas.
