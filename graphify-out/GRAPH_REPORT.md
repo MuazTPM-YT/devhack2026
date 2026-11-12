@@ -1,16 +1,17 @@
 # Graph Report - devhack2026  (2026-11-13)
 
 ## Corpus Check
-- 76 files · ~34,869 words
+- 95 files · ~37,969 words
 - Verdict: corpus is large enough that graph structure adds value.
+- Unclassified: 5 file(s) not represented in the graph (top: (none) 3, .example 1, .lock 1)
 
 ## Summary
-- 622 nodes · 1175 edges · 47 communities (43 shown, 4 thin omitted)
-- Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 76 edges (avg confidence: 0.56)
+- 782 nodes · 1414 edges · 53 communities (38 shown, 15 thin omitted)
+- Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 82 edges (avg confidence: 0.58)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `f6d52e27`
+- Built from commit: `43b3c1ff`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -20,7 +21,7 @@
 - 6.4 Gateway (`gateway/`) [M] P0 unless marked
 - consumer.py
 - DiagnosisService
-- models.py
+- test_chaos.py
 - AGENTS.md
 - CLAUDE.md
 - 10. Build plan
@@ -51,11 +52,17 @@
 - JournalTest
 - find_culprit
 - det
-- journal.py
+- services
 - security_check.sh
 - make_kubeconfigs.sh
 - LlmTest
 - match
+- components
+- charge.js
+- build_bad_payment.sh
+- install_shop.sh
+- setup_cluster.sh
+- smoke.sh
 
 ## God Nodes (most connected - your core abstractions)
 1. `DiagnosisService` - 25 edges
@@ -84,15 +91,15 @@
 ## Import Cycles
 - None detected.
 
-## Communities (47 total, 4 thin omitted)
+## Communities (53 total, 15 thin omitted)
 
 ### Community 0 - "NotifierState"
-Cohesion: 0.08
-Nodes (26): Interaction, Notifier, Protocol, NotificationConsumer, AsyncClient, ApprovalButton, ApprovalController, ApprovalView (+18 more)
+Cohesion: 0.07
+Nodes (27): quarantine(), redact(), redact_value(), Notifier, NotificationConsumer, ApprovalButton, ApprovalController, ApprovalView (+19 more)
 
 ### Community 1 - "test_audit.py"
-Cohesion: 0.09
-Nodes (45): Any, quarantine(), redact(), redact_value(), AuditLog, canonical(), EventBus, Any (+37 more)
+Cohesion: 0.11
+Nodes (30): AuditLog, canonical(), EventBus, verify(), active_bus(), create_events_router(), lifespan(), publish() (+22 more)
 
 ### Community 2 - "6.4 Gateway (`gateway/`) [M] P0 unless marked"
 Cohesion: 0.05
@@ -100,15 +107,15 @@ Nodes (40): 6.1 Chaos panel (`chaos/`) [A] P0, 6.2.1 Baselines (`baselines.py`),
 
 ### Community 3 - "consumer.py"
 Cohesion: 0.08
-Nodes (27): Harness, HttpTrialServices, main(), Any, AsyncClient, Path, Protocol, TrialResult (+19 more)
+Nodes (19): Harness, HttpTrialServices, main(), TrialResult, TrialServices, compare(), main(), summarize() (+11 more)
 
 ### Community 4 - "DiagnosisService"
-Cohesion: 0.12
-Nodes (34): DiagnosisResult, DiagnosisService, Path, InferenceProvider, InferenceRequest, InferenceResponse, ProviderError, Protocol (+26 more)
+Cohesion: 0.07
+Nodes (45): DiagnosisResult, DiagnosisService, InferenceProvider, InferenceRequest, InferenceResponse, ProviderError, OpenCodeGoAdapter, ActionRequest (+37 more)
 
-### Community 5 - "models.py"
-Cohesion: 0.11
-Nodes (19): BaseModel, ApprovalDecidedPayload, ApprovalRequestedPayload, CardPayload, Cause, ChecklistPayload, DiagnosisReadyPayload, Event (+11 more)
+### Community 5 - "test_chaos.py"
+Cohesion: 0.08
+Nodes (28): bad_deploy(), kubectl(), KubectlError, read_all(), record(), create_app(), bad_deploy(), do_reset() (+20 more)
 
 ### Community 6 - "AGENTS.md"
 Cohesion: 0.18
@@ -178,10 +185,6 @@ Nodes (6): 3.1 Prerequisites [A] P0, 3.2 Cluster [A] P0, 3.3 The shop [A] P0, 3.
 Cohesion: 0.40
 Nodes (5): 8.1 Unit tests [M][T] P0, 8.2 Property-based tests (`test_invariants.py`, Hypothesis) [M] P1, 8.3 Red-team suite (`tests/redteam/`) [T] P1, 8.4 Smoke test (`scripts/smoke.sh`) [A] P0, 8. Testing
 
-### Community 23 - "summarize"
-Cohesion: 0.67
-Nodes (3): main(), Path, summarize()
-
 ### Community 24 - "0. Scope and principles"
 Cohesion: 0.50
 Nodes (4): 0.1 What we are building, 0.2 Three rules everything follows, 0.3 Scope by priority, 0. Scope and principles
@@ -211,8 +214,8 @@ Cohesion: 0.14
 Nodes (10): spec_hashes(), harm_check(), ledger_effect(), service_score(), Verification, HarmCheckTest, health(), svc() (+2 more)
 
 ### Community 39 - "JournalTest"
-Cohesion: 0.08
-Nodes (16): check(), check(), counts(), eligible(), lower_bound(), Connection, record(), still_live() (+8 more)
+Cohesion: 0.07
+Nodes (25): check(), check(), counts(), eligible(), lower_bound(), record(), author(), _configmap_changes() (+17 more)
 
 ### Community 40 - "find_culprit"
 Cohesion: 0.27
@@ -222,9 +225,9 @@ Nodes (6): deepest_unhealthy(), find_culprit(), from_traces(), is_error(), Culpr
 Cohesion: 0.23
 Nodes (3): Detector, det(), DetectorTest
 
-### Community 42 - "journal.py"
-Cohesion: 0.31
-Nodes (12): author(), _configmap_changes(), _containers(), current(), _deployment_changes(), entry(), insert(), Connection (+4 more)
+### Community 42 - "services"
+Cohesion: 0.05
+Nodes (40): actable, critical, kind, actable, critical, kind, actable, critical (+32 more)
 
 ### Community 45 - "LlmTest"
 Cohesion: 0.15
@@ -234,25 +237,33 @@ Nodes (9): config_from_env(), _diagnose(), OpenCodeGoSyncAdapter, request_body()
 Cohesion: 0.29
 Nodes (7): _action(), latest_change_before_onset(), match(), to_bytes(), change(), incident(), RulesTest
 
+### Community 47 - "components"
+Cohesion: 0.06
+Nodes (30): enabled, enabled, replicas, components, agent, chatbot, checkout, mcp (+22 more)
+
+### Community 48 - "charge.js"
+Cohesion: 0.10
+Nodes (13): { ATTR_ERROR_TYPE }, cardValidator, charge(), { context, propagation, trace, metrics, SpanStatusCode }, { FlagdProvider }, flagProvider, LOYALTY_LEVEL, meter (+5 more)
+
 ## Knowledge Gaps
-- **161 isolated node(s):** `oncall-agent`, `make_kubeconfigs.sh script`, `Communication`, `Code comments`, `Workflow` (+156 more)
-  These have ≤1 connection - possible missing edges or undocumented components.
-- **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **1 isolated node(s):** `oncall-agent`
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 308 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **15 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `connect()` connect `JournalTest` to `test_audit.py`?**
-  _High betweenness centrality (0.081) - this node is a cross-community bridge._
-- **Why does `GatewayDecision` connect `test_audit.py` to `NotifierState`, `consumer.py`, `models.py`?**
-  _High betweenness centrality (0.043) - this node is a cross-community bridge._
-- **Why does `Card` connect `NotifierState` to `test_audit.py`, `models.py`?**
-  _High betweenness centrality (0.024) - this node is a cross-community bridge._
+  _High betweenness centrality (0.051) - this node is a cross-community bridge._
 - **Are the 7 inferred relationships involving `DiagnosisService` (e.g. with `InferenceProvider` and `InferenceRequest`) actually correct?**
   _`DiagnosisService` has 7 INFERRED edges - model-reasoned connections that need verification._
+- **What connects `oncall-agent` to the rest of the system?**
+  _1 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `NotifierState` be split into smaller, more focused modules?**
+  _Cohesion score 0.06964006259780908 - nodes in this community are weakly interconnected._
+- **Why does `GatewayDecision` connect `test_audit.py` to `NotifierState`, `consumer.py`, `DiagnosisService`?**
+  _High betweenness centrality (0.027) - this node is a cross-community bridge._
 - **Are the 5 inferred relationships involving `NotifierState` (e.g. with `NotificationConsumer` and `ApprovalButton`) actually correct?**
   _`NotifierState` has 5 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 7 inferred relationships involving `Card` (e.g. with `ReceiptStore` and `Notifier`) actually correct?**
-  _`Card` has 7 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 8 inferred relationships involving `FakeProvider` (e.g. with `DiagnosisService` and `InferenceRequest`) actually correct?**
-  _`FakeProvider` has 8 INFERRED edges - model-reasoned connections that need verification._
+- **Should `test_audit.py` be split into smaller, more focused modules?**
+  _Cohesion score 0.10522496371552975 - nodes in this community are weakly interconnected._
