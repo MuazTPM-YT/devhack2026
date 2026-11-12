@@ -32,3 +32,14 @@ def test_evidence_rejects_nonfinite_timestamp():
     from schemas.models import Evidence
     with pytest.raises(ValidationError):
         Evidence(id="query:x", kind="query", summary="metric", ts=float("nan"))
+
+
+@pytest.mark.parametrize("pattern", ["recent_change", "resource", "protected", "unknown"])
+def test_shared_pattern_values(action, pattern):
+    value = ActionRequest.model_validate({**action.model_dump(), "pattern": pattern})
+    assert value.pattern == pattern
+
+
+def test_action_rejects_invented_pattern(action):
+    with pytest.raises(ValidationError):
+        ActionRequest.model_validate({**action.model_dump(), "pattern": "trusted-because-model-said-so"})

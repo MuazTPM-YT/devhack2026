@@ -2,6 +2,8 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+Pattern = Literal["recent_change", "resource", "protected", "unknown"]
+
 Tool = Literal[
     "rollback_deploy", "revert_config", "restart_service", "scale", "raise_limit",
     "enable_degraded_mode",
@@ -67,7 +69,7 @@ class ActionRequest(Model):
     tool: Tool
     target: str
     params: dict[str, Any] = Field(default_factory=dict)
-    pattern: str
+    pattern: Pattern
     evidence_ids: list[str]
     prediction: Prediction | None = None
     journal_entry: int | None = None
@@ -140,7 +142,7 @@ class ApprovalDecidedPayload(Payload):
 
 
 class DiagnosisReadyPayload(Payload):
-    pattern: str
+    pattern: Pattern
     culprit: str | None
 
 

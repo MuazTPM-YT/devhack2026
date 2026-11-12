@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from brain.providers.base import InferenceProvider, InferenceRequest, ProviderError
 from brain.redact import quarantine, redact_value
-from schemas.models import ActionRequest, Diagnosis, EvidenceBundle
+from schemas.models import ActionRequest, Diagnosis, EvidenceBundle, Pattern
 
 PROMPT_VERSION = "1"
 SYSTEM = (
@@ -66,7 +66,7 @@ class DiagnosisService:
                 raise ValueError("invalid_prediction")
         return diagnosis
 
-    async def diagnose(self, bundle: EvidenceBundle, pattern: str,
+    async def diagnose(self, bundle: EvidenceBundle, pattern: Pattern,
                        rule_action: ActionRequest | None = None) -> DiagnosisResult:
         events: list[dict[str, Any]] = []
         clean = bundle.model_copy(deep=True)
