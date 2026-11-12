@@ -12,8 +12,11 @@ SERVICES = config.load("services")["services"]
 FREE = {"incident": 0, "hour": 0, "in_flight": 0}
 
 
-def act(tool="rollback_deploy", target="payment"):
-    return {"tool": tool, "target": target}
+VALID_PARAMS = {"scale": {"replicas": 2}, "raise_limit": {"memory": "512Mi"}}
+
+
+def act(tool="rollback_deploy", target="payment", params=None):
+    return {"tool": tool, "target": target, "params": VALID_PARAMS.get(tool, {}) if params is None else params}
 
 
 @pytest.mark.parametrize("action,outcome,reason", [
@@ -56,6 +59,23 @@ def test_every_actable_service_and_tool_passes_when_budget_free():
                 assert policy.check(act(tool, name), SERVICES, POLICY, FREE)[0], (tool, name)
 
 
+@pytest.mark.parametrize("tool,params", [
+    ("scale", {}), ("scale", {"replicas": 0}), ("scale", {"replicas": 4}), ("scale", {"replicas": "2"}),
+    ("scale", {"replicas": True}), ("raise_limit", {}), ("raise_limit", {"memory": "2Gi"}),
+    ("raise_limit", {"memory": "lots"}), ("raise_limit", {"memory": "0Mi"}),
+])
+def test_param_bounds_refused(tool, params):
+    assert policy.check(act(tool, params=params), SERVICES, POLICY, FREE)[:2] == (False, "refused")
+
+
+# approval requests may queue behind a running action; budgets still bind
+def test_asking_skips_in_flight_only():
+    busy = {"incident": 0, "hour": 0, "in_flight": 1}
+    assert policy.check(act(), SERVICES, POLICY, busy, asking=True)[0]
+    spent = {"incident": 3, "hour": 0, "in_flight": 1}
+    assert policy.check(act(), SERVICES, POLICY, spent, asking=True)[:2] == (False, "escalated")
+
+
 def test_policy_tools_match_schema_tools():
     assert set(POLICY["tools"]) == set(get_args(Tool))
 
@@ -81,7 +101,7 @@ def test_tool_auto_eligibility(tool, kind, auto):
 
 def test_usage_counts_incident_hour_and_in_flight(tmp_path):
     conn = connect(str(tmp_path / "db.sqlite"))
-    rows = [("i1", 1000, "success"), ("i1", 4000, "pending"), ("i2", 4500, "undone"), ("i3", 100, "pending")]
+    rows = [("i1", 1000, "success"), ("i1", 4000, "pending"), ("i2", 4500, "undone"), ("i3", 100, "watchdog_failed")]
     conn.executemany("INSERT INTO receipts (incident_id, ts, outcome) VALUES (?, ?, ?)", rows)
     assert policy.usage(conn, "i1", now=5000) == {"incident": 2, "hour": 2, "in_flight": 2}
     assert policy.usage(conn, "none", now=10_000) == {"incident": 0, "hour": 0, "in_flight": 2}
