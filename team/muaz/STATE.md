@@ -6,10 +6,19 @@ section. Only my own work here; cross-team facts go in
 
 **Last updated:** 2026-11-13
 **Current phase:** 1 (stdlib-only core done; IO wiring waits on deps + schemas)
-**Branches:** PR #1, #3 to #7 merged. Now `muaz/observer` (not pushed)
+**Branches:** PR #1, #3 to #7, #11 merged. Now `muaz/brain` (not pushed)
 
 ## Done (with proof)
 
+- Brain service on `muaz/brain`: `brain/main.py` (FastAPI `POST /incidents`,
+  `GET /incidents/{id}`, pipeline), `brain/graph.py` (Jaeger deps, 60 s
+  cache, `downstream`), `brain/culprit.py` `fetch_error_traces`,
+  `brain/bundle.py` (evidence with IDs, env names only, k8s events, last
+  state, error logs <= 50, memory ratio). Proof: `uv run pytest` -> `186
+  passed`; `ruff check .` -> `All checks passed!`; `mypy ... observer` ->
+  `no issues found in 47 source files`. Mutation check (env hiding, change
+  window, prediction attach, self-edge filter) -> 4 FAIL, all caught. Jaeger
+  response shape NOT verified live.
 - Observer service (C4) on `muaz/observer`: `observer/main.py` (FastAPI,
   detector loop, `/health/now`, `/journal`, `/baselines/refresh`, incident
   POST to brain + bus, terminal-event close), `observer/kube_watch.py`
@@ -140,9 +149,9 @@ section. Only my own work here; cross-team facts go in
 
 ## In progress
 
-- Phase 1 IO wiring: observer done (fakes only). Next: brain service
-  (`POST /incidents`, Jaeger graph + culprit fetch, bundle, rules +
-  DiagnosisService), then gateway (MCP, checklist, executor, verifier loop).
+- Phase 1 IO wiring: observer + brain done (fakes only). Next: gateway
+  (MCP server, checklist, dry run, executor `rollback_deploy`, verifier
+  loop + undo), then brain -> gateway submit.
 
 ## Blocked / waiting on
 
