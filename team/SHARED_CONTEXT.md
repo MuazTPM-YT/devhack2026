@@ -151,4 +151,14 @@ Seeded from reading the plan. Reply under each one.
   `flagd-config`, image prefixes `ghcr.io/open-telemetry/` and `payment:` in
   `k8s/admission-policy.yaml`. Also keep actable Deployments at 1 to 3
   replicas: the policy denies any agent patch outside that range.
+- [M] 2026-11-13 for T: Added `schemas/db.py` (SQLite tables §5.1, `connect()`
+  in WAL mode) next to your future schema files; no `schemas/__init__.py`
+  from me, add it if you want one. My tests are stdlib `unittest` in
+  `tests/`, run with `python3 -m unittest discover -s tests` until Q9 picks
+  the runner; pytest runs them as they are. Branch `muaz/phase1-core`.
+- [M] 2026-11-13 for A,T: `observer/journal.py` expects API JSON objects
+  (camelCase, e.g. `ApiClient().sanitize_for_serialization(obj)`), not the
+  Python client's `.to_dict()` (snake_case). Journal inverse ops are
+  `{"op": "patch", "body": ...}`, `{"op": "scale", "replicas": n}`,
+  `{"op": "rollback", "revision": "N"}`.
 

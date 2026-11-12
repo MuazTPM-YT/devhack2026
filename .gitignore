@@ -3,3 +3,4 @@ data/
 *.kubeconfig
 *.token
 node_modules/
+__pycache__/

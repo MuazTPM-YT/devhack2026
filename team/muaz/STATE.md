@@ -5,11 +5,29 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** 0 (files written, real-cluster checks blocked)
-**Branch:** `muaz/phase0-security` (not pushed)
+**Current phase:** 1 (stdlib-only core done; IO wiring waits on deps + schemas)
+**Branches:** `muaz/phase0-security` (pushed), `muaz/phase1-core` (from phase0, not pushed)
 
 ## Done (with proof)
 
+- Phase 1 stdlib-only core on `muaz/phase1-core` (Muaz chose: no new deps
+  until T's Q9/Q10). Proof: `python3 -m unittest discover -s tests` ->
+  `Ran 24 tests ... OK` on Python 3.14.9 and 3.12.12. Mutation check
+  (break sustain `>=`, culprit origin test, author status filter) -> 3 FAIL,
+  2 ERROR, so tests catch it. Lint + type check NOT RUN: no ruff/mypy yet (Q9).
+  - `schemas/db.py`: §5.1 tables, `connect()` sets WAL. `tests/test_db.py`.
+    Commit `3075f3d`.
+  - `observer/detector.py`: breach, 30 s sustain, severity, incident open,
+    grouping within 120 s, `close_incident()`. `tests/test_detector.py`.
+    Commit `fbc24b6`. ASSUMED: "open alerts" in severity = count of
+    unhealthy services.
+  - `observer/journal.py`: diff on image/env/resources/replicas/template
+    annotations/ConfigMap data, author = newest non-status manager, inverse
+    ops (`patch`, `scale`, `rollback`), `insert()`, `read()` for
+    `GET /journal`. `tests/test_journal.py`. Commit `f7dab99`.
+  - `brain/culprit.py`: origin from Jaeger JSON (`error` or
+    `otel.status_code=ERROR` tag), fallback deepest unhealthy service, onset
+    tie-break. `tests/test_culprit.py`. Commit `6892694`.
 - Scale rows fixed: agent Role now has `get` + `patch` on `deployments/scale`
   (Muaz OK'd option A). Re-ran local pre-test on a fresh `oncall-test`
   cluster: `fails: 0`, 19 PASS. Scale to 5: `denied request: replicas must
@@ -53,7 +71,9 @@ section. Only my own work here; cross-team facts go in
 
 ## In progress
 
-- nothing
+- Phase 1 IO wiring (not started): Prometheus client in detector loop,
+  kube watch, FastAPI `/health/now` + `/journal`, Jaeger fetch + graph,
+  bundle, `rules.py`, gateway executor + verifier.
 
 ## Blocked / waiting on
 
@@ -64,16 +84,18 @@ section. Only my own work here; cross-team facts go in
   executor (Phase 1).
 - A's cluster: Anirudh and Twaha are setting theirs up now (2026-11-13).
 - VERIFY values from A: Deployment names, `flagd-config` name, image prefixes.
-- Schemas (C1): waiting on T's reply to Q11.
+- Schemas (C1): waiting on T's reply to Q11. Blocks `rules.py`, bundle, gateway.
+- Deps + commands (Q9/Q10): block every network/cluster part of Phase 1.
 - Q replies need the other owners to answer `agreed`.
 
 ## Next
 
 1. Pull A's and T's work when pushed; read new SHARED_CONTEXT replies.
 2. Run the §6.5.5 table on A's cluster; paste the output here.
-3. Fill my VERIFY rows (Jaeger API paths, MCP transport, JSON Patch content
+3. When deps land: wire detector + journal to Prometheus and kube watch,
+   add `/health/now`, `/journal`; then rules, gateway, verifier.
+4. Fill my VERIFY rows (Jaeger API paths, MCP transport, JSON Patch content
    type, Claude model id + price).
-4. Phase 1: SQLite schema, detector, journal.
 
 ## Notes for my next session
 
