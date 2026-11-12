@@ -16,8 +16,9 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
                               "worst": max(values) if values else None}
         known = [row for row in trials if row.get("diagnosis_correct") is not None]
         result["diagnosis_accuracy"] = sum(row["diagnosis_correct"] for row in known) / len(known) if known else None
-        result["false_wakes"] = sum(row["wake"] and not row["should_wake"] for row in trials)
-        result["missed_wakes"] = sum(not row["wake"] and row["should_wake"] for row in trials)
+        wake_trials = [row for row in trials if row.get("wake") is not None and row.get("should_wake") is not None]
+        result["false_wakes"] = sum(row["wake"] and not row["should_wake"] for row in wake_trials) if wake_trials else None
+        result["missed_wakes"] = sum(not row["wake"] and row["should_wake"] for row in wake_trials) if wake_trials else None
         result["blocked"] = sum(row.get("blocked", 0) for row in trials)
         for metric in ("harm_clean", "prediction_held"):
             measured = [row[metric] for row in trials if row.get(metric) is not None]
@@ -36,12 +37,28 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return summary
 
 
+def compare(agent_rows: list[dict[str, Any]], manual_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    agent, manual = summarize(agent_rows), summarize(manual_rows)
+    speedup = {}
+    for scenario in sorted(set(agent) & set(manual)):
+        automated = agent[scenario]["recover_s"]["median"]
+        baseline = manual[scenario]["recover_s"]["median"]
+        speedup[scenario] = baseline / automated if automated and baseline is not None else None
+    return {"agent": agent, "manual": manual, "recovery_speedup": speedup}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("path", type=Path)
+    parser.add_argument("--manual", type=Path)
     args = parser.parse_args()
     rows = [json.loads(line) for line in args.path.read_text().splitlines() if line.strip()]
-    print(json.dumps(summarize(rows), indent=2))
+    if args.manual:
+        manual = [json.loads(line) for line in args.manual.read_text().splitlines() if line.strip()]
+        result = compare(rows, manual)
+    else:
+        result = summarize(rows)
+    print(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

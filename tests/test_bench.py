@@ -77,3 +77,12 @@ async def test_rehearsal_hooks_only_when_enabled():
         assert len(posts) == 2
         assert json.loads(posts[-1].content) == {"incident_id": "i", "diagnosis_correct": True}
         assert "ground_truth" not in posts[-1].content.decode()
+
+
+def test_manual_comparison_preserves_missing_measurements():
+    from bench.report import compare
+    result = compare([{"scenario": "bad-deploy", "recover_s": 10}],
+                     [{"scenario": "bad-deploy", "recover_s": 30, "diagnose_s": 15}])
+    assert result["recovery_speedup"]["bad-deploy"] == 3
+    assert result["manual"]["bad-deploy"]["detect_s"]["median"] is None
+    assert result["manual"]["bad-deploy"]["false_wakes"] is None
