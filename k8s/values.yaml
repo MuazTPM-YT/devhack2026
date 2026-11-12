@@ -28,6 +28,18 @@ components:
       - name: LOCUST_BROWSER_TRAFFIC_ENABLED
         value: "false"
 
+  # flagd reads ConfigMap flagd-config directly (Muaz's call), so a ConfigMap patch is the only way
+  # to change a flag and the journal sees it. Whole-dir mount: a subPath mount never updates.
+  # The flagd-ui sidecar keeps its own emptyDir copy; its edits no longer reach flagd.
+  flagd:
+    mountedEmptyDirs:
+      - name: config-rw
+        mountPath: /var/flagd-ui-copy
+    additionalVolumeMounts:
+      - name: config-ro
+        mountPath: /etc/flagd
+        readOnly: true
+
   payment:
     replicas: 2
   checkout:
