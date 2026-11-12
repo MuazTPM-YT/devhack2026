@@ -25,7 +25,7 @@ Priority: P0 = minimum deliverable, P1 = to win, P2 = stretch.
 - [x] P0 Evidence bundle with IDs on every item (§6.3.4) — proof: `tests/test_bundle.py` (pass, branch `muaz/brain`).
 - [x] P0 Rules: general rule only (§6.3.6) — proof: `tests/test_rules.py` (pass).
 - [x] P0 Gateway: schema, policy, dry run + snapshot, freshness, executor for `rollback_deploy` (§6.4.2, §6.4.3, §6.4.5, §6.4.7) — proof: `tests/test_gateway.py` (12 pass) + `tests/test_freshness.py`, branch `muaz/gateway`. Fake API server only; not run on the cluster.
-- [ ] P0 Verifier: recovery + prediction + auto-undo (§6.4.9) — partial: recovery + prediction + outcome logic done (`tests/test_verifier.py`); the polling loop and the real undo need the gateway.
+- [x] P0 Verifier: recovery + prediction + auto-undo (§6.4.9) — proof: `tests/test_verify_loop.py` (success, no-recovery undo, early abort pause/undo/resume, hands-off) + `tests/test_verifier.py`, branch `muaz/verify-loop`. Fake API server only.
 - [x] P0 `test_rules.py`, `test_culprit.py` (§8.1) — proof: both in `tests/`, pass.
 
 Exit: `scripts/smoke.sh` (A) passes: bad deploy detected, rolled back on "ask" via curl approve, verified, receipt written.
@@ -36,13 +36,13 @@ Exit: `scripts/smoke.sh` (A) passes: bad deploy detected, rolled back on "ask" v
 - [ ] P0 Executor: `revert_config`, `restart_service`, `scale`, `raise_limit`, `enable_degraded_mode` (§6.4.7)
 - [x] P0 Rules: 3 special cases (resource, protected, unknown) (§6.3.6) — proof: `tests/test_rules.py` resource, protected and unknown cases (pass).
 - [ ] P0 Claude call: forced tool, Pydantic check, one retry, 30 s timeout, token log, demo cache (§6.3.7) — now OpenCode Go via T's `DiagnosisService`: Pydantic check, retry, 30 s, token log, cache done (T's tests). Forced tool not done; no real call made yet.
-- [ ] P0 Harm check (spec/data hashes), early abort with rollout pause (§6.4.9) — partial: harm check + early-abort decision done (`tests/test_verifier.py`); rollout pause needs the executor.
+- [x] P0 Harm check (spec/data hashes), early abort with rollout pause (§6.4.9) — proof: `tests/test_verify_loop.py::test_early_abort_pauses_undoes_resumes`, `harm_check` in the success path (pass). Fake API server only.
 
 Exit: scenarios 1 to 6 in §7 behave as specified.
 
 ## Phase 3: trust, humans, proof
 
-- [ ] P1 Trust gate + ledger + tiers (§6.4.6); depends on Q2, Q3 — partial: gate + ledger done (`tests/test_trust.py`), Q2/Q3 agreed; tier wiring and the rehearsal endpoints need the gateway.
+- [x] P1 Trust gate + ledger + tiers (§6.4.6); depends on Q2, Q3 — proof: `tests/test_trust.py`; gate in checklist step 7 (auto when open, else ask); real credit + `POST /ledger/rehearsal` in `tests/test_verify_loop.py` (pass). Rehearsal runs not performed yet.
 - [ ] P1 Approvals: create, decide endpoint, expiry, re-run steps 2 to 6 (§6.4.8) — partial: create, decide endpoint, expiry check, rerun steps 2 to 6 done (`tests/test_gateway.py::test_approval_rules`); expiry sweeper and re-page not built.
 - [x] P1 Hands-off rule (§6.4.2 step 2); depends on Q4 — proof: `tests/test_gateway.py::test_human_change_after_open_hands_off` (pass); Q4 agreed by A.
 - [ ] P1 Watchdog (§6.4.10)

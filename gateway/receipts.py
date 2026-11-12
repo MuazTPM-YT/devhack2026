@@ -26,6 +26,12 @@ class ReceiptStore:
                                 (json.dumps(redact_value(receipt.model_dump(mode="json"))),))
             return int(cursor.lastrowid)
 
+    # the verifier fills outcome / prediction_held / harm_clean once it decides
+    def update(self, receipt_id: int, receipt: Receipt) -> None:
+        with self.connect() as db:
+            db.execute("UPDATE receipt_views SET body=? WHERE id=?",
+                       (json.dumps(redact_value(receipt.model_dump(mode="json"))), receipt_id))
+
     def get(self, receipt_id: int) -> Receipt | None:
         with self.connect() as db:
             row = db.execute("SELECT body FROM receipt_views WHERE id=?", (receipt_id,)).fetchone()

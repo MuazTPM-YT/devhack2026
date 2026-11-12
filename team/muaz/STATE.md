@@ -6,10 +6,24 @@ section. Only my own work here; cross-team facts go in
 
 **Last updated:** 2026-11-13
 **Current phase:** 1 (stdlib-only core done; IO wiring waits on deps + schemas)
-**Branches:** PR #1, #3 to #7, #11, #14 merged. Now `muaz/gateway` (not pushed)
+**Branches:** PR #16 (`muaz/gateway`) open. Now `muaz/verify-loop` on top of #16 (not pushed)
 
 ## Done (with proof)
 
+- Gateway part 2 + brain hand-over on `muaz/verify-loop`:
+  `Gateway.verify` (5 s health poll, early abort -> pause/undo/resume,
+  human change -> handed_off without undo, harm check, outcome), `undo`,
+  `close` (receipt outcome, ledger `real` credit except rehearsal approvals,
+  incident state, terminal event with T's card), `rehearsal_credit` +
+  `POST /ledger/rehearsal` (404 unless `ONCALL_REHEARSAL=1`, once per
+  receipt), `ReceiptStore.update` (T's file, 5 lines),
+  `brain/gateway_client.py` (MCP `call_tool`), brain escalates itself when
+  there is no action or the gateway is down. Proof: `uv run pytest` ->
+  `239 passed`; `ruff check .` -> `All checks passed!`; `mypy schemas
+  brain gateway notifier bench observer chaos` -> `no issues found in 60
+  source files`; in-process test: brain MCP client -> real gateway app ->
+  `awaiting_approval`. Mutation check (rehearsal exclusion, pause, undo on
+  failure, credit once) -> all caught. Not run on the real cluster.
 - Gateway part 1 on `muaz/gateway`: `gateway/checklist.py` (steps 1 to 8,
   first failure decides, terminal events with T's card), `gateway/policy.py`,
   `gateway/dryrun.py` (previous ReplicaSet template, JSON Patch with
@@ -164,15 +178,14 @@ section. Only my own work here; cross-team facts go in
 
 ## In progress
 
-- Phase 1 IO wiring: observer, brain, gateway part 1 done (fakes only).
-  Next: gateway part 2 (verifier loop, auto-undo, `incident_resolved`,
-  ledger update) and brain -> gateway MCP submit. Then smoke on A's machine.
+- Phase 1 spine complete in code (fakes only). Next: A runs
+  `scripts/smoke.sh` on the cluster with observer, brain, gateway up; fix
+  what the real API server and Jaeger show. Then Phase 2 tools.
 
 ## Blocked / waiting on
 
-- `POST /approvals/{id}/decide` has no caller authentication beyond the
-  approver allowlist (bind to 127.0.0.1). Needs Muaz's call if a shared
-  secret header is wanted.
+- Approval auth: Muaz chose allowlist only, gateway on 127.0.0.1 (no
+  shared secret).
 - JSON Patch `test` failure status (assumed 422 with "test" in the body ->
   handed_off) not verified on a real API server.
 - **§6.5.5 security acceptance table: BLOCKED.** A's cluster is not up. No
