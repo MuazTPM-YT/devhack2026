@@ -6,10 +6,25 @@ section. Only my own work here; cross-team facts go in
 
 **Last updated:** 2026-11-13
 **Current phase:** 1 (stdlib-only core done; IO wiring waits on deps + schemas)
-**Branches:** phase 0 + phase 1 core merged to `main` (PR #1, #3). Now `muaz/verify-rows` (not pushed)
+**Branches:** phase 0, phase 1 core, verify rows merged to `main` (PR #1, #3, #4); old branches deleted on GitHub. Now `muaz/phase1-logic` (not pushed)
 
 ## Done (with proof)
 
+- Gateway pure logic on `muaz/phase1-logic`, stdlib only. Proof:
+  `python3 -m unittest discover -s tests` -> `Ran 45 tests ... OK` (3.14.9
+  and 3.12.12). Mutation check: rule-change, harm unexpected-change,
+  right-by-accident mutations -> 3 FAIL. Lint + type check NOT RUN (Q9).
+  - `gateway/freshness.py` + `journal.current()` / `still_live()`
+    (§6.4.5). `tests/test_freshness.py`. Commit `d69d46c`.
+  - `gateway/trust.py`: closed-form bound, eligibility, ledger `record()` /
+    `counts()`, `check()` returns receipt numbers (§6.4.6). Gate opens at
+    29 clean runs. Fails loud if `reset_on_failure` is false.
+    `tests/test_trust.py`. Commit `e07fedb`.
+  - `gateway/verifier.py`: `Verification.step()` (early abort, hands-off,
+    15 s stable recovery, prediction, collateral seconds), `outcome()`,
+    `ledger_effect()`, `harm_check()`; `gateway/dryrun.py`
+    `spec_hashes()` (spec/data only) (§6.4.9, §6.4.3). `tests/test_verifier.py`.
+    Commit `08b7860`.
 - My VERIFY rows filled in `team/SHARED_CONTEXT.md` (commit `e90fd78`).
   Proof is the source each came from:
   - Claude: pricing page, `claude-sonnet-5-5` $2 in / $10 out per MTok.
@@ -86,7 +101,7 @@ section. Only my own work here; cross-team facts go in
 
 - Phase 1 IO wiring (not started): Prometheus client in detector loop,
   kube watch, FastAPI `/health/now` + `/journal`, Jaeger fetch + graph,
-  bundle, `rules.py`, gateway executor + verifier.
+  bundle, `rules.py`, gateway checklist + executor, verifier loop + undo.
 
 ## Blocked / waiting on
 
