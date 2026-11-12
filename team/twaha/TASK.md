@@ -12,7 +12,7 @@ have offline test evidence; live acceptance stays open below.
 
 - [x] P0 `.gitignore` covers secrets, local data, kubeconfigs, and dependencies (§2)
 - [x] P0 `.env.example`: OpenCode Go, Discord, shared `ONCALL_APPROVER_IDS`, rehearsal disabled by default
-- [x] P0 Initial `AGENTS.md` copied from `CLAUDE.md`; later command edits remain owner-managed
+- [x] P0 Repo guidance and README type-check commands include observer and chaos packages
 - [x] P0 Python 3.12 manifest and `uv.lock`, minor version constraints, approved dependencies (Q9, Q10)
 - [x] P0 Shared schemas accepted with M Q11; imports and schema tests pass (§5.2, C1)
 - [x] P0 Event names from §5.3 and typed payloads used by implemented consumers (`tests/test_schemas.py`)
@@ -48,7 +48,9 @@ have offline test evidence; live acceptance stays open below.
 - [ ] P1 Accuracy runs: 10 per scenario 1 to 5 (§9.1)
 - [ ] P1 Manual baseline: teammate using only kubectl and UIs, 3 runs per scenario in `bench/manual_baseline.md` (§9.2)
 - [x] P1 Report code: timings, accuracy, wakes, verification, tokens, manual comparison (`bench/report.py`, `tests/test_bench.py`)
-- [ ] P1 Produce measured tables and charts from live trials (§9.3)
+- [x] P1 Export JSON, CSV, Markdown tables, and SVG timings; validate inputs and expose sample counts (`tests/test_bench_export.py`, §9.3)
+- [x] P1 Require current observer metrics for the entire pre-injection healthy window (`tests/test_bench_recovery.py`)
+- [ ] P1 Collect live trials and publish their measured tables and charts (§9.3)
 - [ ] P1 Card verification study with 5 people
 
 ## Phase 5: freeze
@@ -67,10 +69,12 @@ PR #12 merged as `c6091f7`. Its verified source had 160 passing tests,
 Ruff passing, and mypy passing across 37 source files. The older 166-test
 count included the retired synchronous provider tests.
 
-Current main also includes M's observer from PR #11. Combined-tree validation: 174 tests passed; Ruff passed; mypy passed
-across 44 source files. Two upstream deprecation warnings remain. A reports the cluster and shop running
-on A's machine; live integration still needs service access, M's brain and
-gateway runtime, and authoritative approval/rehearsal handlers.
+Merged main through `816de30`, including observer PR #11 and chaos PR #10.
+Shared-note conflict kept both teams' entries. Current branch adds benchmark
+readiness checks and report exports. Full suite: 203 passed; Ruff passed;
+mypy passed across 50 source files. Two upstream deprecation warnings remain.
+A reports the cluster and shop running on A's machine. Live integration still
+needs service access, M's brain/gateway runtime, and approval/rehearsal handlers.
 
 No live provider/Discord checks, incident measurements, overnight trust
 credits, manual trials, or card study are claimed complete.

@@ -4,8 +4,9 @@ DevHack 2026 incident response agent. The model proposes a diagnosis and action.
 Deterministic rules and the safety gateway decide whether an action can run.
 The executor verifies recovery and retains responsibility for undo.
 
-This branch builds Twaha's components and the OpenCode Go adapter. It does not
-contain the cluster, detector, remediation executor, gateway policy engine, or UI.
+The repository includes Twaha's components, the OpenCode Go adapter, the observer,
+and initial cluster/chaos tooling. The brain/gateway runtime, remediation executor,
+policy checklist, and UI still need integration.
 `IMPLEMENTATION.md` is the current plan; `docs/PLAN.md` contains conflicting older
 contracts. Team contracts remain proposed until affected owners agree.
 
@@ -18,7 +19,7 @@ records exact packages. The resolver excludes releases after 2026-10-29.
 uv sync --locked
 uv run --locked pytest
 uv run --locked ruff check .
-uv run --locked mypy schemas brain gateway notifier bench
+uv run --locked mypy schemas brain gateway notifier bench observer chaos
 ```
 
 Copy `.env.example` to `.env`, then fill only the settings for the service being
@@ -148,7 +149,9 @@ The notifier and Go adapter are not exercised live by the offline suite.
 The harness resets before every trial, waits for 60 seconds of zero severity,
 and times out after 300 seconds. Chaos injection responses must contain `ts`,
 `type`, and `target`; optional `should_wake` sets the trial's expected paging.
-The observer must return numeric `severity` from `/health/now`.
+The observer must return numeric `severity` and `prometheus_ok` from `/health/now`.
+Startup 503 responses are retried within the existing deadline. The full stability
+window requires zero severity and `prometheus_ok=true`; stale metrics reset it.
 
 ```sh
 uv run --locked --env-file .env python -m bench.harness --scenario bad-deploy --runs 10
@@ -159,6 +162,8 @@ uv run --locked --env-file .env python -m bench.harness --scenario bad-deploy --
 uv run --locked python -m bench.trust_report data/oncall.db
 # After manual trials exist:
 uv run --locked python -m bench.report bench/results.jsonl --manual data/manual-results.jsonl
+# Export tables and chart files from recorded trials:
+uv run --locked python -m bench.report bench/results.jsonl --manual data/manual-results.jsonl --output-dir data/report
 uv run --locked pytest tests/redteam --junitxml=data/redteam.xml
 uv run --locked python -m bench.redteam data/redteam.xml
 ```
@@ -170,6 +175,17 @@ may supply `tier`, `failed_customer_requests`, `harm_clean`, `prediction_held`,
 accuracy, wakes, verification samples, forecast error, and token usage. Token
 usage is not reported as cash spent under a subscription. Manual timing records
 are described in `bench/manual_baseline.md`; no manual measurements exist yet.
+
+`--output-dir` writes `summary.json`, `timings.csv`, `report.md`, and `timings.svg`.
+JSON output on stdout remains available. The SVG uses a common seconds scale:
+filled bars show medians and outlines show worst timings. Zero is measured;
+missing values have no bar. Tables include attempt/failure counts and measurement
+sample counts. Manual-only scenarios remain visible. Source and outcome counts
+identify rehearsal data; these reports do not claim production evidence or grant
+authorization. Timing comparisons use only recorded samples, so inspect failures
+and missing recovery counts before interpreting speedup. Invalid durations,
+counts, booleans, or usage values fail with the input line number before export.
+No recorded trials means an explicit empty report. Exports add no dependencies.
 
 `--resume` treats `--runs` as the total attempt count per scenario in that output
 file. Failed attempts count, so recovery never silently replaces failed evidence
