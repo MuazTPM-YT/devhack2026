@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from gateway import events
@@ -22,6 +22,11 @@ from schemas.db import DEFAULT_PATH, connect
 class Decide(BaseModel):
     decision: Literal["approved", "rejected"]
     decided_by: str
+
+
+class RehearsalCredit(BaseModel):
+    receipt_id: int
+    diagnosis_matched: bool
 
 
 def require_env(*names: str) -> list[str]:
@@ -59,6 +64,8 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
         async with contextlib.AsyncExitStack() as stack:
             await stack.enter_async_context(mcp.session_manager.run())
             yield
+            for task in list(holder["gw"].tasks):
+                task.cancel()
             if gateway is None:
                 await holder["gw"].http.aclose()
 
@@ -76,6 +83,13 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
     async def decide(approval_id: str, body: Decide) -> dict:
         d = await holder["gw"].decide(approval_id, body.decision, body.decided_by)
         return d.model_dump(mode="json")
+
+    # Q2: bench-only; 404 unless the gateway started with ONCALL_REHEARSAL=1
+    @app.post("/ledger/rehearsal")
+    def ledger_rehearsal(body: RehearsalCredit) -> dict:
+        if os.environ.get("ONCALL_REHEARSAL") != "1":
+            raise HTTPException(404, "rehearsal mode is off")
+        return holder["gw"].rehearsal_credit(body.receipt_id, body.diagnosis_matched)
 
     @app.get("/ledger")
     def ledger() -> list[dict]:

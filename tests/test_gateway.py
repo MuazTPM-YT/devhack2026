@@ -60,11 +60,12 @@ class FakeApps:
         if fail:
             raise fail
         new = copy.deepcopy(self.dep)
-        new["spec"]["template"] = patch[1]["value"]
+        for op in patch[1:]:
+            new["spec"][op["path"].rsplit("/", 1)[1]] = op["value"]
         if self.dry_extra:
             new["spec"]["replicas"] = 9
         if not dry_run:
-            new["metadata"]["resourceVersion"] = "101"
+            new["metadata"]["resourceVersion"] = str(int(new["metadata"]["resourceVersion"]) + 1)
             self.dep = new
         return Resp(new)
 
