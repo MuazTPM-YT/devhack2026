@@ -8,6 +8,7 @@ import { useReceipt } from "@/lib/use-receipt";
 
 import { Blast } from "./blast";
 import { Checklist } from "./checklist";
+import { Evidence } from "./evidence";
 import { Severity } from "./severity";
 import { StageStrip } from "./stage-strip";
 import styles from "./live-view.module.css";
@@ -55,6 +56,7 @@ export function LiveView() {
         <Blast incident={incident} className={styles.span4} />
         <Severity incident={incident} receipt={receipt} className={styles.span5} />
         <Checklist incident={incident} className={styles.span3} />
+        <Evidence incident={incident} className={styles.span4} />
       </div>
     </div>
   );
