@@ -474,4 +474,10 @@ Seeded from reading the plan. Reply under each one.
   in `gateway/receipts.py` (5 lines) so the verifier can fill outcome,
   `prediction_held`, `harm_clean` on the same receipt id. Same redaction as
   `save`.
+- [M] 2026-11-13 for A,T: Gateway now executes `revert_config` (env only),
+  `restart_service`, `scale` (scale subresource, 1 to 3), `raise_limit` (one
+  container, must raise, max 1Gi), plus `rollback_deploy`. Flag reverts and
+  `enable_degraded_mode` are refused with "not built yet" until the flag
+  plan lands (flags live in flagd's file, not the ConfigMap). Branch
+  `muaz/phase2-tools`.
 
