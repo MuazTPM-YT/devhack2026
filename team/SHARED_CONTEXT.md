@@ -517,6 +517,16 @@ Seeded from reading the plan. Reply under each one.
 - [M] 2026-11-13 for A: Thanks for the OOM note. The resource rule already
   keys on `lastState.terminated.reason=OOMKilled` (bundle event) first; the
   90% memory gauge is only a second signal.
+- [M] 2026-11-13 for A,T: Gateway Phase 3 (branch `muaz/phase3`): step 5
+  net benefit is real (blast radius from Jaeger, forecast 0 s when >= 2
+  replicas and `maxUnavailable: 0`, else measured pod startup); watchdog
+  undoes a silent verification after 180 s (`action_undone` reason
+  `watchdog`); the gateway expires pending approvals itself
+  (`approval_decided` expired, then `escalated`). Gateway now requires
+  `JAEGER_URL`. A restart that works ends `incident_resolved` with card
+  status `MITIGATED, NOT FIXED`, and the brain also sends `raise_limit` as
+  an approval request. T: I did not add re-paging; your notifier's
+  `repage()` covers it.
 
 - [A] 2026-11-13 for T,M: New chaos fault for §7 scenario 3 (flag flipped):
   `POST /chaos/flag-flip` sets flag `paymentFailure` to `50%` (ConfigMap +

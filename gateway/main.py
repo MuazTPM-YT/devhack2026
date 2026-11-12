@@ -1,5 +1,6 @@
 # gateway process, port 7003 (IMPLEMENTATION.md §6.4): MCP tools + HTTP. The only write identity.
 # Run: uv run --locked --env-file .env uvicorn gateway.main:app --host 127.0.0.1 --port 7003
+import asyncio
 import contextlib
 import os
 from contextlib import asynccontextmanager
@@ -40,11 +41,15 @@ def build_from_env() -> Gateway:
     from kubernetes import client
     from kubernetes import config as kube_config
 
-    kubeconfig, observer = require_env("AGENT_KUBECONFIG", "OBSERVER_URL")
+    from brain.graph import DependencyGraph
+
+    kubeconfig, observer, jaeger = require_env("AGENT_KUBECONFIG", "OBSERVER_URL", "JAEGER_URL")
     api = kube_config.new_client_from_config(config_file=kubeconfig)
+    http = httpx.AsyncClient()
     return Gateway(connect(DEFAULT_PATH, shared=True), client.AppsV1Api(api), client.CoreV1Api(api),
-                   httpx.AsyncClient(), observer, config.load("services")["services"], config.load("policy"),
-                   events.publish, ReceiptStore(Path(DEFAULT_PATH)), approvers_from_env())
+                   http, observer, config.load("services")["services"], config.load("policy"),
+                   events.publish, ReceiptStore(Path(DEFAULT_PATH)), approvers_from_env(),
+                   graph=DependencyGraph(http, jaeger))
 
 
 def create_app(gateway: Gateway | None = None) -> FastAPI:
@@ -63,7 +68,10 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
         app.state.gateway = holder["gw"]
         async with contextlib.AsyncExitStack() as stack:
             await stack.enter_async_context(mcp.session_manager.run())
+            upkeep = asyncio.create_task(holder["gw"].upkeep()) if gateway is None else None
             yield
+            if upkeep:
+                upkeep.cancel()
             for task in list(holder["gw"].tasks):
                 task.cancel()
             if gateway is None:

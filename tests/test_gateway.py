@@ -57,7 +57,9 @@ class FakeApps:
     def __init__(self):
         self.dep = {"metadata": {"name": "payment", "resourceVersion": "100",
                                  "annotations": {"deployment.kubernetes.io/revision": "2"}},
-                    "spec": {"replicas": 2, "template": template(BAD)}}
+                    "spec": {"replicas": 2, "template": template(BAD),  # strategy as scripts/install_shop.sh sets it
+                             "strategy": {"type": "RollingUpdate",
+                                          "rollingUpdate": {"maxUnavailable": 0, "maxSurge": 1}}}}
         self.rss = [rs(1, GOOD), rs(2, BAD)]
         self.patches, self.fail_real, self.fail_dry, self.dry_extra = [], None, None, False
 

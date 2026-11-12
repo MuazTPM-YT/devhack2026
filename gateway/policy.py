@@ -9,12 +9,15 @@ def usage(conn: sqlite3.Connection, incident_id: str, now: float | None = None) 
     now = time.time() if now is None else now
     one = conn.execute("SELECT COUNT(*) FROM receipts WHERE incident_id=?", (incident_id,)).fetchone()[0]
     hour = conn.execute("SELECT COUNT(*) FROM receipts WHERE ts >= ?", (now - 3600,)).fetchone()[0]
-    flight = conn.execute("SELECT COUNT(*) FROM receipts WHERE outcome='pending'").fetchone()[0]
+    # a failed watchdog undo keeps blocking new actions until a human clears it
+    flight = conn.execute("SELECT COUNT(*) FROM receipts WHERE outcome IN ('pending', 'watchdog_failed')").fetchone()[0]
     return {"incident": one, "hour": hour, "in_flight": flight}
 
 
 # -> (passed, outcome on failure, reason)
-def check(action: dict, services: dict, policy: dict, used: dict[str, int]) -> tuple[bool, str, str | None]:
+# asking=True: the call can only end in an approval request, so an action still in flight doesn't block it
+def check(action: dict, services: dict, policy: dict, used: dict[str, int],
+          asking: bool = False) -> tuple[bool, str, str | None]:
     if action["tool"] not in policy["tools"]:
         return False, "refused", f"tool {action['tool']} not allowed"
     svc = services.get(action["target"])
@@ -30,7 +33,7 @@ def check(action: dict, services: dict, policy: dict, used: dict[str, int]) -> t
     b = policy["budgets"]
     if used["incident"] >= b["max_actions_per_incident"] or used["hour"] >= b["max_actions_per_hour"]:
         return False, "escalated", "action budget used up"
-    if used["in_flight"] >= b["max_in_flight"]:
+    if used["in_flight"] >= b["max_in_flight"] and not asking:
         return False, "refused", "another action is still being verified"
     return True, "", None
 
