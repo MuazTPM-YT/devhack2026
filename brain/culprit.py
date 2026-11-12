@@ -1,6 +1,23 @@
 # culprit from Jaeger traces (IMPLEMENTATION.md §6.3.2). Traces are Jaeger query API JSON:
 # {"spans": [{"spanID", "processID", "references", "tags"}], "processes": {pid: {"serviceName"}}}.
+import json
 from collections import Counter
+
+import httpx
+
+
+# ~20 recent error traces per service, last 5 min. VERIFY params/path on A's cluster (internal Jaeger API)
+async def fetch_error_traces(http: httpx.AsyncClient, jaeger_url: str, services: list[str], now: float,
+                             lookback_s: float = 300, limit: int = 20) -> list[dict]:
+    traces: dict[str, dict] = {}
+    for svc in services:
+        r = await http.get(f"{jaeger_url}/api/traces", timeout=10, params={
+            "service": svc, "tags": json.dumps({"error": "true"}), "limit": limit,
+            "start": int((now - lookback_s) * 1e6), "end": int(now * 1e6)})
+        r.raise_for_status()
+        for t in r.json().get("data") or []:
+            traces[t["traceID"]] = t
+    return list(traces.values())
 
 
 def is_error(span: dict) -> bool:

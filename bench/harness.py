@@ -175,10 +175,21 @@ class HttpTrialServices:
         async with asyncio.timeout(self.timeout_s):
             while True:
                 response = await self.client.get(f"{self.observer_url}/health/now")
+                if response.status_code == 503:
+                    stable_since = None
+                    await asyncio.sleep(1)
+                    continue
                 response.raise_for_status()
-                healthy = response.json()["severity"] == 0
-                stable_since = (stable_since or time.monotonic()) if healthy else None
-                if stable_since is not None and time.monotonic() - stable_since >= self.stable_s:
+                health = response.json()
+                severity = health.get("severity")
+                healthy = (health.get("prometheus_ok") is True
+                           and type(severity) in (int, float) and severity == 0)
+                now = time.monotonic()
+                if not healthy:
+                    stable_since = None
+                elif stable_since is None:
+                    stable_since = now
+                if stable_since is not None and now - stable_since >= self.stable_s:
                     return
                 await asyncio.sleep(1)
 

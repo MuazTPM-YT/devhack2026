@@ -372,6 +372,32 @@ Seeded from reading the plan. Reply under each one.
   graph rebuilt. Merged checks: 160 passed, Ruff/mypy and shell syntax passed.
   This PR adds verifier safety fixes, resumable benchmark observation, and
   read-only trust reporting. No real incident/trust runs performed.
+
+- [T] 2026-11-13 for M,A: PR #12 merged as `c6091f7`; Twaha TASK.md and
+  STATE.md now separate completed components from pending live acceptance.
+  Current main `23eda91` also includes observer PR #11. Combined checks:
+  174 tests passed, Ruff passed, mypy passed across 44 source files; two
+  upstream deprecation warnings. No live incident runs or trust credits claimed.
+- [M] 2026-11-13 for A,T: Brain service built, branch `muaz/brain`. Run:
+  `uv run --locked --env-file .env uvicorn brain.main:app --host 127.0.0.1 --port 7002`.
+  Env: `OBSERVER_URL`, `GATEWAY_URL`, `JAEGER_URL` (default in
+  `.env.example`: `http://127.0.0.1:8080/jaeger/ui` via frontend-proxy),
+  `READER_KUBECONFIG`, plus T's `INFERENCE_*` / `OPENCODE_GO_API_KEY`.
+  `POST :7002/incidents` (202, first POST per id wins) and
+  `GET :7002/incidents/{id}` (pattern, action, followups, diagnosis,
+  llm_error; 404 while running). The action is not sent to the gateway yet;
+  that is the next step (gateway MCP).
+- [M] 2026-11-13 for T: Brain publishes `culprit_found` {culprit, victims,
+  from_traces}, `bundle_built` {counts}, `rule_matched` {pattern, tools},
+  each event from `DiagnosisService` as returned, then `diagnosis_ready`
+  {pattern, culprit}. The rule's action gets the model's `prediction` when
+  the rule had none; the model never changes the rule's tool or target.
+- [M] 2026-11-13 for A: The brain assumes Jaeger answers
+  `/api/dependencies` with `{data: [{parent, child, callCount}]}` and
+  `/api/traces?service=&tags={"error":"true"}&start=&end=&limit=` (start/end
+  in microseconds). Your 2 curls from my earlier entry confirm or break
+  this; please paste one response body (first 300 chars) for each.
+
 - [A] 2026-11-13 for T: Chaos API (C6) is live on `anirudh/phase1-chaos`. Run
   `uv run uvicorn chaos.main:app --host 127.0.0.1 --port 7004`. Inject returns
   `{ts, type, target}` with `ts` = `time.time()` (same clock as audit records).
@@ -392,6 +418,62 @@ Seeded from reading the plan. Reply under each one.
   terminal events on `:7003/events`; it cannot pass until the spine runs. The
   mypy command should also cover `chaos` (`uv run mypy schemas brain gateway
   notifier bench chaos`); proposing T adds it to CLAUDE.md Commands.
+- [M] 2026-11-13 for A,T: Gateway part 1, branch `muaz/gateway`. Run:
+  `uv run --locked --env-file .env uvicorn gateway.main:app --host 127.0.0.1 --port 7003`.
+  Env: `AGENT_KUBECONFIG`, `OBSERVER_URL`, `ONCALL_APPROVER_IDS` (+
+  `ONCALL_REHEARSAL=1` adds `rehearsal-harness`). Routes: `/health`,
+  `/approvals/{id}/decide` {decision: approved|rejected, decided_by} ->
+  `GatewayDecision`, `/ledger`, T's `/events`, `/events/publish`,
+  `/receipts/{id}`, and MCP at `/mcp` (6 tools; `target` enum = actable
+  services). MCP only answers Host `127.0.0.1`/`localhost` (DNS-rebinding
+  guard).
+- [M] 2026-11-13 for T: Gateway publishes `checklist_step` per step,
+  `approval_requested` (card, approval_id, diff, forecast, expires_at),
+  `approval_decided`, `action_executed` {receipt_id, tool, target}, and on a
+  stop `escalated` / `handed_off` / `incident_resolved` (problem gone) with a
+  `build_incident_card` card. Receipts go to your `ReceiptStore` and to my
+  `receipts` table with the same id (mine keeps the undo template).
+- [M] 2026-11-13 for A: Smoke still needs gateway part 2 (verifier loop ->
+  `incident_resolved`) and the brain -> gateway call. Until then a curl
+  approve executes the rollback but no terminal event follows.
+- [M] 2026-11-13 for all: Added `mcp~=1.30.0` (Muaz approved). mcp 2.x needs
+  `pydantic>=2.12`, we pin `~=2.11.7`. So the VERIFY row's mcp 2.3.0 API
+  (`MCPServer`) does not apply; we use `mcp.server.fastmcp.FastMCP`.
+
+
+- [T] 2026-11-13 for M,A: Merged main through `816de30` (observer and chaos),
+  preserving both sides of the shared-note conflict. Benchmark readiness now
+  retries observer startup 503 and requires numeric zero severity plus
+  `prometheus_ok=true` throughout the stability window. Stale metrics reset it.
+- [T] 2026-11-13 for A,M: `python -m bench.report <results.jsonl> --manual
+  <manual.jsonl> --output-dir data/report` exports summary JSON, CSV, Markdown,
+  and SVG timing charts. Manual input is optional. Exports show failures, missing
+  measurements, sample counts, and rehearsal sources; no live evidence claimed.
+  Checks: 203 tests passed, Ruff passed, mypy passed across 50 files. README and
+  both repo guidance type-check commands now include observer and chaos.
+
+- [T] 2026-11-13 for M,A: PR #15 now includes main `1b980a0` and brain PR #14.
+  Shared-note conflicts retained both sides; combined code graph rebuilt.
+  Final checks: 215 tests passed, Ruff passed, mypy passed across 53 files.
+  TASK.md now marks brain result-event forwarding implemented. Live gateway
+  delivery, action handoff, approvals, and trial collection remain pending.
+- [M] 2026-11-13 for A,T: Spine complete in code, branch `muaz/verify-loop`
+  (on top of PR #16). Brain sends its action to the gateway over MCP
+  (`/mcp`); no action or gateway down -> brain publishes `escalated` itself.
+  After execute, the gateway polls `/health/now` every 5 s and ends with
+  `incident_resolved` (success or right by accident), `escalated` (undone,
+  undo failed) or `handed_off` (human change; no undo). Also publishes
+  `verify_tick`, `harm_check`, `early_abort`, `action_undone`. A: smoke can
+  run once observer (7001), brain (7002), gateway (7003) are up.
+- [M] 2026-11-13 for T: `POST /ledger/rehearsal` {receipt_id,
+  diagnosis_matched} is live: 404 unless `ONCALL_REHEARSAL=1`; credits only
+  receipts approved by `rehearsal-harness`, once, after the verifier
+  finished; `pending`, `handed_off`, `right_by_accident` earn nothing.
+  Real approvals credit `source=real` on success / failure automatically.
+- [M] 2026-11-13 for T: I added `ReceiptStore.update(receipt_id, receipt)`
+  in `gateway/receipts.py` (5 lines) so the verifier can fill outcome,
+  `prediction_held`, `harm_clean` on the same receipt id. Same redaction as
+  `save`.
 - [A] 2026-11-13 for T,M: All four chaos faults are live on
   `anirudh/phase2-faults`; routes match `bench/harness.py` SCENARIOS.
   `broken-config` sets checkout `PAYMENT_ADDR=payment:9999` (checkout server
