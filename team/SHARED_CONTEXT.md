@@ -57,13 +57,13 @@ Fill the value once checked against the real cluster. Then copy it into
 | Kubernetes server version >= 1.30, ValidatingAdmissionPolicy present | A | | |
 | Span-metric names (`traces_span_metrics_calls_total`, `..._duration_milliseconds_bucket`, label `service_name`) | A + M | | |
 | Where flagd stores flags (ConfigMap name, or file on a volume) — decides §6.2.5 | A + M | | |
-| Jaeger dependencies API path | M | | |
-| Jaeger traces API path and error tag query | M | | |
+| Jaeger dependencies API path | M | `GET /api/dependencies?endTs=<ms>&lookback=<ms>` on query port 16686, returns `(caller, callee, callCount)`. Jaeger docs: internal UI API, "intentionally undocumented and subject to change". Prefix through frontend-proxy (`/jaeger/ui`) still to check on A's cluster | M, docs/source 2026-11-13 |
+| Jaeger traces API path and error tag query | M | Partly: same internal API, `GET /api/traces?service=<svc>&tags={"error":"true"}&lookback=5m&limit=20` (search params not in the docs page). Stable alternative: `/api/v3/*` (OTLP JSON). Must curl it once on A's cluster | M, docs/source 2026-11-13 |
 | Helm values keys for replicas, rolling strategy, memory limit, scrape interval | A | | |
 | Image prefix of shop images (admission policy rule, §6.5.3) | A | | |
-| MCP SDK transport call for local HTTP | M | | |
-| Python client JSON Patch content type | M | | |
-| Claude model id for `CLAUDE_MODEL` and price per token | M | | |
+| MCP SDK transport call for local HTTP | M | mcp 2.3.0 (2026-10-02): **`FastMCP` is gone**, use `from mcp.server.mcpserver import MCPServer`; `mcp.run(transport="streamable-http", host=, port=)` or mount `mcp.streamable_http_app(streamable_http_path="/mcp")`; client `from mcp import Client` (`Client("http://host:port/mcp")`) or `mcp.client.streamable_http.streamable_http_client(url)` | M, docs/source 2026-11-13 (wheel source) |
+| Python client JSON Patch content type | M | kubernetes 37.0.1: **default is always `application/json-patch+json`**, whatever the body type (`select_header_content_type` takes the first `json` match). Pass `_content_type=` on every patch: `application/json-patch+json` (list) or `application/strategic-merge-patch+json` (dict). `dry_run="All"`, `field_manager=` are kwargs | M, docs/source 2026-11-13 (wheel source) |
+| Claude model id for `CLAUDE_MODEL` and price per token | M | `claude-sonnet-5-5` (plan says Sonnet-class): $2 / MTok input, $10 / MTok output, $0.10 / MTok cache read, $2.50 / MTok 5 min cache write. Plan §6.3.7 breaks on it: forced `tool_choice` and `temperature=0` both return 400. Use structured output (`client.messages.parse(..., output_format=Diagnosis)`) | M, docs/source 2026-11-13 (pricing page) |
 
 ---
 
@@ -108,6 +108,28 @@ Seeded from reading the plan. Reply under each one.
   (CLAUDE.md). The plan needs at least: fastapi, pydantic, kubernetes,
   mcp, anthropic, scipy (trust bound), hypothesis, discord.py, Next.js.
   Agree the list once, pinned with `~=`, in Phase 0.
+  -> [M] 2026-11-13: Keep the name `IMPLEMENTATION.md` and fix the references; CLAUDE.md and the team files already point at `IMPLEMENTATION.md`.
+  -> [M] 2026-11-13: agreed. Gateway serves `POST /ledger/rehearsal` only when started with env `ONCALL_REHEARSAL=1` (otherwise 404). Body: `{receipt_id, diagnosis_matched: bool}`. The gateway still computes prediction_held and harm itself; the harness only supplies the ground-truth match. Row goes to `source=rehearsal`. I add the env key to `.env.example` when I build it.
+  -> [M] 2026-11-13: agreed. Approver id `rehearsal-harness`, accepted only when `ONCALL_REHEARSAL=1`, never listed in `ONCALL_APPROVER_IDS`. The audit entry records `decided_by`.
+  -> [M] 2026-11-13: agreed: every chaos write (inject and reset) uses `field_manager="chaos-panel"`. Hands-off counts only journal entries after `opened_at`; a chaos write after `opened_at` (for example a reset mid-incident) does trigger hands-off, which is what we want. The journal records only `spec`/`data` diffs, so controller status and annotation writes never trigger it.
+  -> [M] 2026-11-13: agreed. `POST :7002/incidents`, body `Incident`, returns 202 `{incident_id}`. A POST with an existing id updates that incident (alert grouping). I own both ends.
+  -> [M] 2026-11-13: agreed: A writes `/chaos/shared-outage`, M writes `brain/major.py`.
+  -> [M] 2026-11-13: agreed: T owns `brain/redact.py` (C8).
+  -> [M] 2026-11-13: agreed. Prefer a new `gateway/events.py` that exposes `router` (FastAPI APIRouter) and `publish(event)` for in-process use, so the gateway does not POST to itself. I mount it with `app.include_router(events.router)`.
+  -> [M] 2026-11-13: agreed: T sets one root `pyproject.toml` + `uv.lock` (uv is installed on M's machine). Suggested commands: `uv run pytest`, `uv run ruff check .`, `uv run mypy .` (ruff, mypy, pytest as dev deps, part of Q10).
+  -> [M] 2026-11-13: M needs: fastapi, uvicorn, pydantic, kubernetes, mcp, anthropic, httpx, pyyaml, hypothesis, pytest (+ ruff, mypy as dev). Proposal: drop scipy. With `reset_on_failure: true` the gate is closed on any failure, and with 0 failures `beta.ppf(1-c, s, 1) == (1-c) ** (1/s)` exactly (10 runs 74.1%, 30 runs 90.5%, 59 runs 95.1%), so `trust.py` needs only stdlib. Each human still OKs the final list; versions pinned with `~=` and at least 14 days old.
+  -> [M] 2026-11-13: Candidate pins checked on PyPI (newest release at least 14 days old): `kubernetes~=37.0.1` (37.0.2 is from 2026-11-06, too new), `mcp~=2.3.0`, `anthropic~=2.3.0` (2.4 to 2.8 are under 14 days). mcp 2.x and anthropic 2.x are new majors; see the VERIFY rows.
+
+- **Q11** [M] 2026-11-13 for T: C1 schema changes before `schemas/` is written:
+  (a) one `Pattern = Literal["recent_change", "resource", "protected", "unknown"]`,
+  used for `ActionRequest.pattern` (now `str`) and matching SQLite
+  `incidents.pattern`; `Cause.cause_class` stays as is (rules map cause to pattern).
+  (b) define `ActionRequest` before `Diagnosis` (or call `Diagnosis.model_rebuild()`);
+  the string forward ref fails at import otherwise.
+  (c) `model_config = ConfigDict(extra="forbid")` on `ActionRequest` and
+  `Prediction`, so checklist step 1 refuses unknown fields.
+  (d) `GatewayDecision`: default `None` on `failed_step`, `reason`, `receipt_id`,
+  `approval_id`. Reply `agreed` or counter.
 
 ---
 
@@ -161,3 +183,37 @@ Seeded from reading the plan. Reply under each one.
   It explicitly does not verify RBAC, admission policy, protected-target policy,
   budgets, freshness, or auto-undo. Live runs and rehearsal trust credits remain
   unperformed. README records integration contracts and current limitations.
+- [M] 2026-11-13 for T: Created `.gitignore` (`.env`, `data/`, `*.kubeconfig`,
+  `*.token`, `node_modules/`) and `.env.example` (`ONCALL_APPROVER_IDS`) on
+  branch `muaz/phase0-security`, because `make_kubeconfigs.sh` writes secret
+  files. Extend both freely.
+- [M] 2026-11-13 for A: `k8s/` RBAC + admission manifests and scripts are ready on
+  branch `muaz/phase0-security`. When the cluster is up, with the admin
+  kubeconfig: `kubectl apply -f k8s/`, then `./scripts/make_kubeconfigs.sh`,
+  then `./scripts/security_check.sh`. Tell M, the §6.5.5 rows need that output.
+- [M] 2026-11-13 for A: Names in my manifests that need your VERIFY values:
+  Deployment names in `k8s/rbac-agent.yaml` `resourceNames`
+  (payment, checkout, cart, frontend, recommendation, ad, email), ConfigMap
+  `flagd-config`, image prefixes `ghcr.io/open-telemetry/` and `payment:` in
+  `k8s/admission-policy.yaml`. Also keep actable Deployments at 1 to 3
+  replicas: the policy denies any agent patch outside that range.
+- [M] 2026-11-13 for T: Added `schemas/db.py` (SQLite tables §5.1, `connect()`
+  in WAL mode) next to your future schema files; no `schemas/__init__.py`
+  from me, add it if you want one. My tests are stdlib `unittest` in
+  `tests/`, run with `python3 -m unittest discover -s tests` until Q9 picks
+  the runner; pytest runs them as they are. Branch `muaz/phase1-core`.
+- [M] 2026-11-13 for A,T: `observer/journal.py` expects API JSON objects
+  (camelCase, e.g. `ApiClient().sanitize_for_serialization(obj)`), not the
+  Python client's `.to_dict()` (snake_case). Journal inverse ops are
+  `{"op": "patch", "body": ...}`, `{"op": "scale", "replicas": n}`,
+  `{"op": "rollback", "revision": "N"}`.
+- [M] 2026-11-13 for all: VERIFY rows filled for Jaeger, MCP, Python client
+  and Claude model. Three plan sketches are out of date with the pinned
+  versions: §6.4.1 (`mcp.server.fastmcp` no longer exists in mcp 2.x, use
+  `MCPServer`), §6.4.7 (kubernetes 37 always defaults to JSON Patch, so
+  strategic-merge patches must pass `_content_type`), §6.3.7 (forced
+  `tool_choice` and `temperature` return 400 on `claude-sonnet-5-5`). M
+  follows the VERIFY rows, not the sketches.
+- [M] 2026-11-13 for A: Two Jaeger checks need your cluster. Please run and
+  paste the status line: `curl -s -o /dev/null -w '%{http_code}' 'http://localhost:8080/jaeger/ui/api/dependencies?endTs=<now ms>&lookback=3600000'`
+  and the same for `/jaeger/ui/api/traces?service=payment&lookback=5m&limit=1`.

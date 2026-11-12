@@ -1,16 +1,16 @@
 # Graph Report - devhack2026  (2026-11-13)
 
 ## Corpus Check
-- 55 files · ~23,480 words
+- 65 files · ~29,193 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 440 nodes · 819 edges · 38 communities (36 shown, 2 thin omitted)
-- Extraction: 93% EXTRACTED · 7% INFERRED · 0% AMBIGUOUS · INFERRED: 59 edges (avg confidence: 0.53)
+- 505 nodes · 925 edges · 45 communities (41 shown, 4 thin omitted)
+- Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 60 edges (avg confidence: 0.53)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `31a11330`
+- Built from commit: `2b21c5fb`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -47,6 +47,13 @@
 - 9. Benchmark (`bench/`) [T] P1
 - manual_baseline.md
 - oncall-agent
+- redact_value
+- JournalTest
+- find_culprit
+- det
+- journal.py
+- security_check.sh
+- make_kubeconfigs.sh
 
 ## God Nodes (most connected - your core abstractions)
 1. `DiagnosisService` - 25 edges
@@ -63,27 +70,27 @@
 ## Surprising Connections (you probably didn't know these)
 - `DiagnosisResult` --uses--> `ActionRequest`  [INFERRED]
   brain/llm.py → schemas/models.py
+- `DiagnosisResult` --uses--> `EvidenceBundle`  [INFERRED]
+  brain/llm.py → schemas/models.py
 - `DiagnosisService` --uses--> `ActionRequest`  [INFERRED]
   brain/llm.py → schemas/models.py
-- `ReceiptStore` --uses--> `Card`  [INFERRED]
-  gateway/receipts.py → schemas/models.py
-- `ReceiptStore` --uses--> `Diagnosis`  [INFERRED]
-  gateway/receipts.py → schemas/models.py
-- `ReceiptStore` --uses--> `Incident`  [INFERRED]
-  gateway/receipts.py → schemas/models.py
+- `DiagnosisService` --uses--> `EvidenceBundle`  [INFERRED]
+  brain/llm.py → schemas/models.py
+- `test_adversarial_proposal()` --calls--> `DiagnosisService`  [EXTRACTED]
+  tests/redteam/test_attacks.py → brain/llm.py
 
 ## Import Cycles
 - None detected.
 
-## Communities (38 total, 2 thin omitted)
+## Communities (45 total, 4 thin omitted)
 
 ### Community 0 - "NotifierState"
-Cohesion: 0.08
-Nodes (23): Interaction, Notifier, Protocol, NotificationConsumer, Any, AsyncClient, ApprovalButton, ApprovalController (+15 more)
+Cohesion: 0.10
+Nodes (22): Interaction, Notifier, Protocol, NotificationConsumer, Any, AsyncClient, ApprovalButton, ApprovalController (+14 more)
 
 ### Community 1 - "test_audit.py"
-Cohesion: 0.10
-Nodes (38): Any, quarantine(), redact(), redact_value(), FastAPI, AuditLog, canonical(), EventBus (+30 more)
+Cohesion: 0.13
+Nodes (29): FastAPI, AuditLog, canonical(), EventBus, Any, Path, verify(), create_events_router() (+21 more)
 
 ### Community 2 - "6.4 Gateway (`gateway/`) [M] P0 unless marked"
 Cohesion: 0.05
@@ -94,12 +101,12 @@ Cohesion: 0.09
 Nodes (21): Harness, HttpTrialServices, main(), Any, AsyncClient, Path, Protocol, TrialResult (+13 more)
 
 ### Community 4 - "DiagnosisService"
-Cohesion: 0.14
-Nodes (28): DiagnosisResult, DiagnosisService, Path, InferenceProvider, InferenceRequest, InferenceResponse, ProviderError, Protocol (+20 more)
+Cohesion: 0.17
+Nodes (24): DiagnosisResult, DiagnosisService, InferenceProvider, InferenceRequest, InferenceResponse, ProviderError, Protocol, OpenCodeGoAdapter (+16 more)
 
 ### Community 5 - "models.py"
-Cohesion: 0.11
-Nodes (24): BaseModel, ActionRequest, ApprovalDecidedPayload, ApprovalRequestedPayload, CardPayload, Cause, ChecklistPayload, DiagnosisReadyPayload (+16 more)
+Cohesion: 0.10
+Nodes (27): BaseModel, Path, ActionRequest, ApprovalDecidedPayload, ApprovalRequestedPayload, CardPayload, Cause, ChecklistPayload (+19 more)
 
 ### Community 6 - "AGENTS.md"
 Cohesion: 0.18
@@ -197,20 +204,40 @@ Nodes (4): 5.1 SQLite (`data/oncall.db`, WAL mode) [M] P0, 5.2 Shared schemas (`
 Cohesion: 0.50
 Nodes (4): 9.1 Harness (`harness.py`), 9.2 Manual baseline (`manual_baseline.md`), 9.3 Report (`report.py`), 9. Benchmark (`bench/`) [T] P1
 
+### Community 38 - "redact_value"
+Cohesion: 0.18
+Nodes (11): Any, quarantine(), redact(), redact_value(), Any, Path, test_poisoned_log(), test_hash_and_token_counts_survive_nested_redaction() (+3 more)
+
+### Community 39 - "JournalTest"
+Cohesion: 0.19
+Nodes (5): connect(), Connection, DbTest, deploy(), JournalTest
+
+### Community 40 - "find_culprit"
+Cohesion: 0.27
+Nodes (6): deepest_unhealthy(), find_culprit(), from_traces(), is_error(), CulpritTest, trace()
+
+### Community 41 - "det"
+Cohesion: 0.23
+Nodes (3): Detector, det(), DetectorTest
+
+### Community 42 - "journal.py"
+Cohesion: 0.32
+Nodes (11): author(), _configmap_changes(), _containers(), _deployment_changes(), entry(), insert(), Connection, read() (+3 more)
+
 ## Knowledge Gaps
-- **158 isolated node(s):** `oncall-agent`, `Communication`, `Code comments`, `Workflow`, `Commits` (+153 more)
+- **159 isolated node(s):** `oncall-agent`, `make_kubeconfigs.sh script`, `Communication`, `Code comments`, `Workflow` (+154 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **2 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `read_events()` connect `consumer.py` to `NotifierState`?**
-  _High betweenness centrality (0.035) - this node is a cross-community bridge._
+  _High betweenness centrality (0.027) - this node is a cross-community bridge._
 - **Why does `Card` connect `NotifierState` to `test_audit.py`, `models.py`?**
-  _High betweenness centrality (0.035) - this node is a cross-community bridge._
+  _High betweenness centrality (0.026) - this node is a cross-community bridge._
 - **Why does `Implementation Plan: the on-call agent that has to earn its autonomy` connect `Implementation Plan: the on-call agent that has to earn its autonomy` to `6.4 Gateway (`gateway/`) [M] P0 unless marked`, `10. Build plan`, `3. Environment setup`, `8. Testing`, `0. Scope and principles`, `11. Demo`, `1. System overview`, `4. Configuration files`, `5. Data model`, `9. Benchmark (`bench/`) [T] P1`?**
-  _High betweenness centrality (0.033) - this node is a cross-community bridge._
+  _High betweenness centrality (0.025) - this node is a cross-community bridge._
 - **Are the 7 inferred relationships involving `DiagnosisService` (e.g. with `InferenceProvider` and `InferenceRequest`) actually correct?**
   _`DiagnosisService` has 7 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 5 inferred relationships involving `NotifierState` (e.g. with `NotificationConsumer` and `ApprovalButton`) actually correct?**

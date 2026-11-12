@@ -324,6 +324,56 @@
       "norm_label": "__init__.py"
     },
     {
+      "label": "culprit.py",
+      "file_type": "code",
+      "source_file": "brain/culprit.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "brain_culprit",
+      "community": 40,
+      "norm_label": "culprit.py"
+    },
+    {
+      "label": "is_error()",
+      "file_type": "code",
+      "source_file": "brain/culprit.py",
+      "source_location": "L6",
+      "_origin": "ast",
+      "id": "brain_culprit_is_error",
+      "community": 40,
+      "norm_label": "is_error()"
+    },
+    {
+      "label": "from_traces()",
+      "file_type": "code",
+      "source_file": "brain/culprit.py",
+      "source_location": "L12",
+      "_origin": "ast",
+      "id": "brain_culprit_from_traces",
+      "community": 40,
+      "norm_label": "from_traces()"
+    },
+    {
+      "label": "deepest_unhealthy()",
+      "file_type": "code",
+      "source_file": "brain/culprit.py",
+      "source_location": "L28",
+      "_origin": "ast",
+      "id": "brain_culprit_deepest_unhealthy",
+      "community": 40,
+      "norm_label": "deepest_unhealthy()"
+    },
+    {
+      "label": "find_culprit()",
+      "file_type": "code",
+      "source_file": "brain/culprit.py",
+      "source_location": "L43",
+      "_origin": "ast",
+      "id": "brain_culprit_find_culprit",
+      "community": 40,
+      "norm_label": "find_culprit()"
+    },
+    {
       "label": "llm.py",
       "file_type": "code",
       "source_file": "brain/llm.py",
@@ -370,7 +420,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "brain_llm_py_path",
-      "community": 4,
+      "community": 5,
       "norm_label": "path"
     },
     {
@@ -380,7 +430,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "brain_llm_diagnosisservice_validate",
-      "community": 4,
+      "community": 5,
       "norm_label": "._validate()"
     },
     {
@@ -390,7 +440,7 @@
       "source_location": "L69",
       "_origin": "ast",
       "id": "brain_llm_diagnosisservice_diagnose",
-      "community": 4,
+      "community": 5,
       "norm_label": ".diagnose()"
     },
     {
@@ -560,7 +610,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "brain_redact",
-      "community": 1,
+      "community": 38,
       "norm_label": "redact.py"
     },
     {
@@ -570,7 +620,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "brain_redact_redact",
-      "community": 1,
+      "community": 38,
       "norm_label": "redact()"
     },
     {
@@ -580,7 +630,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "brain_redact_redact_value",
-      "community": 1,
+      "community": 38,
       "norm_label": "redact_value()"
     },
     {
@@ -590,7 +640,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "brain_redact_py_any",
-      "community": 1,
+      "community": 38,
       "norm_label": "any"
     },
     {
@@ -600,7 +650,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "brain_redact_quarantine",
-      "community": 1,
+      "community": 38,
       "norm_label": "quarantine()"
     },
     {
@@ -1370,7 +1420,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "notifier_state_notifierstate_init",
-      "community": 0,
+      "community": 38,
       "norm_label": ".__init__()"
     },
     {
@@ -1380,7 +1430,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "notifier_state_py_path",
-      "community": 0,
+      "community": 38,
       "norm_label": "path"
     },
     {
@@ -1390,7 +1440,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "notifier_state_notifierstate_connect",
-      "community": 0,
+      "community": 38,
       "norm_label": ".connect()"
     },
     {
@@ -1400,7 +1450,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "notifier_state_notifierstate_get",
-      "community": 0,
+      "community": 38,
       "norm_label": ".get()"
     },
     {
@@ -1410,7 +1460,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "notifier_state_py_any",
-      "community": 0,
+      "community": 38,
       "norm_label": "any"
     },
     {
@@ -1420,7 +1470,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "notifier_state_notifierstate_set",
-      "community": 0,
+      "community": 38,
       "norm_label": ".set()"
     },
     {
@@ -1430,8 +1480,178 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "notifier_state_notifierstate_approvals",
-      "community": 0,
+      "community": 38,
       "norm_label": ".approvals()"
+    },
+    {
+      "label": "detector.py",
+      "file_type": "code",
+      "source_file": "observer/detector.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "observer_detector",
+      "community": 41,
+      "norm_label": "detector.py"
+    },
+    {
+      "label": "Detector",
+      "file_type": "code",
+      "source_file": "observer/detector.py",
+      "source_location": "L4",
+      "_origin": "ast",
+      "id": "observer_detector_detector",
+      "community": 41,
+      "norm_label": "detector"
+    },
+    {
+      "label": ".__init__()",
+      "file_type": "code",
+      "source_file": "observer/detector.py",
+      "source_location": "L5",
+      "_origin": "ast",
+      "id": "observer_detector_detector_init",
+      "community": 41,
+      "norm_label": ".__init__()"
+    },
+    {
+      "label": ".tick()",
+      "file_type": "code",
+      "source_file": "observer/detector.py",
+      "source_location": "L14",
+      "_origin": "ast",
+      "id": "observer_detector_detector_tick",
+      "community": 41,
+      "norm_label": ".tick()"
+    },
+    {
+      "label": ".close_incident()",
+      "file_type": "code",
+      "source_file": "observer/detector.py",
+      "source_location": "L51",
+      "_origin": "ast",
+      "id": "observer_detector_detector_close_incident",
+      "community": 41,
+      "norm_label": ".close_incident()"
+    },
+    {
+      "label": "journal.py",
+      "file_type": "code",
+      "source_file": "observer/journal.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "observer_journal",
+      "community": 42,
+      "norm_label": "journal.py"
+    },
+    {
+      "label": "_template()",
+      "file_type": "code",
+      "source_file": "observer/journal.py",
+      "source_location": "L11",
+      "_origin": "ast",
+      "id": "observer_journal_template",
+      "community": 42,
+      "norm_label": "_template()"
+    },
+    {
+      "label": "_containers()",
+      "file_type": "code",
+      "source_file": "observer/journal.py",
+      "source_location": "L15",
+      "_origin": "ast",
+      "id": "observer_journal_containers",
+      "community": 42,
+      "norm_label": "_containers()"
+    },
+    {
+      "label": "_undo_map()",
+      "file_type": "code",
+      "source_file": "observer/journal.py",
+      "source_location": "L20",
+      "_origin": "ast",
+      "id": "observer_journal_undo_map",
+      "community": 42,
+      "norm_label": "_undo_map()"
+    },
+    {
+      "label": "_undo_env()",
+      "file_type": "code",
+      "source_file": "observer/journal.py",
+      "source_location": "L31",
+      "_origin": "ast",
+      "id": "observer_journal_undo_env",
+      "community": 42,
+      "norm_label": "_undo_env()"
+    },
+    {
+      "label": "_deployment_changes()",
+      "file_type": "code",
+      "source_file": "observer/journal.py",
+      "source_location": "L36",
+      "_origin": "ast",
+      "id": "observer_journal_deployment_changes",
+      "community": 42,
+      "norm_label": "_deployment_changes()"
+    },
+    {
+      "label": "_configmap_changes()",
+      "file_type": "code",
+      "source_file": "observer/journal.py",
+      "source_location": "L93",
+      "_origin": "ast",
+      "id": "observer_journal_configmap_changes",
+      "community": 42,
+      "norm_label": "_configmap_changes()"
+    },
+    {
+      "label": "author()",
+      "file_type": "code",
+      "source_file": "observer/journal.py",
+      "source_location": "L103",
+      "_origin": "ast",
+      "id": "observer_journal_author",
+      "community": 42,
+      "norm_label": "author()"
+    },
+    {
+      "label": "entry()",
+      "file_type": "code",
+      "source_file": "observer/journal.py",
+      "source_location": "L109",
+      "_origin": "ast",
+      "id": "observer_journal_entry",
+      "community": 42,
+      "norm_label": "entry()"
+    },
+    {
+      "label": "insert()",
+      "file_type": "code",
+      "source_file": "observer/journal.py",
+      "source_location": "L124",
+      "_origin": "ast",
+      "id": "observer_journal_insert",
+      "community": 42,
+      "norm_label": "insert()"
+    },
+    {
+      "label": "Connection",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "observer_journal_py_connection",
+      "community": 42,
+      "norm_label": "connection"
+    },
+    {
+      "label": "read()",
+      "file_type": "code",
+      "source_file": "observer/journal.py",
+      "source_location": "L135",
+      "_origin": "ast",
+      "id": "observer_journal_read",
+      "community": 42,
+      "norm_label": "read()"
     },
     {
       "label": "oncall-agent",
@@ -1465,6 +1685,36 @@
       "id": "schemas_action",
       "community": 5,
       "norm_label": "action.py"
+    },
+    {
+      "label": "db.py",
+      "file_type": "code",
+      "source_file": "schemas/db.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "schemas_db",
+      "community": 39,
+      "norm_label": "db.py"
+    },
+    {
+      "label": "connect()",
+      "file_type": "code",
+      "source_file": "schemas/db.py",
+      "source_location": "L47",
+      "_origin": "ast",
+      "id": "schemas_db_connect",
+      "community": 39,
+      "norm_label": "connect()"
+    },
+    {
+      "label": "Connection",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "schemas_db_py_connection",
+      "community": 39,
+      "norm_label": "connection"
     },
     {
       "label": "diagnosis.py",
@@ -1543,7 +1793,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "schemas_models_evidence",
-      "community": 4,
+      "community": 5,
       "norm_label": "evidence"
     },
     {
@@ -1563,7 +1813,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "schemas_models_evidencebundle",
-      "community": 4,
+      "community": 5,
       "norm_label": "evidencebundle"
     },
     {
@@ -1757,6 +2007,76 @@
       "norm_label": "receipt.py"
     },
     {
+      "label": "make_kubeconfigs.sh",
+      "file_type": "code",
+      "source_file": "scripts/make_kubeconfigs.sh",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "file"
+      },
+      "_origin": "ast",
+      "id": "scripts_make_kubeconfigs",
+      "community": 44,
+      "norm_label": "make_kubeconfigs.sh"
+    },
+    {
+      "label": "make_kubeconfigs.sh script",
+      "file_type": "code",
+      "source_file": "scripts/make_kubeconfigs.sh",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_entrypoint"
+      },
+      "_origin": "ast",
+      "id": "scripts_make_kubeconfigs_sh__entry",
+      "community": 44,
+      "norm_label": "make_kubeconfigs.sh script"
+    },
+    {
+      "label": "security_check.sh",
+      "file_type": "code",
+      "source_file": "scripts/security_check.sh",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "file"
+      },
+      "_origin": "ast",
+      "id": "scripts_security_check",
+      "community": 43,
+      "norm_label": "security_check.sh"
+    },
+    {
+      "label": "security_check.sh script",
+      "file_type": "code",
+      "source_file": "scripts/security_check.sh",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_entrypoint"
+      },
+      "_origin": "ast",
+      "id": "scripts_security_check_sh__entry",
+      "community": 43,
+      "norm_label": "security_check.sh script"
+    },
+    {
+      "label": "check()",
+      "file_type": "code",
+      "source_file": "scripts/security_check.sh",
+      "source_location": "L13",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "id": "scripts_security_check_check",
+      "community": 43,
+      "norm_label": "check()"
+    },
+    {
       "label": "verify_audit.py",
       "file_type": "code",
       "source_file": "scripts/verify_audit.py",
@@ -1833,7 +2153,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "tests_redteam_test_attacks_test_poisoned_log",
-      "community": 1,
+      "community": 38,
       "norm_label": "test_poisoned_log()"
     },
     {
@@ -1843,7 +2163,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "tests_redteam_test_attacks_test_adversarial_proposal",
-      "community": 4,
+      "community": 0,
       "norm_label": "test_adversarial_proposal()"
     },
     {
@@ -2067,6 +2387,236 @@
       "norm_label": "test_manual_comparison_preserves_missing_measurements()"
     },
     {
+      "label": "test_culprit.py",
+      "file_type": "code",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_test_culprit",
+      "community": 40,
+      "norm_label": "test_culprit.py"
+    },
+    {
+      "label": "trace()",
+      "file_type": "code",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L8",
+      "_origin": "ast",
+      "id": "tests_test_culprit_trace",
+      "community": 40,
+      "norm_label": "trace()"
+    },
+    {
+      "label": "CulpritTest",
+      "file_type": "code",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L18",
+      "_origin": "ast",
+      "id": "tests_test_culprit_culprittest",
+      "community": 40,
+      "norm_label": "culprittest"
+    },
+    {
+      "label": ".test_leaf_error_is_culprit()",
+      "file_type": "code",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L19",
+      "_origin": "ast",
+      "id": "tests_test_culprit_culprittest_test_leaf_error_is_culprit",
+      "community": 40,
+      "norm_label": ".test_leaf_error_is_culprit()"
+    },
+    {
+      "label": ".test_otel_status_tag_counts_as_error()",
+      "file_type": "code",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L24",
+      "_origin": "ast",
+      "id": "tests_test_culprit_culprittest_test_otel_status_tag_counts_as_error",
+      "community": 40,
+      "norm_label": ".test_otel_status_tag_counts_as_error()"
+    },
+    {
+      "label": ".test_majority_origin_wins()",
+      "file_type": "code",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L29",
+      "_origin": "ast",
+      "id": "tests_test_culprit_culprittest_test_majority_origin_wins",
+      "community": 40,
+      "norm_label": ".test_majority_origin_wins()"
+    },
+    {
+      "label": ".test_no_traces_falls_back_to_deepest()",
+      "file_type": "code",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L34",
+      "_origin": "ast",
+      "id": "tests_test_culprit_culprittest_test_no_traces_falls_back_to_deepest",
+      "community": 40,
+      "norm_label": ".test_no_traces_falls_back_to_deepest()"
+    },
+    {
+      "label": ".test_fallback_tie_breaks_on_onset()",
+      "file_type": "code",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L39",
+      "_origin": "ast",
+      "id": "tests_test_culprit_culprittest_test_fallback_tie_breaks_on_onset",
+      "community": 40,
+      "norm_label": ".test_fallback_tie_breaks_on_onset()"
+    },
+    {
+      "label": ".test_fallback_survives_cycle()",
+      "file_type": "code",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L44",
+      "_origin": "ast",
+      "id": "tests_test_culprit_culprittest_test_fallback_survives_cycle",
+      "community": 40,
+      "norm_label": ".test_fallback_survives_cycle()"
+    },
+    {
+      "label": ".test_nothing_unhealthy()",
+      "file_type": "code",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L48",
+      "_origin": "ast",
+      "id": "tests_test_culprit_culprittest_test_nothing_unhealthy",
+      "community": 40,
+      "norm_label": ".test_nothing_unhealthy()"
+    },
+    {
+      "label": "test_db.py",
+      "file_type": "code",
+      "source_file": "tests/test_db.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_test_db",
+      "community": 39,
+      "norm_label": "test_db.py"
+    },
+    {
+      "label": "DbTest",
+      "file_type": "code",
+      "source_file": "tests/test_db.py",
+      "source_location": "L8",
+      "_origin": "ast",
+      "id": "tests_test_db_dbtest",
+      "community": 39,
+      "norm_label": "dbtest"
+    },
+    {
+      "label": ".test_wal_and_tables()",
+      "file_type": "code",
+      "source_file": "tests/test_db.py",
+      "source_location": "L9",
+      "_origin": "ast",
+      "id": "tests_test_db_dbtest_test_wal_and_tables",
+      "community": 39,
+      "norm_label": ".test_wal_and_tables()"
+    },
+    {
+      "label": "test_detector.py",
+      "file_type": "code",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_test_detector",
+      "community": 41,
+      "norm_label": "test_detector.py"
+    },
+    {
+      "label": "det()",
+      "file_type": "code",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L6",
+      "_origin": "ast",
+      "id": "tests_test_detector_det",
+      "community": 41,
+      "norm_label": "det()"
+    },
+    {
+      "label": "DetectorTest",
+      "file_type": "code",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L10",
+      "_origin": "ast",
+      "id": "tests_test_detector_detectortest",
+      "community": 41,
+      "norm_label": "detectortest"
+    },
+    {
+      "label": ".test_healthy_opens_nothing()",
+      "file_type": "code",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L11",
+      "_origin": "ast",
+      "id": "tests_test_detector_detectortest_test_healthy_opens_nothing",
+      "community": 41,
+      "norm_label": ".test_healthy_opens_nothing()"
+    },
+    {
+      "label": ".test_error_breach_must_sustain_30s()",
+      "file_type": "code",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L17",
+      "_origin": "ast",
+      "id": "tests_test_detector_detectortest_test_error_breach_must_sustain_30s",
+      "community": 41,
+      "norm_label": ".test_error_breach_must_sustain_30s()"
+    },
+    {
+      "label": ".test_recovery_resets_sustain_clock()",
+      "file_type": "code",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L30",
+      "_origin": "ast",
+      "id": "tests_test_detector_detectortest_test_recovery_resets_sustain_clock",
+      "community": 41,
+      "norm_label": ".test_recovery_resets_sustain_clock()"
+    },
+    {
+      "label": ".test_latency_breach_needs_baseline()",
+      "file_type": "code",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L38",
+      "_origin": "ast",
+      "id": "tests_test_detector_detectortest_test_latency_breach_needs_baseline",
+      "community": 41,
+      "norm_label": ".test_latency_breach_needs_baseline()"
+    },
+    {
+      "label": ".test_bad_pod_is_unhealthy_at_once()",
+      "file_type": "code",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L44",
+      "_origin": "ast",
+      "id": "tests_test_detector_detectortest_test_bad_pod_is_unhealthy_at_once",
+      "community": 41,
+      "norm_label": ".test_bad_pod_is_unhealthy_at_once()"
+    },
+    {
+      "label": ".test_grouping_inside_window_only()",
+      "file_type": "code",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L50",
+      "_origin": "ast",
+      "id": "tests_test_detector_detectortest_test_grouping_inside_window_only",
+      "community": 41,
+      "norm_label": ".test_grouping_inside_window_only()"
+    },
+    {
+      "label": ".test_close_lets_next_incident_open()",
+      "file_type": "code",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L59",
+      "_origin": "ast",
+      "id": "tests_test_detector_detectortest_test_close_lets_next_incident_open",
+      "community": 41,
+      "norm_label": ".test_close_lets_next_incident_open()"
+    },
+    {
       "label": "test_inference.py",
       "file_type": "code",
       "source_file": "tests/test_inference.py",
@@ -2247,6 +2797,126 @@
       "norm_label": "test_diagnosis_audit_and_receipt_round_trip()"
     },
     {
+      "label": "test_journal.py",
+      "file_type": "code",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_test_journal",
+      "community": 39,
+      "norm_label": "test_journal.py"
+    },
+    {
+      "label": "deploy()",
+      "file_type": "code",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L8",
+      "_origin": "ast",
+      "id": "tests_test_journal_deploy",
+      "community": 39,
+      "norm_label": "deploy()"
+    },
+    {
+      "label": "JournalTest",
+      "file_type": "code",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L22",
+      "_origin": "ast",
+      "id": "tests_test_journal_journaltest",
+      "community": 39,
+      "norm_label": "journaltest"
+    },
+    {
+      "label": ".test_image_change()",
+      "file_type": "code",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L23",
+      "_origin": "ast",
+      "id": "tests_test_journal_journaltest_test_image_change",
+      "community": 39,
+      "norm_label": ".test_image_change()"
+    },
+    {
+      "label": ".test_status_only_change_is_ignored()",
+      "file_type": "code",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L36",
+      "_origin": "ast",
+      "id": "tests_test_journal_journaltest_test_status_only_change_is_ignored",
+      "community": 39,
+      "norm_label": ".test_status_only_change_is_ignored()"
+    },
+    {
+      "label": ".test_author_skips_status_writes()",
+      "file_type": "code",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L42",
+      "_origin": "ast",
+      "id": "tests_test_journal_journaltest_test_author_skips_status_writes",
+      "community": 39,
+      "norm_label": ".test_author_skips_status_writes()"
+    },
+    {
+      "label": ".test_env_inverse_restores_and_deletes()",
+      "file_type": "code",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L47",
+      "_origin": "ast",
+      "id": "tests_test_journal_journaltest_test_env_inverse_restores_and_deletes",
+      "community": 39,
+      "norm_label": ".test_env_inverse_restores_and_deletes()"
+    },
+    {
+      "label": ".test_resources_inverse_nulls_added_keys()",
+      "file_type": "code",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L56",
+      "_origin": "ast",
+      "id": "tests_test_journal_journaltest_test_resources_inverse_nulls_added_keys",
+      "community": 39,
+      "norm_label": ".test_resources_inverse_nulls_added_keys()"
+    },
+    {
+      "label": ".test_replicas_and_restart()",
+      "file_type": "code",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L65",
+      "_origin": "ast",
+      "id": "tests_test_journal_journaltest_test_replicas_and_restart",
+      "community": 39,
+      "norm_label": ".test_replicas_and_restart()"
+    },
+    {
+      "label": ".test_container_set_change_rolls_back_template()",
+      "file_type": "code",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L72",
+      "_origin": "ast",
+      "id": "tests_test_journal_journaltest_test_container_set_change_rolls_back_template",
+      "community": 39,
+      "norm_label": ".test_container_set_change_rolls_back_template()"
+    },
+    {
+      "label": ".test_flag_configmap()",
+      "file_type": "code",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L78",
+      "_origin": "ast",
+      "id": "tests_test_journal_journaltest_test_flag_configmap",
+      "community": 39,
+      "norm_label": ".test_flag_configmap()"
+    },
+    {
+      "label": ".test_insert_and_read()",
+      "file_type": "code",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L88",
+      "_origin": "ast",
+      "id": "tests_test_journal_journaltest_test_insert_and_read",
+      "community": 39,
+      "norm_label": ".test_insert_and_read()"
+    },
+    {
       "label": "test_notifier.py",
       "file_type": "code",
       "source_file": "tests/test_notifier.py",
@@ -2313,7 +2983,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_redact",
-      "community": 1,
+      "community": 38,
       "norm_label": "test_redact.py"
     },
     {
@@ -2323,7 +2993,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "tests_test_redact_test_secrets_removed",
-      "community": 1,
+      "community": 38,
       "norm_label": "test_secrets_removed()"
     },
     {
@@ -2333,7 +3003,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "tests_test_redact_test_nested_env_and_sensitive_keys",
-      "community": 1,
+      "community": 38,
       "norm_label": "test_nested_env_and_sensitive_keys()"
     },
     {
@@ -2343,7 +3013,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "tests_test_redact_test_quarantine_keeps_hash_only",
-      "community": 1,
+      "community": 38,
       "norm_label": "test_quarantine_keeps_hash_only()"
     },
     {
@@ -2353,7 +3023,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "tests_test_redact_test_hash_and_token_counts_survive_nested_redaction",
-      "community": 1,
+      "community": 38,
       "norm_label": "test_hash_and_token_counts_survive_nested_redaction()"
     },
     {
@@ -3710,7 +4380,7 @@
       "label": "Log (append-only, newest at bottom)",
       "file_type": "document",
       "source_file": "team/SHARED_CONTEXT.md",
-      "source_location": "L114",
+      "source_location": "L136",
       "_origin": "ast",
       "id": "team_shared_context_log_append_only_newest_at_bottom",
       "community": 18,
@@ -4040,7 +4710,7 @@
       "label": "Done (with proof)",
       "file_type": "document",
       "source_file": "team/muaz/STATE.md",
-      "source_location": "L10",
+      "source_location": "L11",
       "_origin": "ast",
       "id": "team_muaz_state_done_with_proof",
       "community": 17,
@@ -4050,7 +4720,7 @@
       "label": "In progress",
       "file_type": "document",
       "source_file": "team/muaz/STATE.md",
-      "source_location": "L14",
+      "source_location": "L85",
       "_origin": "ast",
       "id": "team_muaz_state_in_progress",
       "community": 17,
@@ -4060,7 +4730,7 @@
       "label": "Blocked / waiting on",
       "file_type": "document",
       "source_file": "team/muaz/STATE.md",
-      "source_location": "L18",
+      "source_location": "L91",
       "_origin": "ast",
       "id": "team_muaz_state_blocked_waiting_on",
       "community": 17,
@@ -4070,7 +4740,7 @@
       "label": "Next",
       "file_type": "document",
       "source_file": "team/muaz/STATE.md",
-      "source_location": "L24",
+      "source_location": "L105",
       "_origin": "ast",
       "id": "team_muaz_state_next",
       "community": 17,
@@ -4080,7 +4750,7 @@
       "label": "Notes for my next session",
       "file_type": "document",
       "source_file": "team/muaz/STATE.md",
-      "source_location": "L30",
+      "source_location": "L113",
       "_origin": "ast",
       "id": "team_muaz_state_notes_for_my_next_session",
       "community": 17,
@@ -4280,7 +4950,7 @@
       "label": "In progress",
       "file_type": "document",
       "source_file": "team/twaha/STATE.md",
-      "source_location": "L32",
+      "source_location": "L36",
       "_origin": "ast",
       "id": "team_twaha_state_in_progress",
       "community": 20,
@@ -4290,7 +4960,7 @@
       "label": "Blocked / waiting on",
       "file_type": "document",
       "source_file": "team/twaha/STATE.md",
-      "source_location": "L37",
+      "source_location": "L41",
       "_origin": "ast",
       "id": "team_twaha_state_blocked_waiting_on",
       "community": 20,
@@ -4300,7 +4970,7 @@
       "label": "Next",
       "file_type": "document",
       "source_file": "team/twaha/STATE.md",
-      "source_location": "L48",
+      "source_location": "L52",
       "_origin": "ast",
       "id": "team_twaha_state_next",
       "community": 20,
@@ -4310,7 +4980,7 @@
       "label": "Notes for my next session",
       "file_type": "document",
       "source_file": "team/twaha/STATE.md",
-      "source_location": "L55",
+      "source_location": "L59",
       "_origin": "ast",
       "id": "team_twaha_state_notes_for_my_next_session",
       "community": 20,
@@ -5043,6 +5713,178 @@
       "source": "tests_test_bench_test_manual_comparison_preserves_missing_measurements",
       "target": "bench_report_compare",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "brain/culprit.py",
+      "source_location": "L28",
+      "weight": 1.0,
+      "source": "brain_culprit",
+      "target": "brain_culprit_deepest_unhealthy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "brain/culprit.py",
+      "source_location": "L43",
+      "weight": 1.0,
+      "source": "brain_culprit",
+      "target": "brain_culprit_find_culprit",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "brain/culprit.py",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "brain_culprit",
+      "target": "brain_culprit_from_traces",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "brain/culprit.py",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "brain_culprit",
+      "target": "brain_culprit_is_error",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_test_culprit",
+      "target": "brain_culprit",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "brain/culprit.py",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "brain_culprit_from_traces",
+      "target": "brain_culprit_is_error",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "brain/culprit.py",
+      "source_location": "L45",
+      "weight": 1.0,
+      "source": "brain_culprit_find_culprit",
+      "target": "brain_culprit_from_traces",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "brain/culprit.py",
+      "source_location": "L48",
+      "weight": 1.0,
+      "source": "brain_culprit_find_culprit",
+      "target": "brain_culprit_deepest_unhealthy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_test_culprit",
+      "target": "brain_culprit_find_culprit",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L46",
+      "weight": 1.0,
+      "source": "tests_test_culprit_culprittest_test_fallback_survives_cycle",
+      "target": "brain_culprit_find_culprit"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L41",
+      "weight": 1.0,
+      "source": "tests_test_culprit_culprittest_test_fallback_tie_breaks_on_onset",
+      "target": "brain_culprit_find_culprit"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "tests_test_culprit_culprittest_test_leaf_error_is_culprit",
+      "target": "brain_culprit_find_culprit"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L32",
+      "weight": 1.0,
+      "source": "tests_test_culprit_culprittest_test_majority_origin_wins",
+      "target": "brain_culprit_find_culprit"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L36",
+      "weight": 1.0,
+      "source": "tests_test_culprit_culprittest_test_no_traces_falls_back_to_deepest",
+      "target": "brain_culprit_find_culprit"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L49",
+      "weight": 1.0,
+      "source": "tests_test_culprit_culprittest_test_nothing_unhealthy",
+      "target": "brain_culprit_find_culprit"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L27",
+      "weight": 1.0,
+      "source": "tests_test_culprit_culprittest_test_otel_status_tag_counts_as_error",
+      "target": "brain_culprit_find_culprit"
     },
     {
       "relation": "contains",
@@ -9458,6 +10300,310 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/detector.py",
+      "source_location": "L4",
+      "weight": 1.0,
+      "source": "observer_detector",
+      "target": "observer_detector_detector",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_test_detector",
+      "target": "observer_detector",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/detector.py",
+      "source_location": "L51",
+      "weight": 1.0,
+      "source": "observer_detector_detector",
+      "target": "observer_detector_detector_close_incident",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/detector.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "observer_detector_detector",
+      "target": "observer_detector_detector_init",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/detector.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "observer_detector_detector",
+      "target": "observer_detector_detector_tick",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_test_detector",
+      "target": "observer_detector_detector",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "tests_test_detector_det",
+      "target": "observer_detector_detector",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L3",
+      "weight": 0.8,
+      "source": "tests_test_detector_detectortest",
+      "target": "observer_detector_detector",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L103",
+      "weight": 1.0,
+      "source": "observer_journal",
+      "target": "observer_journal_author",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L93",
+      "weight": 1.0,
+      "source": "observer_journal",
+      "target": "observer_journal_configmap_changes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "observer_journal",
+      "target": "observer_journal_containers",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L36",
+      "weight": 1.0,
+      "source": "observer_journal",
+      "target": "observer_journal_deployment_changes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L109",
+      "weight": 1.0,
+      "source": "observer_journal",
+      "target": "observer_journal_entry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L124",
+      "weight": 1.0,
+      "source": "observer_journal",
+      "target": "observer_journal_insert",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L135",
+      "weight": 1.0,
+      "source": "observer_journal",
+      "target": "observer_journal_read",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L11",
+      "weight": 1.0,
+      "source": "observer_journal",
+      "target": "observer_journal_template",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L31",
+      "weight": 1.0,
+      "source": "observer_journal",
+      "target": "observer_journal_undo_env",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L20",
+      "weight": 1.0,
+      "source": "observer_journal",
+      "target": "observer_journal_undo_map",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "observer_journal_containers",
+      "target": "observer_journal_template",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L61",
+      "weight": 1.0,
+      "source": "observer_journal_deployment_changes",
+      "target": "observer_journal_template",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L38",
+      "weight": 1.0,
+      "source": "observer_journal_deployment_changes",
+      "target": "observer_journal_containers",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L95",
+      "weight": 1.0,
+      "source": "observer_journal_configmap_changes",
+      "target": "observer_journal_undo_map",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L56",
+      "weight": 1.0,
+      "source": "observer_journal_deployment_changes",
+      "target": "observer_journal_undo_map",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L51",
+      "weight": 1.0,
+      "source": "observer_journal_deployment_changes",
+      "target": "observer_journal_undo_env",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L112",
+      "weight": 1.0,
+      "source": "observer_journal_entry",
+      "target": "observer_journal_deployment_changes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L114",
+      "weight": 1.0,
+      "source": "observer_journal_entry",
+      "target": "observer_journal_configmap_changes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L118",
+      "weight": 1.0,
+      "source": "observer_journal_entry",
+      "target": "observer_journal_author",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L124",
+      "weight": 1.0,
+      "source": "observer_journal_insert",
+      "target": "observer_journal_py_connection",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "observer/journal.py",
+      "source_location": "L135",
+      "weight": 1.0,
+      "source": "observer_journal_read",
+      "target": "observer_journal_py_connection",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -9467,6 +10613,93 @@
       "source": "schemas_action",
       "target": "schemas_models",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "schemas/db.py",
+      "source_location": "L47",
+      "weight": 1.0,
+      "source": "schemas_db",
+      "target": "schemas_db_connect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_db.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "tests_test_db",
+      "target": "schemas_db",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "tests_test_journal",
+      "target": "schemas_db",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "schemas/db.py",
+      "source_location": "L47",
+      "weight": 1.0,
+      "source": "schemas_db_connect",
+      "target": "schemas_db_py_connection",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_db.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "tests_test_db",
+      "target": "schemas_db_connect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_db.py",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "tests_test_db_dbtest_test_wal_and_tables",
+      "target": "schemas_db_connect"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "tests_test_journal",
+      "target": "schemas_db_connect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_journal.py",
+      "source_location": "L89",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest_test_insert_and_read",
+      "target": "schemas_db_connect"
     },
     {
       "relation": "imports_from",
@@ -10392,6 +11625,47 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "scripts/make_kubeconfigs.sh",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "scripts_make_kubeconfigs",
+      "target": "scripts_make_kubeconfigs_sh__entry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/security_check.sh",
+      "source_location": "L13",
+      "weight": 1.0,
+      "source": "scripts_security_check",
+      "target": "scripts_security_check_check",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/security_check.sh",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "scripts_security_check",
+      "target": "scripts_security_check_sh__entry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/security_check.sh",
+      "source_location": "L22",
+      "weight": 1.0,
+      "context": "call",
+      "source": "scripts_security_check_sh__entry",
+      "target": "scripts_security_check_check",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "scripts/verify_audit.py",
       "source_location": "L11",
       "weight": 1.0,
@@ -10669,6 +11943,316 @@
       "weight": 1.0,
       "source": "tests_test_bench_test_rehearsal_hooks_only_when_enabled",
       "target": "tests_test_bench_fakeservices_observe",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "tests_test_culprit",
+      "target": "tests_test_culprit_culprittest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "tests_test_culprit",
+      "target": "tests_test_culprit_trace",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L20",
+      "weight": 1.0,
+      "source": "tests_test_culprit_culprittest_test_leaf_error_is_culprit",
+      "target": "tests_test_culprit_trace",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L30",
+      "weight": 1.0,
+      "source": "tests_test_culprit_culprittest_test_majority_origin_wins",
+      "target": "tests_test_culprit_trace",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L25",
+      "weight": 1.0,
+      "source": "tests_test_culprit_culprittest_test_otel_status_tag_counts_as_error",
+      "target": "tests_test_culprit_trace",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L44",
+      "weight": 1.0,
+      "source": "tests_test_culprit_culprittest",
+      "target": "tests_test_culprit_culprittest_test_fallback_survives_cycle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L39",
+      "weight": 1.0,
+      "source": "tests_test_culprit_culprittest",
+      "target": "tests_test_culprit_culprittest_test_fallback_tie_breaks_on_onset",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L19",
+      "weight": 1.0,
+      "source": "tests_test_culprit_culprittest",
+      "target": "tests_test_culprit_culprittest_test_leaf_error_is_culprit",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L29",
+      "weight": 1.0,
+      "source": "tests_test_culprit_culprittest",
+      "target": "tests_test_culprit_culprittest_test_majority_origin_wins",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L34",
+      "weight": 1.0,
+      "source": "tests_test_culprit_culprittest",
+      "target": "tests_test_culprit_culprittest_test_no_traces_falls_back_to_deepest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L48",
+      "weight": 1.0,
+      "source": "tests_test_culprit_culprittest",
+      "target": "tests_test_culprit_culprittest_test_nothing_unhealthy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_culprit.py",
+      "source_location": "L24",
+      "weight": 1.0,
+      "source": "tests_test_culprit_culprittest",
+      "target": "tests_test_culprit_culprittest_test_otel_status_tag_counts_as_error",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_db.py",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "tests_test_db",
+      "target": "tests_test_db_dbtest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_db.py",
+      "source_location": "L9",
+      "weight": 1.0,
+      "source": "tests_test_db_dbtest",
+      "target": "tests_test_db_dbtest_test_wal_and_tables",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "tests_test_detector",
+      "target": "tests_test_detector_det",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L10",
+      "weight": 1.0,
+      "source": "tests_test_detector",
+      "target": "tests_test_detector_detectortest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L45",
+      "weight": 1.0,
+      "source": "tests_test_detector_detectortest_test_bad_pod_is_unhealthy_at_once",
+      "target": "tests_test_detector_det",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L60",
+      "weight": 1.0,
+      "source": "tests_test_detector_detectortest_test_close_lets_next_incident_open",
+      "target": "tests_test_detector_det",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "tests_test_detector_detectortest_test_error_breach_must_sustain_30s",
+      "target": "tests_test_detector_det",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L51",
+      "weight": 1.0,
+      "source": "tests_test_detector_detectortest_test_grouping_inside_window_only",
+      "target": "tests_test_detector_det",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "tests_test_detector_detectortest_test_healthy_opens_nothing",
+      "target": "tests_test_detector_det",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L39",
+      "weight": 1.0,
+      "source": "tests_test_detector_detectortest_test_latency_breach_needs_baseline",
+      "target": "tests_test_detector_det",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L31",
+      "weight": 1.0,
+      "source": "tests_test_detector_detectortest_test_recovery_resets_sustain_clock",
+      "target": "tests_test_detector_det",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L44",
+      "weight": 1.0,
+      "source": "tests_test_detector_detectortest",
+      "target": "tests_test_detector_detectortest_test_bad_pod_is_unhealthy_at_once",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L59",
+      "weight": 1.0,
+      "source": "tests_test_detector_detectortest",
+      "target": "tests_test_detector_detectortest_test_close_lets_next_incident_open",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "tests_test_detector_detectortest",
+      "target": "tests_test_detector_detectortest_test_error_breach_must_sustain_30s",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L50",
+      "weight": 1.0,
+      "source": "tests_test_detector_detectortest",
+      "target": "tests_test_detector_detectortest_test_grouping_inside_window_only",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L11",
+      "weight": 1.0,
+      "source": "tests_test_detector_detectortest",
+      "target": "tests_test_detector_detectortest_test_healthy_opens_nothing",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L38",
+      "weight": 1.0,
+      "source": "tests_test_detector_detectortest",
+      "target": "tests_test_detector_detectortest_test_latency_breach_needs_baseline",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_detector.py",
+      "source_location": "L30",
+      "weight": 1.0,
+      "source": "tests_test_detector_detectortest",
+      "target": "tests_test_detector_detectortest_test_recovery_resets_sustain_clock",
       "confidence_score": 1.0
     },
     {
@@ -11016,6 +12600,204 @@
       "weight": 1.0,
       "source": "tests_test_integration",
       "target": "tests_test_integration_test_diagnosis_audit_and_receipt_round_trip",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "tests_test_journal",
+      "target": "tests_test_journal_deploy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "tests_test_journal",
+      "target": "tests_test_journal_journaltest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L43",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest_test_author_skips_status_writes",
+      "target": "tests_test_journal_deploy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L73",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest_test_container_set_change_rolls_back_template",
+      "target": "tests_test_journal_deploy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L48",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest_test_env_inverse_restores_and_deletes",
+      "target": "tests_test_journal_deploy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L24",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest_test_image_change",
+      "target": "tests_test_journal_deploy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L90",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest_test_insert_and_read",
+      "target": "tests_test_journal_deploy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L66",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest_test_replicas_and_restart",
+      "target": "tests_test_journal_deploy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L57",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest_test_resources_inverse_nulls_added_keys",
+      "target": "tests_test_journal_deploy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L37",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest_test_status_only_change_is_ignored",
+      "target": "tests_test_journal_deploy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L42",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest",
+      "target": "tests_test_journal_journaltest_test_author_skips_status_writes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L72",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest",
+      "target": "tests_test_journal_journaltest_test_container_set_change_rolls_back_template",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L47",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest",
+      "target": "tests_test_journal_journaltest_test_env_inverse_restores_and_deletes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L78",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest",
+      "target": "tests_test_journal_journaltest_test_flag_configmap",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L23",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest",
+      "target": "tests_test_journal_journaltest_test_image_change",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L88",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest",
+      "target": "tests_test_journal_journaltest_test_insert_and_read",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L65",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest",
+      "target": "tests_test_journal_journaltest_test_replicas_and_restart",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L56",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest",
+      "target": "tests_test_journal_journaltest_test_resources_inverse_nulls_added_keys",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_journal.py",
+      "source_location": "L36",
+      "weight": 1.0,
+      "source": "tests_test_journal_journaltest",
+      "target": "tests_test_journal_journaltest_test_status_only_change_is_ignored",
       "confidence_score": 1.0
     },
     {
@@ -12362,7 +14144,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "team/SHARED_CONTEXT.md",
-      "source_location": "L114",
+      "source_location": "L136",
       "weight": 1.0,
       "source": "team_shared_context_shared_context_all_agents_read_and_write_this",
       "target": "team_shared_context_log_append_only_newest_at_bottom",
@@ -12672,7 +14454,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "team/muaz/STATE.md",
-      "source_location": "L18",
+      "source_location": "L91",
       "weight": 1.0,
       "source": "team_muaz_state_muaz_m_state",
       "target": "team_muaz_state_blocked_waiting_on",
@@ -12682,7 +14464,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "team/muaz/STATE.md",
-      "source_location": "L10",
+      "source_location": "L11",
       "weight": 1.0,
       "source": "team_muaz_state_muaz_m_state",
       "target": "team_muaz_state_done_with_proof",
@@ -12692,7 +14474,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "team/muaz/STATE.md",
-      "source_location": "L14",
+      "source_location": "L85",
       "weight": 1.0,
       "source": "team_muaz_state_muaz_m_state",
       "target": "team_muaz_state_in_progress",
@@ -12702,7 +14484,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "team/muaz/STATE.md",
-      "source_location": "L24",
+      "source_location": "L105",
       "weight": 1.0,
       "source": "team_muaz_state_muaz_m_state",
       "target": "team_muaz_state_next",
@@ -12712,7 +14494,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "team/muaz/STATE.md",
-      "source_location": "L30",
+      "source_location": "L113",
       "weight": 1.0,
       "source": "team_muaz_state_muaz_m_state",
       "target": "team_muaz_state_notes_for_my_next_session",
@@ -12872,7 +14654,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "team/twaha/STATE.md",
-      "source_location": "L37",
+      "source_location": "L41",
       "weight": 1.0,
       "source": "team_twaha_state_twaha_t_state",
       "target": "team_twaha_state_blocked_waiting_on",
@@ -12892,7 +14674,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "team/twaha/STATE.md",
-      "source_location": "L32",
+      "source_location": "L36",
       "weight": 1.0,
       "source": "team_twaha_state_twaha_t_state",
       "target": "team_twaha_state_in_progress",
@@ -12902,7 +14684,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "team/twaha/STATE.md",
-      "source_location": "L48",
+      "source_location": "L52",
       "weight": 1.0,
       "source": "team_twaha_state_twaha_t_state",
       "target": "team_twaha_state_next",
@@ -12912,7 +14694,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "team/twaha/STATE.md",
-      "source_location": "L55",
+      "source_location": "L59",
       "weight": 1.0,
       "source": "team_twaha_state_twaha_t_state",
       "target": "team_twaha_state_notes_for_my_next_session",
@@ -13000,5 +14782,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "31a11330e151ab7478d966adc5308310f6bc530d"
+  "built_at_commit": "2b21c5fb412e52393ccd35f781d285e1c36375f7"
 }

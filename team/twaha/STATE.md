@@ -6,6 +6,10 @@
 
 ## Done (with proof)
 
+- Merged Muaz's `origin/main` at `1741b6a`. Resolved env/ignore/shared-context
+  conflicts without dropping either side. Combined suite: 90 passed. Added
+  culprit counter/set type annotations for the existing mypy check.
+
 - User confirmed Twaha role and approved Twaha components plus inference adapter.
 - Read `CLAUDE.md`, `IMPLEMENTATION.md`, `docs/PLAN.md`, own architecture/tasks,
   and shared context. `IMPLEMENTATION.md` remains the current plan.
