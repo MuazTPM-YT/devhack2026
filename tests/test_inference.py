@@ -123,3 +123,8 @@ async def test_cache_disk_failure_does_not_discard_diagnosis(bundle, action, tmp
     assert result.diagnosis is not None
     assert result.action == action
     assert any(event["payload"].get("error") == "cache_write_failed" for event in result.events)
+
+
+async def test_unknown_proposal_cannot_claim_trusted_pattern(bundle, action, tmp_path):
+    result = await DiagnosisService(FakeProvider([diagnosis(action)]), tmp_path).diagnose(bundle, "unknown")
+    assert result.action.pattern == "unknown"

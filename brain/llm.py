@@ -110,6 +110,8 @@ class DiagnosisService:
                         finally:
                             if temporary and temporary.exists():
                                 temporary.unlink(missing_ok=True)
+                        if diagnosis.proposed:
+                            diagnosis.proposed.pattern = pattern
                         action = rule_action if pattern != "unknown" else diagnosis.proposed
                         return DiagnosisResult(diagnosis, action, False, None, events)
                     except (ValidationError, ValueError):
@@ -127,6 +129,8 @@ class DiagnosisService:
         if cache.exists():
             try:
                 diagnosis = self._validate(cache.read_text(), safe_bundle)
+                if diagnosis.proposed:
+                    diagnosis.proposed.pattern = pattern
                 events.append({"type": "llm_called", "incident_id": bundle.incident.id,
                                "payload": {"cached": True}})
                 return DiagnosisResult(diagnosis, rule_action if pattern != "unknown" else diagnosis.proposed,
