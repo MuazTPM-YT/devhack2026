@@ -1,0 +1,43 @@
+# Helm values for open-telemetry/opentelemetry-demo 0.42.6 (plan §3.3).
+# Keys checked against `helm show values` of that exact chart version.
+# The chart has no key for Deployment strategy; scripts/install_shop.sh patches it.
+
+default:
+  envOverrides:
+    # SDK default is 60 s; 5 s lets the observer see change fast
+    - name: OTEL_METRIC_EXPORT_INTERVAL
+      value: "5000"
+
+components:
+  # LLM agent needs an external API key; chatbot and mcp exist only to serve it
+  agent:
+    enabled: false
+  chatbot:
+    enabled: false
+  mcp:
+    enabled: false
+
+  payment:
+    replicas: 2
+  checkout:
+    replicas: 2
+
+  # leak target (plan §6.1): steady use ~50Mi, so the leak flag OOMKills it quickly
+  recommendation:
+    resources:
+      limits:
+        memory: 200Mi
+
+opensearch:
+  enabled: false
+
+opentelemetry-collector:
+  config:
+    connectors:
+      span_metrics:
+        metrics_flush_interval: 5s
+    service:
+      pipelines:
+        # opensearch is off, so logs only go to debug
+        logs:
+          exporters: [debug]

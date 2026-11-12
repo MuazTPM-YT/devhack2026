@@ -45,5 +45,6 @@
   "43": "security_check.sh",
   "44": "make_kubeconfigs.sh",
   "45": "LlmTest",
-  "46": "match"
+  "46": "match",
+  "47": "setup_cluster.sh"
 }

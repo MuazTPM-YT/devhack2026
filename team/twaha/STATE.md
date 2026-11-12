@@ -6,6 +6,12 @@
 
 ## Done (with proof)
 
+- PR preparation: merged origin/main through `db94f31`, preserving main's
+  deliberate retirement of the sync provider. Conflicts in shared context kept
+  both sides; generated graph rebuilt from merged sources. Current merged suite:
+  160 passed, one upstream audioop warning. Ruff/mypy (37 files), shell syntax,
+  and whitespace checks passed. Earlier 166-count included retired sync tests.
+
 - Phase 3 readiness: `uv run --locked pytest -q` -> 166 passed, one upstream
   discord.py audioop warning. Ruff/mypy passed (38 source files). Benchmark and
   trust-report CLI help commands passed. No live incident runs performed.

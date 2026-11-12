@@ -1,0 +1,19 @@
+# Single list of shop services (plan §4.1, contract C7).
+# Names are the real Deployment names in namespace "shop" (chart 0.42.6).
+services:
+  payment:        {kind: stateless, critical: true,  actable: true}
+  checkout:       {kind: stateless, critical: true,  actable: true}
+  cart:           {kind: stateless, critical: true,  actable: true}
+  frontend:       {kind: stateless, critical: true,  actable: true}
+  recommendation: {kind: stateless, critical: false, actable: true}
+  ad:             {kind: stateless, critical: false, actable: true}
+  email:          {kind: stateless, critical: false, actable: true}
+  valkey-cart:    {kind: stateful,  critical: true,  protected: true}
+  kafka:          {kind: stateful,  critical: true,  protected: true}
+flag_config:
+  # seed only: an init container copies it to an emptyDir at pod start;
+  # flagd reads and flagd-ui writes /etc/flagd/demo.flagd.json on that emptyDir
+  configmap: flagd-config
+degraded_mode_flags:               # non-critical features that can be switched off
+  - recommendation
+  - ad

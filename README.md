@@ -220,17 +220,3 @@ or auto-undo. Those require Muaz's gateway and Anirudh's cluster.
 `graphify update .` refreshes the code graph without an LLM call. Generated
 `graphify-out/graph.json`, `graph.html`, and `GRAPH_REPORT.md` describe the current
 component relationships. Local graph caches and dated backups stay untracked.
-
-## Main-branch diagnosis compatibility
-
-The merged synchronous `brain.llm.diagnose(rendered, schema, validate, ...)`
-interface remains available. It delegates to `OpenCodeGoSyncAdapter` in
-`brain/providers/opencode_go_sync.py`; its HTTP and forced-tool-call behavior
-remain compatible with main. `config_from_env()` for that interface reads
-`OPENCODE_API_KEY` and `LLM_MODEL`. Its caller must redact rendered evidence and
-supply the evidence/schema validator. Its timeout applies per HTTP attempt.
-
-The async `DiagnosisService` and `OpenCodeGoAdapter` remain the preferred typed
-integration, with the existing `OPENCODE_GO_API_KEY` / `INFERENCE_MODEL` settings,
-evidence validation, quarantine, and overall deadline. No call interface or
-provider credential setting from either branch was removed by the merge.

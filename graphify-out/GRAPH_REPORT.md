@@ -1,16 +1,16 @@
 # Graph Report - devhack2026  (2026-11-13)
 
 ## Corpus Check
-- 81 files · ~37,455 words
+- 81 files · ~37,898 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 659 nodes · 1304 edges · 47 communities (43 shown, 4 thin omitted)
-- Extraction: 93% EXTRACTED · 7% INFERRED · 0% AMBIGUOUS · INFERRED: 96 edges (avg confidence: 0.6)
+- 639 nodes · 1259 edges · 48 communities (42 shown, 6 thin omitted)
+- Extraction: 93% EXTRACTED · 7% INFERRED · 0% AMBIGUOUS · INFERRED: 90 edges (avg confidence: 0.59)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `e6505e7a`
+- Built from commit: `f9eafb00`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -56,15 +56,16 @@
 - make_kubeconfigs.sh
 - LlmTest
 - match
+- setup_cluster.sh
 
 ## God Nodes (most connected - your core abstractions)
 1. `DiagnosisService` - 25 edges
 2. `NotifierState` - 25 edges
 3. `HttpTrialServices` - 22 edges
 4. `Card` - 22 edges
-5. `FakeProvider` - 19 edges
-6. `ApprovalController` - 18 edges
-7. `GatewayDecision` - 18 edges
+5. `ApprovalController` - 18 edges
+6. `GatewayDecision` - 18 edges
+7. `FakeProvider` - 18 edges
 8. `redact_value()` - 17 edges
 9. `DiscordNotifier` - 17 edges
 10. `connect()` - 17 edges
@@ -84,15 +85,15 @@
 ## Import Cycles
 - None detected.
 
-## Communities (47 total, 4 thin omitted)
+## Communities (48 total, 6 thin omitted)
 
 ### Community 0 - "NotifierState"
 Cohesion: 0.07
-Nodes (36): Any, quarantine(), redact(), redact_value(), Interaction, Notifier, Protocol, NotificationConsumer (+28 more)
+Nodes (38): Any, quarantine(), redact(), redact_value(), Interaction, Notifier, Protocol, NotificationConsumer (+30 more)
 
 ### Community 1 - "test_audit.py"
-Cohesion: 0.10
-Nodes (38): AuditLog, canonical(), EventBus, Any, Path, verify(), active_bus(), create_events_router() (+30 more)
+Cohesion: 0.11
+Nodes (37): AuditLog, canonical(), EventBus, Any, Path, verify(), active_bus(), create_events_router() (+29 more)
 
 ### Community 2 - "6.4 Gateway (`gateway/`) [M] P0 unless marked"
 Cohesion: 0.05
@@ -103,12 +104,12 @@ Cohesion: 0.07
 Nodes (39): Harness, HttpTrialServices, main(), measure(), ObservationError, Any, AsyncClient, Path (+31 more)
 
 ### Community 4 - "DiagnosisService"
-Cohesion: 0.12
-Nodes (32): DiagnosisResult, DiagnosisService, Path, InferenceProvider, InferenceRequest, InferenceResponse, ProviderError, Protocol (+24 more)
+Cohesion: 0.15
+Nodes (30): DiagnosisResult, DiagnosisService, Path, InferenceProvider, InferenceRequest, InferenceResponse, ProviderError, Protocol (+22 more)
 
 ### Community 5 - "models.py"
-Cohesion: 0.10
-Nodes (25): BaseModel, ActionRequest, ApprovalDecidedPayload, ApprovalRequestedPayload, CardPayload, Cause, ChecklistPayload, DiagnosisReadyPayload (+17 more)
+Cohesion: 0.11
+Nodes (19): BaseModel, ApprovalDecidedPayload, ApprovalRequestedPayload, CardPayload, Cause, ChecklistPayload, DiagnosisReadyPayload, Event (+11 more)
 
 ### Community 6 - "AGENTS.md"
 Cohesion: 0.18
@@ -139,8 +140,8 @@ Cohesion: 0.29
 Nodes (6): 12. Risks and fallbacks, 13. Submission checklist, 14. Command cheat sheet, 2. Repository layout, 7. End-to-end flows (acceptance scenarios), Implementation Plan: the on-call agent that has to earn its autonomy
 
 ### Community 13 - "On-call agent: Twaha components"
-Cohesion: 0.22
-Nodes (8): Benchmarks and adversarial checks, Discord notifier, Gateway mounting, Inference, Main-branch diagnosis compatibility, On-call agent: Twaha components, Project graph, Setup and checks
+Cohesion: 0.25
+Nodes (7): Benchmarks and adversarial checks, Discord notifier, Gateway mounting, Inference, On-call agent: Twaha components, Project graph, Setup and checks
 
 ### Community 14 - "Anirudh [A]: architecture of my part"
 Cohesion: 0.29
@@ -224,29 +225,25 @@ Nodes (3): Detector, det(), DetectorTest
 
 ### Community 42 - "connect"
 Cohesion: 0.12
-Nodes (18): main(), Any, Path, summarize_ledger(), check(), counts(), eligible(), lower_bound() (+10 more)
-
-### Community 45 - "LlmTest"
-Cohesion: 0.27
-Nodes (4): FakePost, LlmTest, reply(), validate()
+Nodes (20): main(), Any, Path, summarize_ledger(), check(), counts(), eligible(), lower_bound() (+12 more)
 
 ### Community 46 - "match"
 Cohesion: 0.29
 Nodes (7): _action(), latest_change_before_onset(), match(), to_bytes(), change(), incident(), RulesTest
 
 ## Knowledge Gaps
-- **162 isolated node(s):** `oncall-agent`, `make_kubeconfigs.sh script`, `Communication`, `Code comments`, `Workflow` (+157 more)
+- **163 isolated node(s):** `oncall-agent`, `install_shop.sh script`, `make_kubeconfigs.sh script`, `setup_cluster.sh script`, `Communication` (+158 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **6 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `connect()` connect `connect` to `test_audit.py`, `JournalTest`?**
-  _High betweenness centrality (0.071) - this node is a cross-community bridge._
+  _High betweenness centrality (0.070) - this node is a cross-community bridge._
 - **Why does `GatewayDecision` connect `test_audit.py` to `NotifierState`, `consumer.py`, `models.py`?**
-  _High betweenness centrality (0.049) - this node is a cross-community bridge._
-- **Why does `Verification` connect `test_verifier.py` to `test_audit.py`?**
+  _High betweenness centrality (0.051) - this node is a cross-community bridge._
+- **Why does `Verification` connect `test_verifier.py` to `connect`?**
   _High betweenness centrality (0.036) - this node is a cross-community bridge._
 - **Are the 7 inferred relationships involving `DiagnosisService` (e.g. with `InferenceProvider` and `InferenceRequest`) actually correct?**
   _`DiagnosisService` has 7 INFERRED edges - model-reasoned connections that need verification._
