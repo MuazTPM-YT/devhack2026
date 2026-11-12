@@ -1,0 +1,63 @@
+import json
+import sqlite3
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException
+
+from brain.redact import redact_value
+from schemas.models import Card, Receipt
+
+
+class ReceiptStore:
+    def __init__(self, path: Path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.path = path
+        with self.connect() as db:
+            db.execute("PRAGMA journal_mode=WAL")
+            db.execute("CREATE TABLE IF NOT EXISTS receipt_views (id INTEGER PRIMARY KEY, body TEXT NOT NULL)")
+
+    def connect(self):
+        return sqlite3.connect(self.path)
+
+    # store display data; executor keeps its undo snapshot separately
+    def save(self, receipt: Receipt) -> int:
+        with self.connect() as db:
+            cursor = db.execute("INSERT INTO receipt_views(body) VALUES (?)",
+                                (json.dumps(redact_value(receipt.model_dump(mode="json"))),))
+            return int(cursor.lastrowid)
+
+    def get(self, receipt_id: int) -> Receipt | None:
+        with self.connect() as db:
+            row = db.execute("SELECT body FROM receipt_views WHERE id=?", (receipt_id,)).fetchone()
+        return Receipt.model_validate_json(row[0]) if row else None
+
+
+def build_card(receipt: Receipt, receipt_id: int) -> Card:
+    proven = receipt.outcome == "success" and receipt.prediction_held is True and receipt.harm_clean is True
+    status = "FIXED" if proven else {
+        "undone": "WOKE YOU BECAUSE", "handed_off": "HANDED OFF",
+        "right_by_accident": "RECOVERED; PREDICTION FAILED",
+    }.get(receipt.outcome, "VERIFICATION PENDING")
+    refs = " ".join(f"[{value}]" for value in receipt.evidence_ids)
+    text = "\n".join([
+        f"{status}: {receipt.target}",
+        f"Evidence: {refs or 'not supplied'}",
+        f"Did: {receipt.tool}; receipt #{receipt_id}",
+        f"Checked: prediction={receipt.prediction_held}; harm clean={receipt.harm_clean}",
+        f"Undo: inspect receipt #{receipt_id} and request gateway approval",
+    ])
+    return Card(incident_id=receipt.incident_id, status=status,
+                text=redact_value(text), evidence_ids=receipt.evidence_ids)
+
+
+def create_receipts_router(store: ReceiptStore) -> APIRouter:
+    router = APIRouter()
+
+    @router.get("/receipts/{receipt_id}")
+    def get(receipt_id: int):
+        receipt = store.get(receipt_id)
+        if receipt is None:
+            raise HTTPException(404, "Receipt not found")
+        return {"id": receipt_id, "receipt": receipt, "card": build_card(receipt, receipt_id)}
+
+    return router
