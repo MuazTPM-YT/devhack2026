@@ -6,10 +6,14 @@ section. Only my own work here; cross-team facts go in
 
 **Last updated:** 2026-11-13
 **Current phase:** 1 (stdlib-only core done; IO wiring waits on deps + schemas)
-**Branches:** PR #1, #3, #4 merged; PR #5 (`muaz/phase1-logic`) open. Now `muaz/llm-opencode` on top of #5 (not pushed)
+**Branches:** PR #1, #3 to #6 merged. Now `muaz/drop-llm` (not pushed)
 
 ## Done (with proof)
 
+- Removed my `brain/llm.py` + `tests/test_llm.py` + env keys; Twaha's
+  `DiagnosisService` is the LLM path (Muaz chose A). Proof: stdlib suite
+  `OK`; `git merge-tree` vs `origin/codex/twaha-opencode-go` shows no
+  conflict.
 - `brain/rules.py` + `brain/llm.py` on `muaz/llm-opencode`, stdlib only.
   Proof: `python3 -m unittest discover -s tests` -> `Ran 59 tests ... OK`
   (3.14.9 and 3.12.12). Mutation check (by_agent filter, change window,
@@ -133,7 +137,8 @@ section. Only my own work here; cross-team facts go in
 - A's cluster: Anirudh and Twaha are setting theirs up now (2026-11-13).
 - VERIFY values from A: Deployment names, `flagd-config` name, image prefixes.
 - Jaeger paths: need one curl on A's cluster (asked in SHARED_CONTEXT log).
-- OpenCode Go: one real call with Muaz's key to confirm `Authorization: Bearer` and forced tool choice.
+- Twaha's branch `codex/twaha-opencode-go` (pyproject, schemas, events, LLM) not merged yet; IO wiring waits on it.
+- OpenCode Go: one real call with Muaz's key through Twaha's adapter.
 - Schemas (C1): waiting on T's reply to Q11. Blocks `rules.py`, bundle, gateway.
 - Deps + commands (Q9/Q10): block every network/cluster part of Phase 1.
 - Q replies need the other owners to answer `agreed`.
