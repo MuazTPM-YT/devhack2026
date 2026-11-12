@@ -288,3 +288,53 @@ def test_flag_flip_sets_payment_failure_and_leaves_other_flags():
     assert flags[LEAK_FLAG]["defaultVariant"] == "off"
     assert fake.live_flags == fake.configmaps[FLAG_CONFIGMAP]["data"][FLAG_FILE]
     assert not [c for c in fake.calls if c[:2] == ("rollout", "restart")]
+
+
+class FakeRaw:
+    def __init__(self, result=(True, "deployment.apps/cart scaled")):
+        self.result, self.calls = result, []
+
+    def __call__(self, args):
+        self.calls.append(args)
+        return self.result
+
+
+def test_judge_kubectl_splits_without_shell_and_records_writes(tmp_path):
+    raw = FakeRaw()
+    with TestClient(create_app(tmp_path, FakeKubectl(), raw)) as client:
+        body = client.post("/chaos/kubectl", json={"command": "kubectl scale deploy/cart --replicas=0"}).json()
+        assert body == {"ok": True, "output": "deployment.apps/cart scaled", "recorded": True}
+        assert raw.calls == [["scale", "deploy/cart", "--replicas=0"]]
+        truth = client.get("/chaos/ground-truth").json()
+        assert truth[-1]["type"] == "judge_kubectl"
+        assert truth[-1]["args"] == ["scale", "deploy/cart", "--replicas=0"]
+
+
+def test_judge_kubectl_shell_metacharacters_stay_plain_args(tmp_path):
+    raw = FakeRaw()
+    with TestClient(create_app(tmp_path, FakeKubectl(), raw)) as client:
+        client.post("/chaos/kubectl", json={"command": "get pods; rm -rf / | cat $(id)"})
+        assert raw.calls == [["get", "pods;", "rm", "-rf", "/", "|", "cat", "$(id)"]]
+
+
+def test_judge_kubectl_read_only_not_recorded(tmp_path):
+    raw = FakeRaw((True, "NAME READY"))
+    with TestClient(create_app(tmp_path, FakeKubectl(), raw)) as client:
+        body = client.post("/chaos/kubectl", json={"command": "get pods -o wide"}).json()
+        assert body["recorded"] is False
+        assert client.get("/chaos/ground-truth").json() == []
+
+
+def test_judge_kubectl_failure_returns_output_not_500(tmp_path):
+    raw = FakeRaw((False, 'Error from server (NotFound): deployments.apps "nope" not found'))
+    with TestClient(create_app(tmp_path, FakeKubectl(), raw)) as client:
+        body = client.post("/chaos/kubectl", json={"command": "delete deploy nope"}).json()
+        assert body["ok"] is False and "NotFound" in body["output"]
+
+
+@pytest.mark.parametrize("command, status", [("", 422), ("kubectl", 400), ("get 'unclosed", 400)])
+def test_judge_kubectl_rejects_bad_input(tmp_path, command, status):
+    raw = FakeRaw()
+    with TestClient(create_app(tmp_path, FakeKubectl(), raw)) as client:
+        assert client.post("/chaos/kubectl", json={"command": command}).status_code == status
+        assert raw.calls == []
