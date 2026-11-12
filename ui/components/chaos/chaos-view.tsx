@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { FaultBoard } from "./fault-board";
+import { Health } from "./health";
 import styles from "./chaos-view.module.css";
 
 export function ChaosView() {
@@ -17,6 +18,9 @@ export function ChaosView() {
         <h1 className={styles.title}>Chaos</h1>
       </div>
       <FaultBoard onChange={changed} />
+      <div className={styles.grid}>
+        <Health className={styles.span4} />
+      </div>
     </div>
   );
 }
