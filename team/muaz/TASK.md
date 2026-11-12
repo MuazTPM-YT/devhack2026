@@ -24,7 +24,7 @@ Priority: P0 = minimum deliverable, P1 = to win, P2 = stretch.
 - [x] P0 Dependency graph from Jaeger, 60 s cache (§6.3.1) — proof: `tests/test_brain.py::test_graph_cache_and_downstream` (pass, branch `muaz/brain`). Jaeger response shape not verified live.
 - [x] P0 Evidence bundle with IDs on every item (§6.3.4) — proof: `tests/test_bundle.py` (pass, branch `muaz/brain`).
 - [x] P0 Rules: general rule only (§6.3.6) — proof: `tests/test_rules.py` (pass).
-- [ ] P0 Gateway: schema, policy, dry run + snapshot, freshness, executor for `rollback_deploy` (§6.4.2, §6.4.3, §6.4.5, §6.4.7) — partial: freshness (`tests/test_freshness.py`) and snapshot hashes (`spec_hashes`) done; schema step, policy, dry run, executor not built.
+- [x] P0 Gateway: schema, policy, dry run + snapshot, freshness, executor for `rollback_deploy` (§6.4.2, §6.4.3, §6.4.5, §6.4.7) — proof: `tests/test_gateway.py` (12 pass) + `tests/test_freshness.py`, branch `muaz/gateway`. Fake API server only; not run on the cluster.
 - [ ] P0 Verifier: recovery + prediction + auto-undo (§6.4.9) — partial: recovery + prediction + outcome logic done (`tests/test_verifier.py`); the polling loop and the real undo need the gateway.
 - [x] P0 `test_rules.py`, `test_culprit.py` (§8.1) — proof: both in `tests/`, pass.
 
@@ -43,8 +43,8 @@ Exit: scenarios 1 to 6 in §7 behave as specified.
 ## Phase 3: trust, humans, proof
 
 - [ ] P1 Trust gate + ledger + tiers (§6.4.6); depends on Q2, Q3 — partial: gate + ledger done (`tests/test_trust.py`), Q2/Q3 agreed; tier wiring and the rehearsal endpoints need the gateway.
-- [ ] P1 Approvals: create, decide endpoint, expiry, re-run steps 2 to 6 (§6.4.8)
-- [ ] P1 Hands-off rule (§6.4.2 step 2); depends on Q4
+- [ ] P1 Approvals: create, decide endpoint, expiry, re-run steps 2 to 6 (§6.4.8) — partial: create, decide endpoint, expiry check, rerun steps 2 to 6 done (`tests/test_gateway.py::test_approval_rules`); expiry sweeper and re-page not built.
+- [x] P1 Hands-off rule (§6.4.2 step 2); depends on Q4 — proof: `tests/test_gateway.py::test_human_change_after_open_hands_off` (pass); Q4 agreed by A.
 - [ ] P1 Watchdog (§6.4.10)
 - [ ] P1 Blast radius + net-benefit check (§6.4.4)
 
