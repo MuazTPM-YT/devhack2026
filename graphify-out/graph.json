@@ -27,17 +27,57 @@
       "label": "TrialResult",
       "file_type": "code",
       "source_file": "bench/harness.py",
-      "source_location": "L25",
+      "source_location": "L26",
       "_origin": "ast",
       "id": "bench_harness_trialresult",
       "community": 3,
       "norm_label": "trialresult"
     },
     {
+      "label": "ObservationError",
+      "file_type": "code",
+      "source_file": "bench/harness.py",
+      "source_location": "L49",
+      "_origin": "ast",
+      "id": "bench_harness_observationerror",
+      "community": 3,
+      "norm_label": "observationerror"
+    },
+    {
+      "label": "ValueError",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "valueerror",
+      "community": 3,
+      "norm_label": "valueerror"
+    },
+    {
+      "label": ".__init__()",
+      "file_type": "code",
+      "source_file": "bench/harness.py",
+      "source_location": "L50",
+      "_origin": "ast",
+      "id": "bench_harness_observationerror_init",
+      "community": 3,
+      "norm_label": ".__init__()"
+    },
+    {
+      "label": "Any",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "bench_harness_py_any",
+      "community": 3,
+      "norm_label": "any"
+    },
+    {
       "label": "TrialServices",
       "file_type": "code",
       "source_file": "bench/harness.py",
-      "source_location": "L48",
+      "source_location": "L55",
       "_origin": "ast",
       "id": "bench_harness_trialservices",
       "community": 3,
@@ -57,7 +97,7 @@
       "label": ".reset()",
       "file_type": "code",
       "source_file": "bench/harness.py",
-      "source_location": "L49",
+      "source_location": "L56",
       "_origin": "ast",
       "id": "bench_harness_trialservices_reset",
       "community": 3,
@@ -67,7 +107,7 @@
       "label": ".wait_healthy()",
       "file_type": "code",
       "source_file": "bench/harness.py",
-      "source_location": "L50",
+      "source_location": "L57",
       "_origin": "ast",
       "id": "bench_harness_trialservices_wait_healthy",
       "community": 3,
@@ -77,27 +117,17 @@
       "label": ".inject()",
       "file_type": "code",
       "source_file": "bench/harness.py",
-      "source_location": "L51",
+      "source_location": "L58",
       "_origin": "ast",
       "id": "bench_harness_trialservices_inject",
       "community": 3,
       "norm_label": ".inject()"
     },
     {
-      "label": "Any",
-      "file_type": "code",
-      "source_file": "",
-      "source_location": "",
-      "_origin": "ast",
-      "id": "bench_harness_py_any",
-      "community": 3,
-      "norm_label": "any"
-    },
-    {
       "label": ".observe()",
       "file_type": "code",
       "source_file": "bench/harness.py",
-      "source_location": "L52",
+      "source_location": "L59",
       "_origin": "ast",
       "id": "bench_harness_trialservices_observe",
       "community": 3,
@@ -107,7 +137,7 @@
       "label": "Harness",
       "file_type": "code",
       "source_file": "bench/harness.py",
-      "source_location": "L55",
+      "source_location": "L62",
       "_origin": "ast",
       "id": "bench_harness_harness",
       "community": 3,
@@ -117,7 +147,7 @@
       "label": ".__init__()",
       "file_type": "code",
       "source_file": "bench/harness.py",
-      "source_location": "L56",
+      "source_location": "L63",
       "_origin": "ast",
       "id": "bench_harness_harness_init",
       "community": 3,
@@ -134,20 +164,40 @@
       "norm_label": "path"
     },
     {
+      "label": ".completed_attempts()",
+      "file_type": "code",
+      "source_file": "bench/harness.py",
+      "source_location": "L66",
+      "_origin": "ast",
+      "id": "bench_harness_harness_completed_attempts",
+      "community": 3,
+      "norm_label": ".completed_attempts()"
+    },
+    {
       "label": ".run()",
       "file_type": "code",
       "source_file": "bench/harness.py",
-      "source_location": "L59",
+      "source_location": "L80",
       "_origin": "ast",
       "id": "bench_harness_harness_run",
       "community": 3,
       "norm_label": ".run()"
     },
     {
+      "label": "measure()",
+      "file_type": "code",
+      "source_file": "bench/harness.py",
+      "source_location": "L121",
+      "_origin": "ast",
+      "id": "bench_harness_measure",
+      "community": 3,
+      "norm_label": "measure()"
+    },
+    {
       "label": "HttpTrialServices",
       "file_type": "code",
       "source_file": "bench/harness.py",
-      "source_location": "L120",
+      "source_location": "L160",
       "_origin": "ast",
       "id": "bench_harness_httptrialservices",
       "community": 3,
@@ -157,7 +207,7 @@
       "label": ".__init__()",
       "file_type": "code",
       "source_file": "bench/harness.py",
-      "source_location": "L121",
+      "source_location": "L161",
       "_origin": "ast",
       "id": "bench_harness_httptrialservices_init",
       "community": 3,
@@ -177,7 +227,7 @@
       "label": ".reset()",
       "file_type": "code",
       "source_file": "bench/harness.py",
-      "source_location": "L127",
+      "source_location": "L169",
       "_origin": "ast",
       "id": "bench_harness_httptrialservices_reset",
       "community": 3,
@@ -187,7 +237,7 @@
       "label": ".wait_healthy()",
       "file_type": "code",
       "source_file": "bench/harness.py",
-      "source_location": "L131",
+      "source_location": "L173",
       "_origin": "ast",
       "id": "bench_harness_httptrialservices_wait_healthy",
       "community": 3,
@@ -197,17 +247,37 @@
       "label": ".inject()",
       "file_type": "code",
       "source_file": "bench/harness.py",
-      "source_location": "L143",
+      "source_location": "L185",
       "_origin": "ast",
       "id": "bench_harness_httptrialservices_inject",
       "community": 3,
       "norm_label": ".inject()"
     },
     {
+      "label": "._approve()",
+      "file_type": "code",
+      "source_file": "bench/harness.py",
+      "source_location": "L190",
+      "_origin": "ast",
+      "id": "bench_harness_httptrialservices_approve",
+      "community": 3,
+      "norm_label": "._approve()"
+    },
+    {
+      "label": "._credit()",
+      "file_type": "code",
+      "source_file": "bench/harness.py",
+      "source_location": "L203",
+      "_origin": "ast",
+      "id": "bench_harness_httptrialservices_credit",
+      "community": 3,
+      "norm_label": "._credit()"
+    },
+    {
       "label": ".observe()",
       "file_type": "code",
       "source_file": "bench/harness.py",
-      "source_location": "L148",
+      "source_location": "L220",
       "_origin": "ast",
       "id": "bench_harness_httptrialservices_observe",
       "community": 3,
@@ -217,7 +287,7 @@
       "label": "main()",
       "file_type": "code",
       "source_file": "bench/harness.py",
-      "source_location": "L193",
+      "source_location": "L278",
       "_origin": "ast",
       "id": "bench_harness_main",
       "community": 3,
@@ -311,6 +381,56 @@
       "_origin": "ast",
       "id": "bench_report_main",
       "community": 3,
+      "norm_label": "main()"
+    },
+    {
+      "label": "trust_report.py",
+      "file_type": "code",
+      "source_file": "bench/trust_report.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "bench_trust_report",
+      "community": 42,
+      "norm_label": "trust_report.py"
+    },
+    {
+      "label": "summarize_ledger()",
+      "file_type": "code",
+      "source_file": "bench/trust_report.py",
+      "source_location": "L10",
+      "_origin": "ast",
+      "id": "bench_trust_report_summarize_ledger",
+      "community": 42,
+      "norm_label": "summarize_ledger()"
+    },
+    {
+      "label": "Path",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "bench_trust_report_py_path",
+      "community": 42,
+      "norm_label": "path"
+    },
+    {
+      "label": "Any",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "bench_trust_report_py_any",
+      "community": 42,
+      "norm_label": "any"
+    },
+    {
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "bench/trust_report.py",
+      "source_location": "L38",
+      "_origin": "ast",
+      "id": "bench_trust_report_main",
+      "community": 42,
       "norm_label": "main()"
     },
     {
@@ -580,7 +700,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "brain_providers_opencode_go_opencodegoadapter_init",
-      "community": 4,
+      "community": 3,
       "norm_label": ".__init__()"
     },
     {
@@ -590,7 +710,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "brain_providers_opencode_go_py_asyncclient",
-      "community": 4,
+      "community": 3,
       "norm_label": "asyncclient"
     },
     {
@@ -600,7 +720,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "brain_providers_opencode_go_opencodegoadapter_from_env",
-      "community": 4,
+      "community": 3,
       "norm_label": ".from_env()"
     },
     {
@@ -620,7 +740,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "brain_providers_opencode_go_sync",
-      "community": 45,
+      "community": 4,
       "norm_label": "opencode_go_sync.py"
     },
     {
@@ -630,7 +750,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "brain_providers_opencode_go_sync_config_from_env",
-      "community": 45,
+      "community": 4,
       "norm_label": "config_from_env()"
     },
     {
@@ -640,7 +760,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "brain_providers_opencode_go_sync_post",
-      "community": 45,
+      "community": 4,
       "norm_label": "_post()"
     },
     {
@@ -650,7 +770,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "brain_providers_opencode_go_sync_request_body",
-      "community": 45,
+      "community": 4,
       "norm_label": "request_body()"
     },
     {
@@ -660,7 +780,7 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "brain_providers_opencode_go_sync_diagnose",
-      "community": 45,
+      "community": 4,
       "norm_label": "_diagnose()"
     },
     {
@@ -670,7 +790,7 @@
       "source_location": "L83",
       "_origin": "ast",
       "id": "brain_providers_opencode_go_sync_opencodegosyncadapter",
-      "community": 45,
+      "community": 4,
       "norm_label": "opencodegosyncadapter"
     },
     {
@@ -680,7 +800,7 @@
       "source_location": "L84",
       "_origin": "ast",
       "id": "brain_providers_opencode_go_sync_opencodegosyncadapter_init",
-      "community": 45,
+      "community": 4,
       "norm_label": ".__init__()"
     },
     {
@@ -690,7 +810,7 @@
       "source_location": "L87",
       "_origin": "ast",
       "id": "brain_providers_opencode_go_sync_opencodegosyncadapter_diagnose",
-      "community": 45,
+      "community": 4,
       "norm_label": ".diagnose()"
     },
     {
@@ -700,7 +820,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "brain_redact",
-      "community": 1,
+      "community": 0,
       "norm_label": "redact.py"
     },
     {
@@ -710,7 +830,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "brain_redact_redact",
-      "community": 1,
+      "community": 0,
       "norm_label": "redact()"
     },
     {
@@ -720,7 +840,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "brain_redact_redact_value",
-      "community": 1,
+      "community": 0,
       "norm_label": "redact_value()"
     },
     {
@@ -730,7 +850,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "brain_redact_py_any",
-      "community": 1,
+      "community": 0,
       "norm_label": "any"
     },
     {
@@ -740,7 +860,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "brain_redact_quarantine",
-      "community": 1,
+      "community": 0,
       "norm_label": "quarantine()"
     },
     {
@@ -1200,7 +1320,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "gateway_trust",
-      "community": 39,
+      "community": 42,
       "norm_label": "trust.py"
     },
     {
@@ -1210,7 +1330,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "gateway_trust_lower_bound",
-      "community": 39,
+      "community": 42,
       "norm_label": "lower_bound()"
     },
     {
@@ -1220,7 +1340,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "gateway_trust_eligible",
-      "community": 39,
+      "community": 42,
       "norm_label": "eligible()"
     },
     {
@@ -1230,7 +1350,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "gateway_trust_counts",
-      "community": 39,
+      "community": 42,
       "norm_label": "counts()"
     },
     {
@@ -1240,7 +1360,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "gateway_trust_py_connection",
-      "community": 39,
+      "community": 42,
       "norm_label": "connection"
     },
     {
@@ -1250,7 +1370,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "gateway_trust_check",
-      "community": 39,
+      "community": 42,
       "norm_label": "check()"
     },
     {
@@ -1260,7 +1380,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "gateway_trust_record",
-      "community": 39,
+      "community": 42,
       "norm_label": "record()"
     },
     {
@@ -1720,7 +1840,7 @@
       "source_location": "L122",
       "_origin": "ast",
       "id": "notifier_discord_bot_discordnotifier_close_approval",
-      "community": 0,
+      "community": 3,
       "norm_label": ".close_approval()"
     },
     {
@@ -1930,7 +2050,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "observer_journal",
-      "community": 42,
+      "community": 39,
       "norm_label": "journal.py"
     },
     {
@@ -1940,7 +2060,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "observer_journal_template",
-      "community": 42,
+      "community": 39,
       "norm_label": "_template()"
     },
     {
@@ -1950,7 +2070,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "observer_journal_containers",
-      "community": 42,
+      "community": 39,
       "norm_label": "_containers()"
     },
     {
@@ -1960,7 +2080,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "observer_journal_undo_map",
-      "community": 42,
+      "community": 39,
       "norm_label": "_undo_map()"
     },
     {
@@ -1970,7 +2090,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "observer_journal_undo_env",
-      "community": 42,
+      "community": 39,
       "norm_label": "_undo_env()"
     },
     {
@@ -1980,7 +2100,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "observer_journal_deployment_changes",
-      "community": 42,
+      "community": 39,
       "norm_label": "_deployment_changes()"
     },
     {
@@ -1990,7 +2110,7 @@
       "source_location": "L96",
       "_origin": "ast",
       "id": "observer_journal_configmap_changes",
-      "community": 42,
+      "community": 39,
       "norm_label": "_configmap_changes()"
     },
     {
@@ -2000,7 +2120,7 @@
       "source_location": "L106",
       "_origin": "ast",
       "id": "observer_journal_author",
-      "community": 42,
+      "community": 39,
       "norm_label": "author()"
     },
     {
@@ -2010,7 +2130,7 @@
       "source_location": "L112",
       "_origin": "ast",
       "id": "observer_journal_entry",
-      "community": 42,
+      "community": 39,
       "norm_label": "entry()"
     },
     {
@@ -2020,7 +2140,7 @@
       "source_location": "L128",
       "_origin": "ast",
       "id": "observer_journal_current",
-      "community": 42,
+      "community": 39,
       "norm_label": "current()"
     },
     {
@@ -2040,7 +2160,7 @@
       "source_location": "L147",
       "_origin": "ast",
       "id": "observer_journal_insert",
-      "community": 42,
+      "community": 39,
       "norm_label": "insert()"
     },
     {
@@ -2050,7 +2170,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "observer_journal_py_connection",
-      "community": 42,
+      "community": 39,
       "norm_label": "connection"
     },
     {
@@ -2060,7 +2180,7 @@
       "source_location": "L158",
       "_origin": "ast",
       "id": "observer_journal_read",
-      "community": 42,
+      "community": 39,
       "norm_label": "read()"
     },
     {
@@ -2103,7 +2223,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schemas_db",
-      "community": 39,
+      "community": 42,
       "norm_label": "db.py"
     },
     {
@@ -2113,7 +2233,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "schemas_db_connect",
-      "community": 39,
+      "community": 42,
       "norm_label": "connect()"
     },
     {
@@ -2123,7 +2243,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "schemas_db_py_connection",
-      "community": 39,
+      "community": 42,
       "norm_label": "connection"
     },
     {
@@ -2203,7 +2323,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "schemas_models_evidence",
-      "community": 4,
+      "community": 5,
       "norm_label": "evidence"
     },
     {
@@ -2213,7 +2333,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "schemas_models_incident",
-      "community": 4,
+      "community": 5,
       "norm_label": "incident"
     },
     {
@@ -2253,7 +2373,7 @@
       "source_location": "L67",
       "_origin": "ast",
       "id": "schemas_models_actionrequest",
-      "community": 4,
+      "community": 5,
       "norm_label": "actionrequest"
     },
     {
@@ -2513,7 +2633,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_conftest",
-      "community": 4,
+      "community": 5,
       "norm_label": "conftest.py"
     },
     {
@@ -2523,7 +2643,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "tests_conftest_bundle",
-      "community": 4,
+      "community": 5,
       "norm_label": "bundle()"
     },
     {
@@ -2533,7 +2653,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "tests_conftest_action",
-      "community": 4,
+      "community": 5,
       "norm_label": "action()"
     },
     {
@@ -2543,7 +2663,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_redteam_test_attacks",
-      "community": 4,
+      "community": 0,
       "norm_label": "test_attacks.py"
     },
     {
@@ -2553,7 +2673,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "tests_redteam_test_attacks_test_forbidden_tools",
-      "community": 4,
+      "community": 5,
       "norm_label": "test_forbidden_tools()"
     },
     {
@@ -2563,7 +2683,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "tests_redteam_test_attacks_test_poisoned_log",
-      "community": 1,
+      "community": 0,
       "norm_label": "test_poisoned_log()"
     },
     {
@@ -2847,6 +2967,106 @@
       "norm_label": "test_rehearsal_credits_action_receipt_with_false_diagnosis()"
     },
     {
+      "label": "test_sync_provider_usage_normalizes_without_double_counting()",
+      "file_type": "code",
+      "source_file": "tests/test_bench.py",
+      "source_location": "L183",
+      "_origin": "ast",
+      "id": "tests_test_bench_test_sync_provider_usage_normalizes_without_double_counting",
+      "community": 3,
+      "norm_label": "test_sync_provider_usage_normalizes_without_double_counting()"
+    },
+    {
+      "label": "test_bench_recovery.py",
+      "file_type": "code",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_test_bench_recovery",
+      "community": 3,
+      "norm_label": "test_bench_recovery.py"
+    },
+    {
+      "label": "stream()",
+      "file_type": "code",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L9",
+      "_origin": "ast",
+      "id": "tests_test_bench_recovery_stream",
+      "community": 3,
+      "norm_label": "stream()"
+    },
+    {
+      "label": "test_reconnect_resumes_cursor_and_ignores_duplicate_events()",
+      "file_type": "code",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L13",
+      "_origin": "ast",
+      "id": "tests_test_bench_recovery_test_reconnect_resumes_cursor_and_ignores_duplicate_events",
+      "community": 3,
+      "norm_label": "test_reconnect_resumes_cursor_and_ignores_duplicate_events()"
+    },
+    {
+      "label": "test_replayed_approval_does_not_repeat_post()",
+      "file_type": "code",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L31",
+      "_origin": "ast",
+      "id": "tests_test_bench_recovery_test_replayed_approval_does_not_repeat_post",
+      "community": 3,
+      "norm_label": "test_replayed_approval_does_not_repeat_post()"
+    },
+    {
+      "label": "test_resume_counts_recorded_attempts_and_does_not_repeat_fault()",
+      "file_type": "code",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L51",
+      "_origin": "ast",
+      "id": "tests_test_bench_recovery_test_resume_counts_recorded_attempts_and_does_not_repeat_fault",
+      "community": 3,
+      "norm_label": "test_resume_counts_recorded_attempts_and_does_not_repeat_fault()"
+    },
+    {
+      "label": "test_resume_corrupt_file_fails_before_reset()",
+      "file_type": "code",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L73",
+      "_origin": "ast",
+      "id": "tests_test_bench_recovery_test_resume_corrupt_file_fails_before_reset",
+      "community": 3,
+      "norm_label": "test_resume_corrupt_file_fails_before_reset()"
+    },
+    {
+      "label": "test_timeout_keeps_detection_and_diagnosis_measurements()",
+      "file_type": "code",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L83",
+      "_origin": "ast",
+      "id": "tests_test_bench_recovery_test_timeout_keeps_detection_and_diagnosis_measurements",
+      "community": 3,
+      "norm_label": "test_timeout_keeps_detection_and_diagnosis_measurements()"
+    },
+    {
+      "label": "test_uncertain_approval_post_is_not_retried()",
+      "file_type": "code",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L117",
+      "_origin": "ast",
+      "id": "tests_test_bench_recovery_test_uncertain_approval_post_is_not_retried",
+      "community": 3,
+      "norm_label": "test_uncertain_approval_post_is_not_retried()"
+    },
+    {
+      "label": "test_failed_attempts_count_toward_resume_target()",
+      "file_type": "code",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L139",
+      "_origin": "ast",
+      "id": "tests_test_bench_recovery_test_failed_attempts_count_toward_resume_target",
+      "community": 3,
+      "norm_label": "test_failed_attempts_count_toward_resume_target()"
+    },
+    {
       "label": "test_culprit.py",
       "file_type": "code",
       "source_file": "tests/test_culprit.py",
@@ -2953,7 +3173,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_db",
-      "community": 39,
+      "community": 42,
       "norm_label": "test_db.py"
     },
     {
@@ -2963,7 +3183,7 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "tests_test_db_dbtest",
-      "community": 39,
+      "community": 42,
       "norm_label": "dbtest"
     },
     {
@@ -2973,7 +3193,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "tests_test_db_dbtest_test_wal_and_tables",
-      "community": 39,
+      "community": 42,
       "norm_label": ".test_wal_and_tables()"
     },
     {
@@ -3323,7 +3543,7 @@
       "source_location": "L141",
       "_origin": "ast",
       "id": "tests_test_inference_test_main_branch_sync_facade_uses_provider_adapter",
-      "community": 45,
+      "community": 4,
       "norm_label": "test_main_branch_sync_facade_uses_provider_adapter()"
     },
     {
@@ -3393,7 +3613,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_journal",
-      "community": 39,
+      "community": 42,
       "norm_label": "test_journal.py"
     },
     {
@@ -3733,7 +3953,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_redact",
-      "community": 1,
+      "community": 0,
       "norm_label": "test_redact.py"
     },
     {
@@ -3743,7 +3963,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "tests_test_redact_test_secrets_removed",
-      "community": 1,
+      "community": 0,
       "norm_label": "test_secrets_removed()"
     },
     {
@@ -3753,7 +3973,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "tests_test_redact_test_nested_env_and_sensitive_keys",
-      "community": 1,
+      "community": 0,
       "norm_label": "test_nested_env_and_sensitive_keys()"
     },
     {
@@ -3763,7 +3983,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "tests_test_redact_test_quarantine_keeps_hash_only",
-      "community": 1,
+      "community": 0,
       "norm_label": "test_quarantine_keeps_hash_only()"
     },
     {
@@ -3773,8 +3993,18 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "tests_test_redact_test_hash_and_token_counts_survive_nested_redaction",
-      "community": 1,
+      "community": 0,
       "norm_label": "test_hash_and_token_counts_survive_nested_redaction()"
+    },
+    {
+      "label": "test_sync_provider_token_counts_survive_redaction()",
+      "file_type": "code",
+      "source_file": "tests/test_redact.py",
+      "source_location": "L36",
+      "_origin": "ast",
+      "id": "tests_test_redact_test_sync_provider_token_counts_survive_redaction",
+      "community": 0,
+      "norm_label": "test_sync_provider_token_counts_survive_redaction()"
     },
     {
       "label": "test_rules.py",
@@ -3993,7 +4223,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_trust",
-      "community": 39,
+      "community": 42,
       "norm_label": "test_trust.py"
     },
     {
@@ -4003,7 +4233,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "tests_test_trust_trusttest",
-      "community": 39,
+      "community": 42,
       "norm_label": "trusttest"
     },
     {
@@ -4013,7 +4243,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "tests_test_trust_trusttest_test_bound_reference_values",
-      "community": 39,
+      "community": 42,
       "norm_label": ".test_bound_reference_values()"
     },
     {
@@ -4023,7 +4253,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "tests_test_trust_trusttest_test_eligibility",
-      "community": 39,
+      "community": 42,
       "norm_label": ".test_eligibility()"
     },
     {
@@ -4033,7 +4263,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "tests_test_trust_trusttest_test_gate_opens_at_29_and_one_failure_closes_it",
-      "community": 39,
+      "community": 42,
       "norm_label": ".test_gate_opens_at_29_and_one_failure_closes_it()"
     },
     {
@@ -4043,7 +4273,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "tests_test_trust_trusttest_test_unknown_pattern_and_ineligible_never_open",
-      "community": 39,
+      "community": 42,
       "norm_label": ".test_unknown_pattern_and_ineligible_never_open()"
     },
     {
@@ -4053,8 +4283,88 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "tests_test_trust_trusttest_test_reset_on_failure_false_fails_loud",
-      "community": 39,
+      "community": 42,
       "norm_label": ".test_reset_on_failure_false_fails_loud()"
+    },
+    {
+      "label": "test_trust_integration.py",
+      "file_type": "code",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_test_trust_integration",
+      "community": 1,
+      "norm_label": "test_trust_integration.py"
+    },
+    {
+      "label": "health()",
+      "file_type": "code",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L14",
+      "_origin": "ast",
+      "id": "tests_test_trust_integration_health",
+      "community": 1,
+      "norm_label": "health()"
+    },
+    {
+      "label": "test_verified_outcome_controls_persisted_trust_and_card()",
+      "file_type": "code",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L28",
+      "_origin": "ast",
+      "id": "tests_test_trust_integration_test_verified_outcome_controls_persisted_trust_and_card",
+      "community": 1,
+      "norm_label": "test_verified_outcome_controls_persisted_trust_and_card()"
+    },
+    {
+      "label": "test_resource_rule_actions_keep_different_approval_eligibility()",
+      "file_type": "code",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L61",
+      "_origin": "ast",
+      "id": "tests_test_trust_integration_test_resource_rule_actions_keep_different_approval_eligibility",
+      "community": 42,
+      "norm_label": "test_resource_rule_actions_keep_different_approval_eligibility()"
+    },
+    {
+      "label": "test_trust_report.py",
+      "file_type": "code",
+      "source_file": "tests/test_trust_report.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_test_trust_report",
+      "community": 42,
+      "norm_label": "test_trust_report.py"
+    },
+    {
+      "label": "test_ledger_report_reads_actual_separate_counts_and_failure_reset()",
+      "file_type": "code",
+      "source_file": "tests/test_trust_report.py",
+      "source_location": "L8",
+      "_origin": "ast",
+      "id": "tests_test_trust_report_test_ledger_report_reads_actual_separate_counts_and_failure_reset",
+      "community": 42,
+      "norm_label": "test_ledger_report_reads_actual_separate_counts_and_failure_reset()"
+    },
+    {
+      "label": "test_missing_database_is_not_created()",
+      "file_type": "code",
+      "source_file": "tests/test_trust_report.py",
+      "source_location": "L33",
+      "_origin": "ast",
+      "id": "tests_test_trust_report_test_missing_database_is_not_created",
+      "community": 42,
+      "norm_label": "test_missing_database_is_not_created()"
+    },
+    {
+      "label": "test_invalid_thresholds_fail_before_database_access()",
+      "file_type": "code",
+      "source_file": "tests/test_trust_report.py",
+      "source_location": "L41",
+      "_origin": "ast",
+      "id": "tests_test_trust_report_test_invalid_thresholds_fail_before_database_access",
+      "community": 42,
+      "norm_label": "test_invalid_thresholds_fail_before_database_access()"
     },
     {
       "label": "test_verifier.py",
@@ -4235,6 +4545,56 @@
       "id": "tests_test_verifier_harmchecktest_test_declared_object_unchanged_is_not_clean",
       "community": 38,
       "norm_label": ".test_declared_object_unchanged_is_not_clean()"
+    },
+    {
+      "label": "test_verifier_safety.py",
+      "file_type": "code",
+      "source_file": "tests/test_verifier_safety.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_test_verifier_safety",
+      "community": 38,
+      "norm_label": "test_verifier_safety.py"
+    },
+    {
+      "label": "service()",
+      "file_type": "code",
+      "source_file": "tests/test_verifier_safety.py",
+      "source_location": "L4",
+      "_origin": "ast",
+      "id": "tests_test_verifier_safety_service",
+      "community": 38,
+      "norm_label": "service()"
+    },
+    {
+      "label": "verification()",
+      "file_type": "code",
+      "source_file": "tests/test_verifier_safety.py",
+      "source_location": "L8",
+      "_origin": "ast",
+      "id": "tests_test_verifier_safety_verification",
+      "community": 38,
+      "norm_label": "verification()"
+    },
+    {
+      "label": "test_missing_service_cannot_confirm_recovery_after_prediction()",
+      "file_type": "code",
+      "source_file": "tests/test_verifier_safety.py",
+      "source_location": "L14",
+      "_origin": "ast",
+      "id": "tests_test_verifier_safety_test_missing_service_cannot_confirm_recovery_after_prediction",
+      "community": 38,
+      "norm_label": "test_missing_service_cannot_confirm_recovery_after_prediction()"
+    },
+    {
+      "label": "test_human_change_takes_priority_over_early_abort()",
+      "file_type": "code",
+      "source_file": "tests/test_verifier_safety.py",
+      "source_location": "L21",
+      "_origin": "ast",
+      "id": "tests_test_verifier_safety_test_human_change_takes_priority_over_early_abort",
+      "community": 38,
+      "norm_label": "test_human_change_takes_priority_over_early_abort()"
     },
     {
       "label": "AGENTS.md",
@@ -5440,7 +5800,7 @@
       "label": "Project graph",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L192",
+      "source_location": "L218",
       "_origin": "ast",
       "id": "readme_project_graph",
       "community": 13,
@@ -5450,7 +5810,7 @@
       "label": "Main-branch diagnosis compatibility",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L198",
+      "source_location": "L224",
       "_origin": "ast",
       "id": "readme_main_branch_diagnosis_compatibility",
       "community": 13,
@@ -6110,7 +6470,7 @@
       "label": "In progress",
       "file_type": "document",
       "source_file": "team/twaha/STATE.md",
-      "source_location": "L58",
+      "source_location": "L77",
       "_origin": "ast",
       "id": "team_twaha_state_in_progress",
       "community": 20,
@@ -6120,7 +6480,7 @@
       "label": "Blocked / waiting on",
       "file_type": "document",
       "source_file": "team/twaha/STATE.md",
-      "source_location": "L63",
+      "source_location": "L82",
       "_origin": "ast",
       "id": "team_twaha_state_blocked_waiting_on",
       "community": 20,
@@ -6130,7 +6490,7 @@
       "label": "Next",
       "file_type": "document",
       "source_file": "team/twaha/STATE.md",
-      "source_location": "L76",
+      "source_location": "L95",
       "_origin": "ast",
       "id": "team_twaha_state_next",
       "community": 20,
@@ -6140,7 +6500,7 @@
       "label": "Notes for my next session",
       "file_type": "document",
       "source_file": "team/twaha/STATE.md",
-      "source_location": "L83",
+      "source_location": "L103",
       "_origin": "ast",
       "id": "team_twaha_state_notes_for_my_next_session",
       "community": 20,
@@ -6245,6 +6605,16 @@
       "id": "team_twaha_task_integration_proof_2026_11_13",
       "community": 11,
       "norm_label": "integration proof (2026-11-13)"
+    },
+    {
+      "label": "Unattended-run proof (2026-11-13)",
+      "file_type": "document",
+      "source_file": "team/twaha/TASK.md",
+      "source_location": "L63",
+      "_origin": "ast",
+      "id": "team_twaha_task_unattended_run_proof_2026_11_13",
+      "community": 11,
+      "norm_label": "unattended-run proof (2026-11-13)"
     }
   ],
   "links": [
@@ -6252,7 +6622,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L55",
+      "source_location": "L62",
       "weight": 1.0,
       "source": "bench_harness",
       "target": "bench_harness_harness",
@@ -6262,7 +6632,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L120",
+      "source_location": "L160",
       "weight": 1.0,
       "source": "bench_harness",
       "target": "bench_harness_httptrialservices",
@@ -6272,7 +6642,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L193",
+      "source_location": "L278",
       "weight": 1.0,
       "source": "bench_harness",
       "target": "bench_harness_main",
@@ -6282,7 +6652,27 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L25",
+      "source_location": "L121",
+      "weight": 1.0,
+      "source": "bench_harness",
+      "target": "bench_harness_measure",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L49",
+      "weight": 1.0,
+      "source": "bench_harness",
+      "target": "bench_harness_observationerror",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L26",
       "weight": 1.0,
       "source": "bench_harness",
       "target": "bench_harness_trialresult",
@@ -6292,7 +6682,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L48",
+      "source_location": "L55",
       "weight": 1.0,
       "source": "bench_harness",
       "target": "bench_harness_trialservices",
@@ -6303,7 +6693,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L12",
+      "source_location": "L13",
       "weight": 1.0,
       "source": "bench_harness",
       "target": "gateway_client",
@@ -6314,7 +6704,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L12",
+      "source_location": "L13",
       "weight": 1.0,
       "source": "bench_harness",
       "target": "gateway_client_read_events",
@@ -6325,7 +6715,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L13",
+      "source_location": "L14",
       "weight": 1.0,
       "source": "bench_harness",
       "target": "schemas_models",
@@ -6336,7 +6726,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L13",
+      "source_location": "L14",
       "weight": 1.0,
       "source": "bench_harness",
       "target": "schemas_models_gatewaydecision",
@@ -6354,13 +6744,46 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery",
+      "target": "bench_harness",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L72",
+      "weight": 1.0,
+      "source": "bench_harness_harness_completed_attempts",
+      "target": "bench_harness_trialresult",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "references",
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L59",
+      "source_location": "L80",
       "weight": 1.0,
       "source": "bench_harness_harness_run",
+      "target": "bench_harness_trialresult",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L121",
+      "weight": 1.0,
+      "source": "bench_harness_measure",
       "target": "bench_harness_trialresult",
       "confidence_score": 1.0
     },
@@ -6368,61 +6791,75 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "bench/harness.py",
-      "source_location": "L13",
+      "source_location": "L14",
       "weight": 0.8,
       "source": "bench_harness_trialresult",
       "target": "schemas_models_gatewaydecision",
       "confidence_score": 0.5
     },
     {
-      "relation": "references",
-      "context": "parameter_type",
+      "relation": "imports",
+      "context": "import",
       "confidence": "EXTRACTED",
-      "source_file": "bench/harness.py",
-      "source_location": "L56",
+      "source_file": "tests/test_bench.py",
+      "source_location": "L184",
       "weight": 1.0,
-      "source": "bench_harness_harness_init",
-      "target": "bench_harness_trialservices",
+      "source": "tests_test_bench",
+      "target": "bench_harness_trialresult",
       "confidence_score": 1.0
     },
     {
-      "relation": "inherits",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "tests/test_bench.py",
+      "source_location": "L184",
+      "weight": 0.8,
+      "source": "tests_test_bench_fakeservices",
+      "target": "bench_harness_trialresult",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "calls",
+      "context": "call",
       "confidence": "EXTRACTED",
-      "source_file": "bench/harness.py",
-      "source_location": "L48",
+      "source_file": "tests/test_bench.py",
+      "source_location": "L185",
       "weight": 1.0,
-      "source": "bench_harness_trialservices",
-      "target": "bench_harness_py_protocol",
+      "source": "tests_test_bench_test_sync_provider_usage_normalizes_without_double_counting",
+      "target": "bench_harness_trialresult",
       "confidence_score": 1.0
     },
     {
-      "relation": "method",
+      "relation": "calls",
+      "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L51",
+      "source_location": "L199",
       "weight": 1.0,
-      "source": "bench_harness_trialservices",
-      "target": "bench_harness_trialservices_inject",
+      "source": "bench_harness_httptrialservices_approve",
+      "target": "bench_harness_observationerror",
       "confidence_score": 1.0
     },
     {
-      "relation": "method",
+      "relation": "calls",
+      "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L52",
+      "source_location": "L218",
       "weight": 1.0,
-      "source": "bench_harness_trialservices",
-      "target": "bench_harness_trialservices_observe",
+      "source": "bench_harness_httptrialservices_credit",
+      "target": "bench_harness_observationerror",
       "confidence_score": 1.0
     },
     {
-      "relation": "method",
+      "relation": "calls",
+      "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L49",
+      "source_location": "L268",
       "weight": 1.0,
-      "source": "bench_harness_trialservices",
-      "target": "bench_harness_trialservices_reset",
+      "source": "bench_harness_httptrialservices_observe",
+      "target": "bench_harness_observationerror",
       "confidence_score": 1.0
     },
     {
@@ -6431,26 +6868,300 @@
       "source_file": "bench/harness.py",
       "source_location": "L50",
       "weight": 1.0,
-      "source": "bench_harness_trialservices",
-      "target": "bench_harness_trialservices_wait_healthy",
+      "source": "bench_harness_observationerror",
+      "target": "bench_harness_observationerror_init",
       "confidence_score": 1.0
     },
     {
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "bench/harness.py",
-      "source_location": "L13",
+      "source_location": "L14",
       "weight": 0.8,
-      "source": "bench_harness_trialservices",
+      "source": "bench_harness_observationerror",
       "target": "schemas_models_gatewaydecision",
       "confidence_score": 0.5
+    },
+    {
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L49",
+      "weight": 1.0,
+      "source": "bench_harness_observationerror",
+      "target": "valueerror",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L84",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery",
+      "target": "bench_harness_observationerror",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "indirect_call",
+      "context": "argument",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L95",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery_test_timeout_keeps_detection_and_diagnosis_measurements",
+      "target": "bench_harness_observationerror"
+    },
+    {
+      "relation": "indirect_call",
+      "context": "argument",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L133",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery_test_uncertain_approval_post_is_not_retried",
+      "target": "bench_harness_observationerror"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L76",
+      "weight": 1.0,
+      "source": "bench_harness_harness_completed_attempts",
+      "target": "valueerror",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L82",
+      "weight": 1.0,
+      "source": "bench_harness_harness_run",
+      "target": "valueerror",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L166",
+      "weight": 1.0,
+      "source": "bench_harness_httptrialservices_init",
+      "target": "valueerror",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L222",
+      "weight": 1.0,
+      "source": "bench_harness_httptrialservices_observe",
+      "target": "valueerror",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "bench/trust_report.py",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "bench_trust_report_summarize_ledger",
+      "target": "valueerror"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "brain/llm.py",
+      "source_location": "L57",
+      "weight": 1.0,
+      "source": "brain_llm_diagnosisservice_validate",
+      "target": "valueerror"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "brain/providers/opencode_go.py",
+      "source_location": "L26",
+      "weight": 1.0,
+      "source": "brain_providers_opencode_go_opencodegoadapter_from_env",
+      "target": "valueerror"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "brain/providers/opencode_go.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "brain_providers_opencode_go_opencodegoadapter_init",
+      "target": "valueerror"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "gateway/audit.py",
+      "source_location": "L34",
+      "weight": 1.0,
+      "source": "gateway_audit_verify",
+      "target": "valueerror"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "gateway/trust.py",
+      "source_location": "L32",
+      "weight": 1.0,
+      "source": "gateway_trust_check",
+      "target": "valueerror"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "notifier/discord_bot.py",
+      "source_location": "L125",
+      "weight": 1.0,
+      "source": "notifier_discord_bot_discordnotifier_close_approval",
+      "target": "valueerror"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "notifier/discord_bot.py",
+      "source_location": "L95",
+      "weight": 1.0,
+      "source": "notifier_discord_bot_discordnotifier_send_text",
+      "target": "valueerror"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "notifier/main.py",
+      "source_location": "L24",
+      "weight": 1.0,
+      "source": "notifier_main_load_approvers",
+      "target": "valueerror"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "notifier/main.py",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "notifier_main_required",
+      "target": "valueerror"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "schemas/models.py",
+      "source_location": "L191",
+      "weight": 1.0,
+      "source": "schemas_models_event_check_payload",
+      "target": "valueerror"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_llm.py",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "tests_test_llm_validate",
+      "target": "valueerror"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L51",
+      "weight": 1.0,
+      "source": "bench_harness_observationerror_init",
+      "target": "bench_harness_httptrialservices_init",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L51",
+      "source_location": "L50",
+      "weight": 1.0,
+      "source": "bench_harness_observationerror_init",
+      "target": "bench_harness_py_any",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "generic_arg",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L190",
+      "weight": 1.0,
+      "source": "bench_harness_httptrialservices_approve",
+      "target": "bench_harness_py_any",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "generic_arg",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L203",
+      "weight": 1.0,
+      "source": "bench_harness_httptrialservices_credit",
+      "target": "bench_harness_py_any",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "generic_arg",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L121",
+      "weight": 1.0,
+      "source": "bench_harness_measure",
+      "target": "bench_harness_py_any",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "generic_arg",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L58",
       "weight": 1.0,
       "source": "bench_harness_trialservices_inject",
       "target": "bench_harness_py_any",
@@ -6461,10 +7172,51 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L52",
+      "source_location": "L59",
       "weight": 1.0,
       "source": "bench_harness_trialservices_observe",
       "target": "bench_harness_py_any",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L63",
+      "weight": 1.0,
+      "source": "bench_harness_harness_init",
+      "target": "bench_harness_trialservices",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L55",
+      "weight": 1.0,
+      "source": "bench_harness_trialservices",
+      "target": "bench_harness_py_protocol",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L58",
+      "weight": 1.0,
+      "source": "bench_harness_trialservices",
+      "target": "bench_harness_trialservices_inject",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L59",
+      "weight": 1.0,
+      "source": "bench_harness_trialservices",
+      "target": "bench_harness_trialservices_observe",
       "confidence_score": 1.0
     },
     {
@@ -6472,6 +7224,46 @@
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
       "source_location": "L56",
+      "weight": 1.0,
+      "source": "bench_harness_trialservices",
+      "target": "bench_harness_trialservices_reset",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L57",
+      "weight": 1.0,
+      "source": "bench_harness_trialservices",
+      "target": "bench_harness_trialservices_wait_healthy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "bench/harness.py",
+      "source_location": "L14",
+      "weight": 0.8,
+      "source": "bench_harness_trialservices",
+      "target": "schemas_models_gatewaydecision",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L66",
+      "weight": 1.0,
+      "source": "bench_harness_harness",
+      "target": "bench_harness_harness_completed_attempts",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L63",
       "weight": 1.0,
       "source": "bench_harness_harness",
       "target": "bench_harness_harness_init",
@@ -6481,7 +7273,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L59",
+      "source_location": "L80",
       "weight": 1.0,
       "source": "bench_harness_harness",
       "target": "bench_harness_harness_run",
@@ -6491,7 +7283,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "bench/harness.py",
-      "source_location": "L13",
+      "source_location": "L14",
       "weight": 0.8,
       "source": "bench_harness_harness",
       "target": "schemas_models_gatewaydecision",
@@ -6502,7 +7294,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L207",
+      "source_location": "L293",
       "weight": 1.0,
       "source": "bench_harness_main",
       "target": "bench_harness_harness",
@@ -6528,6 +7320,61 @@
       "source": "tests_test_bench_fakeservices",
       "target": "bench_harness_harness",
       "confidence_score": 0.5
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery",
+      "target": "bench_harness_harness",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L147",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery_test_failed_attempts_count_toward_resume_target",
+      "target": "bench_harness_harness",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L80",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery_test_resume_corrupt_file_fails_before_reset",
+      "target": "bench_harness_harness",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L64",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery_test_resume_counts_recorded_attempts_and_does_not_repeat_fault",
+      "target": "bench_harness_harness",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L107",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery_test_timeout_keeps_detection_and_diagnosis_measurements",
+      "target": "bench_harness_harness",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -6567,7 +7414,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L56",
+      "source_location": "L63",
       "weight": 1.0,
       "source": "bench_harness_harness_init",
       "target": "bench_harness_py_path",
@@ -6578,7 +7425,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L198",
+      "source_location": "L284",
       "weight": 1.0,
       "source": "bench_harness_main",
       "target": "bench_harness_py_path",
@@ -6589,7 +7436,18 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L71",
+      "source_location": "L88",
+      "weight": 1.0,
+      "source": "bench_harness_harness_run",
+      "target": "bench_harness_harness_completed_attempts",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L99",
       "weight": 1.0,
       "source": "bench_harness_harness_run",
       "target": "bench_harness_httptrialservices_inject",
@@ -6600,7 +7458,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L74",
+      "source_location": "L102",
       "weight": 1.0,
       "source": "bench_harness_harness_run",
       "target": "bench_harness_httptrialservices_observe",
@@ -6611,7 +7469,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L69",
+      "source_location": "L97",
       "weight": 1.0,
       "source": "bench_harness_harness_run",
       "target": "bench_harness_httptrialservices_reset",
@@ -6622,7 +7480,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L70",
+      "source_location": "L98",
       "weight": 1.0,
       "source": "bench_harness_harness_run",
       "target": "bench_harness_httptrialservices_wait_healthy",
@@ -6633,17 +7491,70 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L207",
+      "source_location": "L108",
+      "weight": 1.0,
+      "source": "bench_harness_harness_run",
+      "target": "bench_harness_measure",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L293",
       "weight": 1.0,
       "source": "bench_harness_main",
       "target": "bench_harness_harness_run",
       "confidence_score": 1.0
     },
     {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench.py",
+      "source_location": "L184",
+      "weight": 1.0,
+      "source": "tests_test_bench",
+      "target": "bench_harness_measure",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench.py",
+      "source_location": "L189",
+      "weight": 1.0,
+      "source": "tests_test_bench_test_sync_provider_usage_normalizes_without_double_counting",
+      "target": "bench_harness_measure",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L121",
+      "source_location": "L190",
+      "weight": 1.0,
+      "source": "bench_harness_httptrialservices",
+      "target": "bench_harness_httptrialservices_approve",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L203",
+      "weight": 1.0,
+      "source": "bench_harness_httptrialservices",
+      "target": "bench_harness_httptrialservices_credit",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L161",
       "weight": 1.0,
       "source": "bench_harness_httptrialservices",
       "target": "bench_harness_httptrialservices_init",
@@ -6653,7 +7564,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L143",
+      "source_location": "L185",
       "weight": 1.0,
       "source": "bench_harness_httptrialservices",
       "target": "bench_harness_httptrialservices_inject",
@@ -6663,7 +7574,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L148",
+      "source_location": "L220",
       "weight": 1.0,
       "source": "bench_harness_httptrialservices",
       "target": "bench_harness_httptrialservices_observe",
@@ -6673,7 +7584,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L127",
+      "source_location": "L169",
       "weight": 1.0,
       "source": "bench_harness_httptrialservices",
       "target": "bench_harness_httptrialservices_reset",
@@ -6683,7 +7594,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L131",
+      "source_location": "L173",
       "weight": 1.0,
       "source": "bench_harness_httptrialservices",
       "target": "bench_harness_httptrialservices_wait_healthy",
@@ -6693,7 +7604,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "bench/harness.py",
-      "source_location": "L13",
+      "source_location": "L14",
       "weight": 0.8,
       "source": "bench_harness_httptrialservices",
       "target": "schemas_models_gatewaydecision",
@@ -6704,7 +7615,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L205",
+      "source_location": "L291",
       "weight": 1.0,
       "source": "bench_harness_main",
       "target": "bench_harness_httptrialservices",
@@ -6730,6 +7641,61 @@
       "source": "tests_test_bench_fakeservices",
       "target": "bench_harness_httptrialservices",
       "confidence_score": 0.5
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery",
+      "target": "bench_harness_httptrialservices",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L25",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery_test_reconnect_resumes_cursor_and_ignores_duplicate_events",
+      "target": "bench_harness_httptrialservices",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L46",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery_test_replayed_approval_does_not_repeat_post",
+      "target": "bench_harness_httptrialservices",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L93",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery_test_timeout_keeps_detection_and_diagnosis_measurements",
+      "target": "bench_harness_httptrialservices",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L132",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery_test_uncertain_approval_post_is_not_retried",
+      "target": "bench_harness_httptrialservices",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -6791,7 +7757,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L121",
+      "source_location": "L161",
       "weight": 1.0,
       "source": "bench_harness_httptrialservices_init",
       "target": "bench_harness_py_asyncclient",
@@ -6802,7 +7768,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "bench/harness.py",
-      "source_location": "L204",
+      "source_location": "L290",
       "weight": 1.0,
       "source": "bench_harness_main",
       "target": "bench_harness_py_asyncclient",
@@ -6812,9 +7778,31 @@
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L258",
+      "weight": 1.0,
+      "source": "bench_harness_httptrialservices_observe",
+      "target": "bench_harness_httptrialservices_approve",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/harness.py",
+      "source_location": "L261",
+      "weight": 1.0,
+      "source": "bench_harness_httptrialservices_observe",
+      "target": "bench_harness_httptrialservices_credit",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "bench/harness.py",
-      "source_location": "L155",
+      "source_location": "L232",
       "weight": 1.0,
       "source": "bench_harness_httptrialservices_observe",
       "target": "gateway_client_read_events"
@@ -6999,6 +7987,169 @@
       "weight": 1.0,
       "source": "tests_test_bench_test_manual_comparison_preserves_missing_measurements",
       "target": "bench_report_compare",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/trust_report.py",
+      "source_location": "L38",
+      "weight": 1.0,
+      "source": "bench_trust_report",
+      "target": "bench_trust_report_main",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/trust_report.py",
+      "source_location": "L10",
+      "weight": 1.0,
+      "source": "bench_trust_report",
+      "target": "bench_trust_report_summarize_ledger",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/trust_report.py",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "bench_trust_report",
+      "target": "gateway_trust",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/trust_report.py",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "bench_trust_report",
+      "target": "gateway_trust_counts",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/trust_report.py",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "bench_trust_report",
+      "target": "gateway_trust_lower_bound",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_report.py",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_test_trust_report",
+      "target": "bench_trust_report",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/trust_report.py",
+      "source_location": "L45",
+      "weight": 1.0,
+      "source": "bench_trust_report_main",
+      "target": "bench_trust_report_summarize_ledger",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "generic_arg",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/trust_report.py",
+      "source_location": "L10",
+      "weight": 1.0,
+      "source": "bench_trust_report_summarize_ledger",
+      "target": "bench_trust_report_py_any",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/trust_report.py",
+      "source_location": "L10",
+      "weight": 1.0,
+      "source": "bench_trust_report_summarize_ledger",
+      "target": "bench_trust_report_py_path",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/trust_report.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "bench_trust_report_summarize_ledger",
+      "target": "gateway_trust_counts",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "bench/trust_report.py",
+      "source_location": "L26",
+      "weight": 1.0,
+      "source": "bench_trust_report_summarize_ledger",
+      "target": "gateway_trust_lower_bound",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_report.py",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_test_trust_report",
+      "target": "bench_trust_report_summarize_ledger",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_trust_report.py",
+      "source_location": "L43",
+      "weight": 1.0,
+      "source": "tests_test_trust_report_test_invalid_thresholds_fail_before_database_access",
+      "target": "bench_trust_report_summarize_ledger"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_report.py",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "tests_test_trust_report_test_ledger_report_reads_actual_separate_counts_and_failure_reset",
+      "target": "bench_trust_report_summarize_ledger",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_report.py",
+      "source_location": "L36",
+      "weight": 1.0,
+      "source": "tests_test_trust_report_test_missing_database_is_not_created",
+      "target": "bench_trust_report_summarize_ledger",
       "confidence_score": 1.0
     },
     {
@@ -8798,6 +9949,17 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_redact.py",
+      "source_location": "L37",
+      "weight": 1.0,
+      "source": "tests_test_redact_test_sync_provider_token_counts_survive_redaction",
+      "target": "brain_redact_redact_value",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -8889,6 +10051,17 @@
       "source_location": "L3",
       "weight": 1.0,
       "source": "tests_test_rules",
+      "target": "brain_rules",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "submodule_import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration",
       "target": "brain_rules",
       "confidence_score": 1.0
     },
@@ -10226,6 +11399,17 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration",
+      "target": "gateway_receipts",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "references",
       "context": "parameter_type",
       "confidence": "EXTRACTED",
@@ -10547,6 +11731,28 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration",
+      "target": "gateway_receipts_build_card",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L54",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration_test_verified_outcome_controls_persisted_trust_and_card",
+      "target": "gateway_receipts_build_card"
+    },
+    {
       "relation": "references",
       "context": "return_type",
       "confidence": "EXTRACTED",
@@ -10751,6 +11957,28 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports_from",
+      "context": "submodule_import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L4",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration",
+      "target": "gateway_trust",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "submodule_import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_report.py",
+      "source_location": "L4",
+      "weight": 1.0,
+      "source": "tests_test_trust_report",
+      "target": "gateway_trust",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -10860,10 +12088,32 @@
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration",
+      "target": "gateway_verifier",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
       "source_file": "tests/test_verifier.py",
       "source_location": "L4",
       "weight": 1.0,
       "source": "tests_test_verifier",
+      "target": "gateway_verifier",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier_safety.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "tests_test_verifier_safety",
       "target": "gateway_verifier",
       "confidence_score": 1.0
     },
@@ -10912,6 +12162,28 @@
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration",
+      "target": "gateway_verifier_verification",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L37",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration_test_verified_outcome_controls_persisted_trust_and_card",
+      "target": "gateway_verifier_verification"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
       "source_file": "tests/test_verifier.py",
       "source_location": "L4",
       "weight": 1.0,
@@ -10928,6 +12200,28 @@
       "source": "tests_test_verifier_harmchecktest",
       "target": "gateway_verifier_verification",
       "confidence_score": 0.5
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier_safety.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "tests_test_verifier_safety",
+      "target": "gateway_verifier_verification",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier_safety.py",
+      "source_location": "L11",
+      "weight": 1.0,
+      "source": "tests_test_verifier_safety_verification",
+      "target": "gateway_verifier_verification",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -10949,6 +12243,28 @@
       "source": "tests_test_verifier_verifiertest",
       "target": "gateway_verifier_verification",
       "confidence_score": 0.5
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration",
+      "target": "gateway_verifier_ledger_effect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L43",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration_test_verified_outcome_controls_persisted_trust_and_card",
+      "target": "gateway_verifier_ledger_effect"
     },
     {
       "relation": "imports",
@@ -11449,6 +12765,50 @@
       "source": "notifier_consumer_notificationconsumer_run",
       "target": "notifier_consumer_notificationconsumer_handle",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "indirect_call",
+      "context": "argument",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L24",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery_test_reconnect_resumes_cursor_and_ignores_duplicate_events",
+      "target": "notifier_consumer_notificationconsumer_handle"
+    },
+    {
+      "relation": "indirect_call",
+      "context": "argument",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L45",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery_test_replayed_approval_does_not_repeat_post",
+      "target": "notifier_consumer_notificationconsumer_handle"
+    },
+    {
+      "relation": "indirect_call",
+      "context": "argument",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L92",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery_test_timeout_keeps_detection_and_diagnosis_measurements",
+      "target": "notifier_consumer_notificationconsumer_handle"
+    },
+    {
+      "relation": "indirect_call",
+      "context": "argument",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L131",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery_test_uncertain_approval_post_is_not_retried",
+      "target": "notifier_consumer_notificationconsumer_handle"
     },
     {
       "relation": "indirect_call",
@@ -13132,6 +14492,28 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration",
+      "target": "schemas_db",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_report.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "tests_test_trust_report",
+      "target": "schemas_db",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "references",
       "context": "return_type",
       "confidence": "EXTRACTED",
@@ -13216,6 +14598,61 @@
       "source_location": "L4",
       "weight": 1.0,
       "source": "tests_test_trust",
+      "target": "schemas_db_connect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration",
+      "target": "schemas_db_connect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L72",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration_test_resource_rule_actions_keep_different_approval_eligibility",
+      "target": "schemas_db_connect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L31",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration_test_verified_outcome_controls_persisted_trust_and_card",
+      "target": "schemas_db_connect"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_report.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "tests_test_trust_report",
+      "target": "schemas_db_connect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_report.py",
+      "source_location": "L10",
+      "weight": 1.0,
+      "source": "tests_test_trust_report_test_ledger_report_reads_actual_separate_counts_and_failure_reset",
       "target": "schemas_db_connect",
       "confidence_score": 1.0
     },
@@ -13581,6 +15018,17 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration",
+      "target": "schemas_models",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "schemas/models.py",
@@ -13922,6 +15370,17 @@
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration",
+      "target": "schemas_models_actionrequest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
       "source_file": "tests/test_inference.py",
       "source_location": "L10",
       "weight": 1.0,
@@ -14037,6 +15496,28 @@
       "source": "tests_test_integration_test_event_router_validates_before_persisting_and_shares_database",
       "target": "schemas_models_receipt",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration",
+      "target": "schemas_models_receipt",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L50",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration_test_verified_outcome_controls_persisted_trust_and_card",
+      "target": "schemas_models_receipt"
     },
     {
       "relation": "inherits",
@@ -14496,6 +15977,16 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench.py",
+      "source_location": "L183",
+      "weight": 1.0,
+      "source": "tests_test_bench",
+      "target": "tests_test_bench_test_sync_provider_usage_normalizes_without_double_counting",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "tests/test_bench.py",
@@ -14610,6 +16101,86 @@
       "weight": 1.0,
       "source": "tests_test_bench_test_rehearsal_without_receipt_never_submits_credit",
       "target": "tests_test_bench_fakeservices_observe",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L9",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery",
+      "target": "tests_test_bench_recovery_stream",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L139",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery",
+      "target": "tests_test_bench_recovery_test_failed_attempts_count_toward_resume_target",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L13",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery",
+      "target": "tests_test_bench_recovery_test_reconnect_resumes_cursor_and_ignores_duplicate_events",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L31",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery",
+      "target": "tests_test_bench_recovery_test_replayed_approval_does_not_repeat_post",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L73",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery",
+      "target": "tests_test_bench_recovery_test_resume_corrupt_file_fails_before_reset",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L51",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery",
+      "target": "tests_test_bench_recovery_test_resume_counts_recorded_attempts_and_does_not_repeat_fault",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L83",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery",
+      "target": "tests_test_bench_recovery_test_timeout_keeps_detection_and_diagnosis_measurements",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_bench_recovery.py",
+      "source_location": "L117",
+      "weight": 1.0,
+      "source": "tests_test_bench_recovery",
+      "target": "tests_test_bench_recovery_test_uncertain_approval_post_is_not_retried",
       "confidence_score": 1.0
     },
     {
@@ -16039,6 +17610,16 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "tests/test_redact.py",
+      "source_location": "L36",
+      "weight": 1.0,
+      "source": "tests_test_redact",
+      "target": "tests_test_redact_test_sync_provider_token_counts_survive_redaction",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "tests/test_rules.py",
       "source_location": "L14",
       "weight": 1.0,
@@ -16432,6 +18013,77 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration",
+      "target": "tests_test_trust_integration_health",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L61",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration",
+      "target": "tests_test_trust_integration_test_resource_rule_actions_keep_different_approval_eligibility",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L28",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration",
+      "target": "tests_test_trust_integration_test_verified_outcome_controls_persisted_trust_and_card",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_integration.py",
+      "source_location": "L37",
+      "weight": 1.0,
+      "source": "tests_test_trust_integration_test_verified_outcome_controls_persisted_trust_and_card",
+      "target": "tests_test_trust_integration_health",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_report.py",
+      "source_location": "L41",
+      "weight": 1.0,
+      "source": "tests_test_trust_report",
+      "target": "tests_test_trust_report_test_invalid_thresholds_fail_before_database_access",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_report.py",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "tests_test_trust_report",
+      "target": "tests_test_trust_report_test_ledger_report_reads_actual_separate_counts_and_failure_reset",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trust_report.py",
+      "source_location": "L33",
+      "weight": 1.0,
+      "source": "tests_test_trust_report",
+      "target": "tests_test_trust_report_test_missing_database_is_not_created",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "tests/test_verifier.py",
       "source_location": "L70",
       "weight": 1.0,
@@ -16729,6 +18381,101 @@
       "weight": 1.0,
       "source": "tests_test_verifier_harmchecktest",
       "target": "tests_test_verifier_harmchecktest_test_unexpected_change_or_worse_service_is_harm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier_safety.py",
+      "source_location": "L4",
+      "weight": 1.0,
+      "source": "tests_test_verifier_safety",
+      "target": "tests_test_verifier_safety_service",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier_safety.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "tests_test_verifier_safety",
+      "target": "tests_test_verifier_safety_test_human_change_takes_priority_over_early_abort",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier_safety.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "tests_test_verifier_safety",
+      "target": "tests_test_verifier_safety_test_missing_service_cannot_confirm_recovery_after_prediction",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier_safety.py",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "tests_test_verifier_safety",
+      "target": "tests_test_verifier_safety_verification",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier_safety.py",
+      "source_location": "L23",
+      "weight": 1.0,
+      "source": "tests_test_verifier_safety_test_human_change_takes_priority_over_early_abort",
+      "target": "tests_test_verifier_safety_service",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier_safety.py",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "tests_test_verifier_safety_test_missing_service_cannot_confirm_recovery_after_prediction",
+      "target": "tests_test_verifier_safety_service",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier_safety.py",
+      "source_location": "L9",
+      "weight": 1.0,
+      "source": "tests_test_verifier_safety_verification",
+      "target": "tests_test_verifier_safety_service",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier_safety.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "tests_test_verifier_safety_test_human_change_takes_priority_over_early_abort",
+      "target": "tests_test_verifier_safety_verification",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier_safety.py",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "tests_test_verifier_safety_test_missing_service_cannot_confirm_recovery_after_prediction",
+      "target": "tests_test_verifier_safety_verification",
       "confidence_score": 1.0
     },
     {
@@ -17885,7 +19632,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L198",
+      "source_location": "L224",
       "weight": 1.0,
       "source": "readme_on_call_agent_twaha_components",
       "target": "readme_main_branch_diagnosis_compatibility",
@@ -17895,7 +19642,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L192",
+      "source_location": "L218",
       "weight": 1.0,
       "source": "readme_on_call_agent_twaha_components",
       "target": "readme_project_graph",
@@ -18455,7 +20202,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "team/twaha/STATE.md",
-      "source_location": "L63",
+      "source_location": "L82",
       "weight": 1.0,
       "source": "team_twaha_state_twaha_t_state",
       "target": "team_twaha_state_blocked_waiting_on",
@@ -18475,7 +20222,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "team/twaha/STATE.md",
-      "source_location": "L58",
+      "source_location": "L77",
       "weight": 1.0,
       "source": "team_twaha_state_twaha_t_state",
       "target": "team_twaha_state_in_progress",
@@ -18485,7 +20232,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "team/twaha/STATE.md",
-      "source_location": "L76",
+      "source_location": "L95",
       "weight": 1.0,
       "source": "team_twaha_state_twaha_t_state",
       "target": "team_twaha_state_next",
@@ -18495,7 +20242,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "team/twaha/STATE.md",
-      "source_location": "L83",
+      "source_location": "L103",
       "weight": 1.0,
       "source": "team_twaha_state_twaha_t_state",
       "target": "team_twaha_state_notes_for_my_next_session",
@@ -18590,8 +20337,18 @@
       "source": "team_twaha_task_twaha_t_tasks",
       "target": "team_twaha_task_phase_5_freeze",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "team/twaha/TASK.md",
+      "source_location": "L63",
+      "weight": 1.0,
+      "source": "team_twaha_task_twaha_t_tasks",
+      "target": "team_twaha_task_unattended_run_proof_2026_11_13",
+      "confidence_score": 1.0
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "f6d52e273b32c9910739de33afc810b71258b65a"
+  "built_at_commit": "e6505e7a011d623975623a144cf5177805525bcd"
 }
