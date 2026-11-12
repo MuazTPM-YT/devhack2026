@@ -113,3 +113,13 @@ async def test_scale_bounds(bundle, action, tmp_path):
     action.params = {"replicas": 50}
     result = await DiagnosisService(FakeProvider([diagnosis(action)] * 2), tmp_path).diagnose(bundle, "unknown")
     assert result.action is None
+
+
+async def test_cache_disk_failure_does_not_discard_diagnosis(bundle, action, tmp_path):
+    blocked_path = tmp_path / "not-a-directory"
+    blocked_path.write_text("occupied")
+    result = await DiagnosisService(FakeProvider([diagnosis()]), blocked_path).diagnose(
+        bundle, "recent_change", action)
+    assert result.diagnosis is not None
+    assert result.action == action
+    assert any(event["payload"].get("error") == "cache_write_failed" for event in result.events)

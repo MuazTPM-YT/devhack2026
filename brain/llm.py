@@ -3,6 +3,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 from pydantic import ValidationError
@@ -96,10 +97,19 @@ class DiagnosisService:
                                                    "usage": response.usage, "attempt": attempt + 1}})
                         diagnosis = self._validate(response.content, safe_bundle)
                         diagnosis = Diagnosis.model_validate(redact_value(diagnosis.model_dump(mode="json")))
-                        self.cache_dir.mkdir(parents=True, exist_ok=True)
-                        temporary = cache.with_suffix(".tmp")
-                        temporary.write_text(diagnosis.model_dump_json())
-                        temporary.replace(cache)
+                        temporary = None
+                        try:
+                            self.cache_dir.mkdir(parents=True, exist_ok=True)
+                            with NamedTemporaryFile(mode="w", dir=self.cache_dir, delete=False) as stream:
+                                temporary = Path(stream.name)
+                                stream.write(diagnosis.model_dump_json())
+                            temporary.replace(cache)
+                        except OSError:
+                            events.append({"type": "llm_called", "incident_id": bundle.incident.id,
+                                           "payload": {"error": "cache_write_failed"}})
+                        finally:
+                            if temporary and temporary.exists():
+                                temporary.unlink(missing_ok=True)
                         action = rule_action if pattern != "unknown" else diagnosis.proposed
                         return DiagnosisResult(diagnosis, action, False, None, events)
                     except (ValidationError, ValueError):
