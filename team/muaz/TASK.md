@@ -43,10 +43,10 @@ Exit: scenarios 1 to 6 in §7 behave as specified.
 ## Phase 3: trust, humans, proof
 
 - [x] P1 Trust gate + ledger + tiers (§6.4.6); depends on Q2, Q3 — proof: `tests/test_trust.py`; gate in checklist step 7 (auto when open, else ask); real credit + `POST /ledger/rehearsal` in `tests/test_verify_loop.py` (pass). Rehearsal runs not performed yet.
-- [ ] P1 Approvals: create, decide endpoint, expiry, re-run steps 2 to 6 (§6.4.8) — partial: create, decide endpoint, expiry check, rerun steps 2 to 6 done (`tests/test_gateway.py::test_approval_rules`); expiry sweeper and re-page not built.
+- [x] P1 Approvals: create, decide endpoint, expiry, re-run steps 2 to 6 (§6.4.8) — proof: `tests/test_gateway.py::test_approval_rules`, `tests/test_phase3.py::test_expired_approvals_are_swept` (pass). Re-page lives in T's notifier.
 - [x] P1 Hands-off rule (§6.4.2 step 2); depends on Q4 — proof: `tests/test_gateway.py::test_human_change_after_open_hands_off` (pass); Q4 agreed by A.
-- [ ] P1 Watchdog (§6.4.10)
-- [ ] P1 Blast radius + net-benefit check (§6.4.4)
+- [x] P1 Watchdog (§6.4.10) — proof: `tests/test_phase3.py` watchdog tests (undo, leaves ticking verifier, failed undo keeps blocking) pass, branch `muaz/phase3`.
+- [x] P1 Blast radius + net-benefit check (§6.4.4) — proof: `tests/test_phase3.py` blast/forecast/net-benefit tests pass, branch `muaz/phase3`. Graph from Jaeger not verified live.
 
 Exit: scenarios 7 to 9 and 11 to 12 pass.
 
