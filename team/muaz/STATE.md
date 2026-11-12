@@ -10,6 +10,12 @@ section. Only my own work here; cross-team facts go in
 
 ## Done (with proof)
 
+- Merged main after PR #8 (Twaha) into `muaz/drop-llm`; resolved
+  `brain/llm.py` modify/delete by keeping `DiagnosisService` and removing
+  only my sync interface. Proof: `uv sync --locked` OK; `uv run pytest` ->
+  `136 passed`; `uv run ruff check .` -> `All checks passed!`;
+  `uv run mypy schemas brain gateway notifier bench` -> `no issues found in
+  36 source files`; `graphify update .` run.
 - Removed my `brain/llm.py` + `tests/test_llm.py` + env keys; Twaha's
   `DiagnosisService` is the LLM path (Muaz chose A). Proof: stdlib suite
   `OK`; `git merge-tree` vs `origin/codex/twaha-opencode-go` shows no

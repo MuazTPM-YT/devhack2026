@@ -10,7 +10,8 @@ def is_error(span: dict) -> bool:
 
 # error span with no erroring child failed on its own: its service is the origin
 def from_traces(traces: list[dict]) -> tuple[str | None, list[str]]:
-    origin, failed = Counter(), set()
+    origin: Counter[str] = Counter()
+    failed: set[str] = set()
     for trace in traces:
         service = {pid: p["serviceName"] for pid, p in trace.get("processes", {}).items()}
         errors = [s for s in trace.get("spans", []) if is_error(s)]

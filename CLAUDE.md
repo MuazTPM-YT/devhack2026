@@ -106,3 +106,15 @@ Rules:
 - A committed graphify-out/graph.json is rewritten whole on every build, so a large diff to it in a pull request is expected. Do not flag it as churn or suggest skipping the graph rebuild or its hooks.
 
 
+
+## Commands
+
+- Install: `uv sync --locked`
+- Test: `uv run pytest`
+- Lint: `uv run ruff check .`
+- Type check: `uv run mypy schemas brain gateway notifier bench`
+- Notifier: `uv run --locked --env-file .env uvicorn notifier.main:app --host 127.0.0.1 --port 7005`
+- Audit: `uv run python scripts/verify_audit.py data/audit.jsonl`
+
+Python 3.12. Use `uv run --env-file .env` when starting a configured service.
+Inference uses OpenCode Go through an adapter. No Claude API key is needed.
