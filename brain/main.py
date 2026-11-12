@@ -123,6 +123,12 @@ class Brain:
                   "llm_error": result.error, "cached": result.cached}
         self.results[incident.id] = record
         record["gateway"] = await self.hand_over(incident, action, result.diagnosis, pattern)
+        # resource case: restart first, then ask for more memory (never automatic; §6.3.6 special case 1)
+        if action is not None and record["gateway"].get("decision") in ("executed", "awaiting_approval"):
+            record["followups_sent"] = []
+            for extra in actions[1:]:
+                follow = ActionRequest.model_validate({**extra, "prediction": None})
+                record["followups_sent"].append(await self.hand_over(incident, follow, result.diagnosis, pattern))
         return record
 
     # the gateway decides from here; with nothing safe to do, wake a human ourselves

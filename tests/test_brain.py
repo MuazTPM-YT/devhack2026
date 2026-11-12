@@ -81,7 +81,7 @@ def make(world, responses, tmp_path):
     conn = connect(":memory:", shared=True)
     conn.execute("INSERT INTO incidents (id, state) VALUES ('inc-1', 'open')")
     http = httpx.AsyncClient(transport=httpx.MockTransport(world))
-    k8s = {"events": [], "logs": [], "memory_ratio": None, "memory_limit": None}
+    k8s = getattr(world, "k8s", None) or {"events": [], "logs": [], "memory_ratio": None, "memory_limit": None}
     submitted = []
 
     async def submit(action):
@@ -194,3 +194,17 @@ async def test_gateway_down_escalates(tmp_path):
     world.gateway_down = True
     record = await make(world, [diagnosis_json()], tmp_path).handle(INC)
     assert record["gateway"]["failed_step"] == "gateway" and world.published[-1]["type"] == "escalated"
+
+
+async def test_resource_case_sends_restart_then_raise_limit(tmp_path):
+    from schemas.models import Evidence
+    world = World(jaeger_up=False)
+    world.k8s = {"events": [Evidence(id="event:rec:app:last", kind="event", ts=NOW,
+                                     summary="container app last ended OOMKilled, exit 137")],
+                 "logs": [], "memory_ratio": 0.5, "memory_limit": "256Mi"}
+    inc = INC.model_copy(update={"unhealthy": ["recommendation"]})
+    brain = make(world, [diagnosis_json(causes=[], prediction=None)], tmp_path)
+    record = await brain.handle(inc)
+    assert record["pattern"] == "resource"
+    assert [(a.tool, a.params) for a in brain.submitted] == [("restart_service", {}),
+                                                             ("raise_limit", {"memory": "512Mi"})]
