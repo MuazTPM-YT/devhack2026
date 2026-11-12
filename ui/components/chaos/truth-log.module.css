@@ -2,7 +2,7 @@
 
 .list li {
   display: grid;
-  grid-template-columns: 70px 130px 1fr;
+  grid-template-columns: 70px 170px 1fr;
   gap: 10px;
   padding: 7px 0;
   border-bottom: 1px solid var(--line);
