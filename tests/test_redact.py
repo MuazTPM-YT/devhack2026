@@ -31,3 +31,8 @@ def test_hash_and_token_counts_survive_nested_redaction():
     assert result["line_hash"] == digest
     assert result["usage"]["prompt_tokens"] == 15
     assert "private" not in json.dumps(result)
+
+
+def test_sync_provider_token_counts_survive_redaction():
+    result = redact_value({"tokens_in": 100, "tokens_out": 20, "token": "fake-private"})
+    assert result == {"tokens_in": 100, "tokens_out": 20, "token": "[REDACTED]"}

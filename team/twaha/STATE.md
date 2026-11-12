@@ -1,10 +1,35 @@
 # Twaha [T]: state
 
 **Last updated:** 2026-11-13
-**Current phase:** integration contracts aligned; gateway runtime/live checks pending
+**Current phase:** Phase 3 proof and unattended-run readiness; live runs pending
 **Branch:** `codex/twaha-opencode-go`
 
 ## Done (with proof)
+
+- PR preparation: merged origin/main through `db94f31`, preserving main's
+  deliberate retirement of the sync provider. Conflicts in shared context kept
+  both sides; generated graph rebuilt from merged sources. Current merged suite:
+  160 passed, one upstream audioop warning. Ruff/mypy (37 files), shell syntax,
+  and whitespace checks passed. Earlier 166-count included retired sync tests.
+
+- Phase 3 readiness: `uv run --locked pytest -q` -> 166 passed, one upstream
+  discord.py audioop warning. Ruff/mypy passed (38 source files). Benchmark and
+  trust-report CLI help commands passed. No live incident runs performed.
+- Reproduced and fixed verifier safety failures: missing service readings cannot
+  confirm recovery after a successful prediction; a human edit takes precedence
+  over severity-based early abort. Original verifier tests still pass.
+- Benchmark observation reconnects with Last-Event-ID and replay deduplication;
+  failed observations retain partial detect/diagnose measurements. Approval and
+  ledger POSTs are not retried after uncertain outcomes.
+- `--resume` counts recorded attempts (failures included) toward each scenario's
+  total target. Corrupt/truncated result files fail before reset or injection.
+- Added verifier/receipt/trust integration checks using real SQLite code and
+  synthetic fixtures. Late prediction and handoff add no success; harm/abort
+  record failures. Resource restart and raise-limit retain distinct eligibility.
+- Added read-only `bench.trust_report` with separate rehearsal/real counts and
+  confidence bound. Statistical threshold is explicitly not authorization.
+- Sync provider tokens_in/tokens_out now survive redaction and normalize into
+  benchmark usage; explicit usage maps win without double counting.
 
 - Pulled origin/main through `bacb45a` (rules, freshness, trust, verifier,
   synchronous OpenCode diagnosis). Resolved brain/llm.py add/add conflict by
@@ -57,8 +82,8 @@
 
 ## In progress
 
-- Integration slice complete. Live wiring still needs Muaz's gateway entrypoint,
-  approval/rehearsal handlers, and Anirudh's running shop.
+- No remaining work in this readiness slice. Real overnight runs still need
+  Muaz's gateway entrypoint/approval handlers and Anirudh's running shop.
 
 ## Blocked / waiting on
 
@@ -78,7 +103,8 @@
 1. Muaz mounts components and implements the agreed approval/rehearsal handlers.
 2. Configure `.env` locally with Go model/key and Discord settings.
 3. Run live provider/notifier checks, then cluster smoke and benchmark trials.
-4. Add gateway trust/policy tests when Muaz's implementations exist.
+4. Run read-only trust report after real rehearsal evidence exists. Add policy
+   engine tests when Muaz's policy/checklist implementation lands.
 
 ## Notes for my next session
 

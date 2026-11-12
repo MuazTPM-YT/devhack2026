@@ -178,3 +178,16 @@ async def test_rehearsal_credits_action_receipt_with_false_diagnosis(monkeypatch
         await services.observe({"ts": 100, "type": "bad_deploy", "target": "payment"}, True)
     assert len(posts) == 1
     assert json.loads(posts[0].content) == {"receipt_id": 18, "diagnosis_matched": False}
+
+
+def test_sync_provider_usage_normalizes_without_double_counting():
+    from bench.harness import TrialResult, measure
+    result = TrialResult("bad-deploy", 100, "failed")
+    records = [{"ts": 101, "event": {"type": "llm_called", "incident_id": "i", "payload": {
+        "tokens_in": 100, "tokens_out": 20,
+    }}}]
+    measure(result, {}, records)
+    assert result.usage == {"prompt_tokens": 100, "completion_tokens": 20}
+    records[0]["event"]["payload"]["usage"] = {"prompt_tokens": 10, "completion_tokens": 2}
+    measure(result, {}, records)
+    assert result.usage == {"prompt_tokens": 110, "completion_tokens": 22}
