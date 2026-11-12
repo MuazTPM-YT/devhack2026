@@ -35,6 +35,24 @@ def rs(rev, image):
                          "ownerReferences": [{"kind": "Deployment", "name": "payment"}]}, "spec": {"template": t}}
 
 
+def merge(dst, src):
+    for k, v in src.items():
+        if isinstance(v, dict) and isinstance(dst.get(k), dict):
+            merge(dst[k], v)
+        elif k in ("containers", "env") and isinstance(v, list):
+            items = {i["name"]: i for i in dst.get(k, [])}
+            for item in v:
+                if item.get("$patch") == "delete":
+                    items.pop(item["name"], None)
+                elif item["name"] in items:
+                    merge(items[item["name"]], item)
+                else:
+                    items[item["name"]] = item
+            dst[k] = list(items.values())
+        else:
+            dst[k] = v
+
+
 class FakeApps:
     def __init__(self):
         self.dep = {"metadata": {"name": "payment", "resourceVersion": "100",
@@ -45,6 +63,16 @@ class FakeApps:
 
     def read_namespaced_deployment(self, name, ns, **kw):
         return Resp(self.dep)
+
+    def patch_namespaced_deployment_scale(self, name, ns, body, dry_run=None, field_manager=None,
+                                          _content_type=None, _preload_content=True):
+        self.patches.append({"dry_run": dry_run, "field_manager": field_manager, "content_type": _content_type,
+                             "patch": body, "scale": True})
+        assert body["metadata"]["resourceVersion"] == self.dep["metadata"]["resourceVersion"]
+        if not dry_run:
+            self.dep["spec"]["replicas"] = body["spec"]["replicas"]
+            self.dep["metadata"]["resourceVersion"] = str(int(self.dep["metadata"]["resourceVersion"]) + 1)
+        return Resp({"metadata": {"name": name}, "spec": {"replicas": body["spec"]["replicas"]}})
 
     def list_namespaced_replica_set(self, ns, **kw):
         return Resp({"items": self.rss})
@@ -60,8 +88,12 @@ class FakeApps:
         if fail:
             raise fail
         new = copy.deepcopy(self.dep)
-        for op in patch[1:]:
-            new["spec"][op["path"].rsplit("/", 1)[1]] = op["value"]
+        if isinstance(patch, dict):  # strategic merge: maps merge, containers merge by name
+            assert patch["metadata"]["resourceVersion"] == self.dep["metadata"]["resourceVersion"]
+            merge(new, {k: v for k, v in patch.items() if k != "metadata"})
+        else:
+            for op in patch[1:]:
+                new["spec"][op["path"].rsplit("/", 1)[1]] = op["value"]
         if self.dry_extra:
             new["spec"]["replicas"] = 9
         if not dry_run:

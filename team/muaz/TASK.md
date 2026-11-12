@@ -33,7 +33,7 @@ Exit: `scripts/smoke.sh` (A) passes: bad deploy detected, rolled back on "ask" v
 ## Phase 2: the other failures and the checks
 
 - [ ] P0 Flag tracking in the journal (§6.2.5)
-- [ ] P0 Executor: `revert_config`, `restart_service`, `scale`, `raise_limit`, `enable_degraded_mode` (§6.4.7)
+- [ ] P0 Executor: `revert_config`, `restart_service`, `scale`, `raise_limit`, `enable_degraded_mode` (§6.4.7) — partial: `revert_config` (env), `restart_service`, `scale`, `raise_limit` done (`tests/test_tools.py`, branch `muaz/phase2-tools`); flag revert and `enable_degraded_mode` wait on the flag plan.
 - [x] P0 Rules: 3 special cases (resource, protected, unknown) (§6.3.6) — proof: `tests/test_rules.py` resource, protected and unknown cases (pass).
 - [ ] P0 Claude call: forced tool, Pydantic check, one retry, 30 s timeout, token log, demo cache (§6.3.7) — now OpenCode Go via T's `DiagnosisService`: Pydantic check, retry, 30 s, token log, cache done (T's tests). Forced tool not done; no real call made yet.
 - [x] P0 Harm check (spec/data hashes), early abort with rollout pause (§6.4.9) — proof: `tests/test_verify_loop.py::test_early_abort_pauses_undoes_resumes`, `harm_check` in the success path (pass). Fake API server only.

@@ -1,17 +1,17 @@
 # Graph Report - devhack2026  (2026-11-13)
 
 ## Corpus Check
-- 121 files · ~55,862 words
+- 114 files · ~57,161 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 5 file(s) not represented in the graph (top: (none) 3, .example 1, .lock 1)
 
 ## Summary
-- 1121 nodes · 2860 edges · 63 communities (49 shown, 14 thin omitted)
-- Extraction: 91% EXTRACTED · 9% INFERRED · 0% AMBIGUOUS · INFERRED: 258 edges (avg confidence: 0.91)
+- 1139 nodes · 2918 edges · 64 communities (45 shown, 19 thin omitted)
+- Extraction: 91% EXTRACTED · 9% INFERRED · 0% AMBIGUOUS · INFERRED: 256 edges (avg confidence: 0.91)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `39f0f7fc`
+- Built from commit: `ce576ef8`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -19,24 +19,24 @@
 - NotifierState
 - test_audit.py
 - 6.4 Gateway (`gateway/`) [M] P0 unless marked
-- harness.py
+- test_bench.py
 - DiagnosisService
-- test_brain.py
+- httpx
 - AGENTS.md
 - CLAUDE.md
 - 10. Build plan
-- Incident
-- test_previous_template_and_diff_helpers
-- create_app
-- Implementation Plan: the on-call agent that has to earn its autonomy
-- bundle.py
-- ActionRequest
-- models.py
-- test_observer.py
+- Card
+- dryrun.py
 - NotificationConsumer
-- Anirudh [A]: architecture of my part
-- Anirudh [A]: state
-- Any
+- Implementation Plan: the on-call agent that has to earn its autonomy
+- brain/main.py
+- test_bench_recovery.py
+- models.py
+- Observer
+- test_observer.py
+- HttpTrialServices
+- checklist.py
+- pathlib
 - 3. Environment setup
 - 8. Testing
 - test_bench_export.py
@@ -46,45 +46,48 @@
 - 4. Configuration files
 - 5. Data model
 - 9. Benchmark (`bench/`) [T] P1
-- GatewayDecision
+- ActionRequest
 - test_gateway.py
-- connect
+- Verification
 - oncall-agent
-- build_from_env
-- dryrun.py
+- observer/main.py
+- harm_check
 - journal.py
-- usage
-- trust_report.py
+- det
+- connect
 - security_check.sh
 - make_kubeconfigs.sh
 - install_shop.sh
 - match
 - setup_cluster.sh
-- checklist.py
-- Tracker
-- test_verify_loop.py
-- test_chaos.py
-- build_from_env
+- gateway/main.py
+- test_kube_watch.py
+- .observe
+- json
+- test_rehearsal_credits_action_receipt_with_false_diagnosis
+- TrialServices
 - charge.js
-- connect
-- Twaha [T]: tasks
-- httpx
+- Muaz [M]: architecture of my part
+- test_run_watch_relists_after_error
+- ApprovalButton
+- detector.py
+- test_attacks.py
+- test_resume_counts_recorded_attempts_and_does_not_repeat_fault
 - build_bad_payment.sh
 - smoke.sh
-- Muaz [M]: state
-- Contracts (agreed interfaces between owners)
+- Done (with proof)
 
 ## God Nodes (most connected - your core abstractions)
-1. `ActionRequest` - 36 edges
-2. `GatewayDecision` - 34 edges
-3. `connect()` - 34 edges
+1. `ActionRequest` - 37 edges
+2. `connect()` - 34 edges
+3. `GatewayDecision` - 34 edges
 4. `DiagnosisService` - 33 edges
 5. `Gateway` - 32 edges
 6. `ReceiptStore` - 24 edges
 7. `Incident` - 24 edges
-8. `Receipt` - 23 edges
+8. `World` - 24 edges
 9. `HttpTrialServices` - 23 edges
-10. `NotifierState` - 22 edges
+10. `Receipt` - 23 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `3.1 Prerequisites [A] P0` --references--> `kubectl()`  [INFERRED]
@@ -95,37 +98,33 @@
   IMPLEMENTATION.md → chaos/faults.py
 - `9.2 Manual baseline (`manual_baseline.md`)` --references--> `kubectl()`  [INFERRED]
   IMPLEMENTATION.md → chaos/faults.py
-- `Hard rules my code must keep` --references--> `kubectl()`  [INFERRED]
-  team/anirudh/ARCHITECTURE.md → chaos/faults.py
+- `5.3 Event types (SSE and audit)` --references--> `harm_check()`  [INFERRED]
+  IMPLEMENTATION.md → gateway/verifier.py
 
 ## Import Cycles
 - None detected.
 
-## Communities (63 total, 14 thin omitted)
+## Communities (64 total, 19 thin omitted)
 
 ### Community 0 - "NotifierState"
-Cohesion: 0.06
-Nodes (23): read_events(), Notifier, NotificationConsumer, ApprovalButton, ApprovalController, ApprovalView, DiscordNotifier, health() (+15 more)
+Cohesion: 0.24
+Nodes (6): ApprovalController, NotifierState, test_unauthorized_approval_never_calls_gateway(), test_approval_auth_expiry_duplicate_and_gateway_refusal(), test_gateway_refusal_does_not_record_approval(), test_success_status_with_refusal_body_is_not_approval()
 
 ### Community 1 - "test_audit.py"
-Cohesion: 0.05
-Nodes (56): quarantine(), redact(), redact_value(), AuditLog, canonical(), EventBus, verify(), active_bus() (+48 more)
+Cohesion: 0.06
+Nodes (54): DiagnosisResult, quarantine(), redact(), redact_value(), AuditLog, canonical(), EventBus, verify() (+46 more)
 
 ### Community 2 - "6.4 Gateway (`gateway/`) [M] P0 unless marked"
 Cohesion: 0.05
-Nodes (41): create(), 6.1 Chaos panel (`chaos/`) [A] P0, 6.2.1 Baselines (`baselines.py`), 6.2.2 Detector (`detector.py`), 6.2.3 Kubernetes watch (`kube_watch.py`), 6.2.4 Change journal (`journal.py`), 6.2.5 Flags (`flags.py`), 6.2 Observer (`observer/`) [M] P0 (+33 more)
+Nodes (43): create(), get(), set_state(), 6.1 Chaos panel (`chaos/`) [A] P0, 6.2.1 Baselines (`baselines.py`), 6.2.2 Detector (`detector.py`), 6.2.3 Kubernetes watch (`kube_watch.py`), 6.2.4 Change journal (`journal.py`) (+35 more)
 
-### Community 3 - "harness.py"
-Cohesion: 0.05
-Nodes (33): Harness, HttpTrialServices, main(), measure(), ObservationError, TrialResult, TrialServices, FakeServices (+25 more)
+### Community 3 - "test_bench.py"
+Cohesion: 0.20
+Nodes (10): Harness, measure(), TrialResult, FakeServices, test_disabled_harness_never_resets_or_injects(), test_failed_trial_persisted_and_next_trial_runs(), test_manual_comparison_preserves_missing_measurements(), test_matching_pattern_wrong_culprit_is_not_correct() (+2 more)
 
 ### Community 4 - "DiagnosisService"
-Cohesion: 0.08
-Nodes (32): DiagnosisResult, DiagnosisService, InferenceProvider, InferenceRequest, InferenceResponse, ProviderError, OpenCodeGoAdapter, Diagnosis (+24 more)
-
-### Community 5 - "test_brain.py"
-Cohesion: 0.12
-Nodes (19): DependencyGraph, create_app(), _finished(), incidents(), diagnosis_json(), FakeProvider, jaeger_trace(), make() (+11 more)
+Cohesion: 0.07
+Nodes (38): DiagnosisService, InferenceProvider, InferenceRequest, InferenceResponse, ProviderError, OpenCodeGoAdapter, Blocked / waiting on, Done (with proof) (+30 more)
 
 ### Community 6 - "AGENTS.md"
 Cohesion: 0.18
@@ -139,53 +138,53 @@ Nodes (10): Code comments, Commands, Commits, Communication, Dependencies, Git s
 Cohesion: 0.22
 Nodes (9): 10. Build plan, Cut order if time runs short, Phase 0: foundations (about 2 h, everyone), Phase 1: the spine, one failure end to end (about 5 h) P0, Phase 2: the other failures and the checks (about 5 h) P0, Phase 3: trust, humans, proof (about 5 h) P1, Phase 4: wide outages and measurement (about 4 h) P1, Phase 5: freeze and polish (about 4 h) (+1 more)
 
-### Community 9 - "Incident"
-Cohesion: 0.29
-Nodes (3): fetch_error_traces(), Brain, Incident
+### Community 9 - "Card"
+Cohesion: 0.21
+Nodes (4): Notifier, ApprovalView, DiscordNotifier, Card
 
-### Community 10 - "test_previous_template_and_diff_helpers"
-Cohesion: 0.47
-Nodes (5): outside_allowed(), previous_template(), rs(), template(), test_previous_template_and_diff_helpers()
+### Community 10 - "dryrun.py"
+Cohesion: 0.17
+Nodes (14): build_patch(), _flatten(), _h(), namespace_hash(), outside_allowed(), previous_template(), rollback_patch(), _single_container() (+6 more)
 
-### Community 11 - "create_app"
-Cohesion: 0.13
-Nodes (5): create_app(), lifespan(), build_mcp(), make(), test_rehearsal_route_needs_flag()
+### Community 11 - "NotificationConsumer"
+Cohesion: 0.18
+Nodes (3): NotificationConsumer, test_consumer_restart_deduplicates_and_resolves_wake(), test_repage_expiry_and_persistent_buttons()
 
 ### Community 12 - "Implementation Plan: the on-call agent that has to earn its autonomy"
 Cohesion: 0.29
 Nodes (6): 12. Risks and fallbacks, 13. Submission checklist, 14. Command cheat sheet, 2. Repository layout, 7. End-to-end flows (acceptance scenarios), Implementation Plan: the on-call agent that has to earn its autonomy
 
-### Community 13 - "bundle.py"
-Cohesion: 0.11
-Nodes (26): build_bundle(), change_evidence(), collect_k8s(), k8s_evidence(), log_evidence(), memory_ratio(), metric_evidence(), _span_error_text() (+18 more)
+### Community 13 - "brain/main.py"
+Cohesion: 0.06
+Nodes (51): build_bundle(), change_evidence(), collect_k8s(), k8s_evidence(), log_evidence(), memory_ratio(), metric_evidence(), _span_error_text() (+43 more)
 
-### Community 14 - "ActionRequest"
-Cohesion: 0.27
-Nodes (4): call_tool(), ActionRequest, action(), bundle()
+### Community 14 - "test_bench_recovery.py"
+Cohesion: 0.15
+Nodes (10): stream(), test_failed_attempts_count_toward_resume_target(), test_reconnect_resumes_cursor_and_ignores_duplicate_events(), handle(), test_replayed_approval_does_not_repeat_post(), handle(), test_resume_corrupt_file_fails_before_reset(), test_timeout_keeps_detection_and_diagnosis_measurements() (+2 more)
 
 ### Community 15 - "models.py"
+Cohesion: 0.09
+Nodes (24): ApprovalDecidedPayload, ApprovalRequestedPayload, CardPayload, Cause, ChecklistPayload, DiagnosisReadyPayload, Event, InferencePayload (+16 more)
+
+### Community 16 - "Observer"
+Cohesion: 0.17
+Nodes (5): load(), medians(), store(), Detector, Observer
+
+### Community 17 - "test_observer.py"
+Cohesion: 0.23
+Nodes (11): Backend, make(), prom_result(), test_brain_down_does_not_stop_detection(), handler(), test_endpoints(), test_nan_rows_are_dropped(), test_prometheus_down_keeps_last_health_and_skips_detector() (+3 more)
+
+### Community 18 - "HttpTrialServices"
 Cohesion: 0.18
-Nodes (8): ApprovalDecidedPayload, ApprovalRequestedPayload, CardPayload, ChecklistPayload, DiagnosisReadyPayload, InferencePayload, Payload, QuarantinePayload
+Nodes (5): HttpTrialServices, main(), test_health_wait_requires_current_metrics_and_retries_startup(), test_stale_metrics_restart_the_entire_stability_window(), test_rehearsal_disabled_before_any_network_call()
 
-### Community 16 - "test_observer.py"
-Cohesion: 0.06
-Nodes (25): load(), medians(), store(), Detector, fetch_readings(), prom_query(), create_app(), get_journal() (+17 more)
+### Community 19 - "checklist.py"
+Cohesion: 0.38
+Nodes (7): rv(), _call(), classify(), list_json(), patch_deployment(), patch_scale(), read_deployment()
 
-### Community 17 - "NotificationConsumer"
-Cohesion: 0.33
-Nodes (5): Discord notifier, Inference, On-call agent: Twaha components, Project graph, Setup and checks
-
-### Community 18 - "Anirudh [A]: architecture of my part"
+### Community 20 - "pathlib"
 Cohesion: 0.29
-Nodes (6): Anirudh [A]: architecture of my part, Flow through my parts, Hard rules my code must keep, What I need from others, What I own, What I provide to others
-
-### Community 19 - "Anirudh [A]: state"
-Cohesion: 0.29
-Nodes (6): Anirudh [A]: state, Blocked / waiting on, Done (with proof), In progress, Next, Notes for my next session
-
-### Community 20 - "Any"
-Cohesion: 0.18
-Nodes (4): FakeApps, FakeCore, Observer, Resp
+Nodes (6): health(), lifespan(), load_approvers(), required(), test_notifier_rejects_rehearsal_identity_in_human_allowlist(), test_notifier_uses_gateway_approver_setting()
 
 ### Community 21 - "3. Environment setup"
 Cohesion: 0.33
@@ -197,7 +196,7 @@ Nodes (5): 8.1 Unit tests [M][T] P0, 8.2 Property-based tests (`test_invariants.
 
 ### Community 23 - "test_bench_export.py"
 Cohesion: 0.12
-Nodes (19): display(), export_report(), markdown(), timing_svg(), main(), summarize(), compare(), load_rows() (+11 more)
+Nodes (18): display(), export_report(), markdown(), timing_svg(), main(), summarize(), compare(), load_rows() (+10 more)
 
 ### Community 24 - "0. Scope and principles"
 Cohesion: 0.50
@@ -223,101 +222,89 @@ Nodes (4): 5.1 SQLite (`data/oncall.db`, WAL mode) [M] P0, 5.2 Shared schemas (`
 Cohesion: 0.50
 Nodes (4): 9.1 Harness (`harness.py`), 9.2 Manual baseline (`manual_baseline.md`), 9.3 Report (`report.py`), 9. Benchmark (`bench/`) [T] P1
 
-### Community 30 - "GatewayDecision"
-Cohesion: 0.26
-Nodes (7): get(), set_state(), Gateway, check(), GatewayDecision, test_mcp_exposes_six_tools_with_actable_targets_only(), submit()
+### Community 30 - "ActionRequest"
+Cohesion: 0.32
+Nodes (6): Gateway, ActionRequest, GatewayDecision, submit(), test_mcp_exposes_six_tools_with_actable_targets_only(), submit()
 
 ### Community 32 - "test_gateway.py"
-Cohesion: 0.27
-Nodes (14): Phase 3: trust, humans, proof, action(), test_approval_rules(), test_bad_deploy_asks_then_rolls_back_on_approval(), test_budget_and_in_flight(), test_conflict_on_execute_hands_off_and_admission_denial_escalates(), test_dry_run_outside_template_escalates(), test_http_app_routes() (+6 more)
+Cohesion: 0.05
+Nodes (48): create_app(), Muaz [M]: tasks, Never cut, Phase 0: foundations, Phase 1: the spine, one failure end to end, Phase 2: the other failures and the checks, Phase 3: trust, humans, proof, Phase 4: wide outages and measurement (+40 more)
 
-### Community 34 - "connect"
-Cohesion: 0.24
-Nodes (5): Manual baseline, Verification, insert(), read(), Done (with proof)
+### Community 34 - "Verification"
+Cohesion: 0.29
+Nodes (6): Manual baseline, Verification, service(), test_human_change_takes_priority_over_early_abort(), test_missing_service_cannot_confirm_recovery_after_prediction(), verification()
 
-### Community 37 - "build_from_env"
-Cohesion: 0.33
-Nodes (4): build_from_env(), lifespan(), require_env(), load()
+### Community 37 - "observer/main.py"
+Cohesion: 0.15
+Nodes (7): build_from_env(), create_app(), get_journal(), lifespan(), require_env(), load(), test_require_env_names_missing()
 
-### Community 38 - "dryrun.py"
-Cohesion: 0.08
-Nodes (24): rv(), _flatten(), _h(), namespace_hash(), rollback_patch(), spec_diff(), spec_hashes(), classify() (+16 more)
+### Community 38 - "harm_check"
+Cohesion: 0.19
+Nodes (8): harm_check(), ledger_effect(), service_score(), HarmCheckTest, health(), svc(), verification(), VerifierTest
 
 ### Community 39 - "journal.py"
-Cohesion: 0.15
-Nodes (15): check(), author(), _configmap_changes(), _containers(), current(), _deployment_changes(), entry(), still_live() (+7 more)
+Cohesion: 0.13
+Nodes (16): check(), author(), _configmap_changes(), _containers(), current(), _deployment_changes(), entry(), insert() (+8 more)
 
-### Community 42 - "trust_report.py"
-Cohesion: 0.17
-Nodes (12): main(), summarize_ledger(), check(), counts(), eligible(), lower_bound(), record(), test_resource_rule_actions_keep_different_approval_eligibility() (+4 more)
+### Community 42 - "connect"
+Cohesion: 0.11
+Nodes (16): main(), summarize_ledger(), check(), counts(), eligible(), lower_bound(), record(), connect() (+8 more)
 
 ### Community 46 - "match"
-Cohesion: 0.29
-Nodes (7): _action(), latest_change_before_onset(), match(), to_bytes(), change(), incident(), RulesTest
+Cohesion: 0.14
+Nodes (16): _action(), latest_change_before_onset(), match(), to_bytes(), bounds(), check(), usage(), Benchmarks and adversarial checks (+8 more)
 
-### Community 48 - "checklist.py"
+### Community 48 - "gateway/main.py"
 Cohesion: 0.16
-Nodes (5): approvers_from_env(), build_from_env(), Decide, RehearsalCredit, require_env()
+Nodes (8): approvers_from_env(), build_from_env(), lifespan(), Decide, RehearsalCredit, require_env(), build_mcp(), make()
 
-### Community 49 - "Tracker"
-Cohesion: 0.15
-Nodes (18): bad_pods(), pod_bad(), run_watch(), service_of(), Tracker, _ts(), build_from_env(), deployment() (+10 more)
+### Community 49 - "test_kube_watch.py"
+Cohesion: 0.20
+Nodes (14): bad_pods(), pod_bad(), run_watch(), service_of(), Tracker, _ts(), deployment(), iso() (+6 more)
 
-### Community 50 - "test_verify_loop.py"
-Cohesion: 0.28
-Nodes (11): executed(), healthy(), ledger(), Script, sick(), test_early_abort_pauses_undoes_resumes(), test_human_change_during_verify_hands_off_without_undo(), test_no_recovery_undoes_and_escalates() (+3 more)
+### Community 51 - "json"
+Cohesion: 0.05
+Nodes (62): bad_deploy(), broken_config(), datastore_down(), kubectl(), KubectlError, memory_leak(), read_flags(), read_live_flags() (+54 more)
 
-### Community 51 - "test_chaos.py"
-Cohesion: 0.07
-Nodes (50): bad_deploy(), broken_config(), datastore_down(), kubectl(), KubectlError, memory_leak(), read_flags(), read_live_flags() (+42 more)
-
-### Community 53 - "build_from_env"
-Cohesion: 0.24
-Nodes (10): Event, Model, Prediction, test_action_rejects_invented_pattern(), test_evidence_rejects_nonfinite_timestamp(), test_payload_contract_rejects_incomplete_approval(), test_payload_rejects_cross_incident_card(), test_prediction_deadline_is_bounded() (+2 more)
+### Community 52 - "test_rehearsal_credits_action_receipt_with_false_diagnosis"
+Cohesion: 0.25
+Nodes (5): test_rehearsal_credits_action_receipt_with_false_diagnosis(), test_rehearsal_hooks_only_when_enabled(), handle(), test_rehearsal_refusal_stops_credit(), test_rehearsal_without_receipt_never_submits_credit()
 
 ### Community 54 - "charge.js"
 Cohesion: 0.10
 Nodes (14): { ATTR_ERROR_TYPE }, cardValidator, charge(), { context, propagation, trace, metrics, SpanStatusCode }, { FlagdProvider }, flagProvider, logger, LOYALTY_LEVEL (+6 more)
 
-### Community 57 - "connect"
-Cohesion: 0.23
-Nodes (4): connect(), DbTest, health(), test_verified_outcome_controls_persisted_trust_and_card()
-
-### Community 58 - "Twaha [T]: tasks"
-Cohesion: 0.22
-Nodes (8): Evidence and next gate (2026-11-13), Never cut, Phase 1: the spine, Phase 2: checks, Phase 3: humans and proof, Phase 4: measurement, Phase 5: freeze, Twaha [T]: tasks
-
-### Community 59 - "httpx"
-Cohesion: 0.25
-Nodes (7): Muaz [M]: tasks, Never cut, Phase 0: foundations, Phase 1: the spine, one failure end to end, Phase 2: the other failures and the checks, Phase 4: wide outages and measurement, Phase 6: stretch (only if Phase 4 exit is met early)
-
-### Community 68 - "Muaz [M]: state"
+### Community 55 - "Muaz [M]: architecture of my part"
 Cohesion: 0.33
-Nodes (5): Blocked / waiting on, In progress, Muaz [M]: state, Next, Notes for my next session
+Nodes (5): Flow through my code, Hard rules my code must keep, Muaz [M]: architecture of my part, What I own, What I provide to others
 
-### Community 70 - "Contracts (agreed interfaces between owners)"
-Cohesion: 0.29
-Nodes (6): Cause, Contracts (agreed interfaces between owners), Open questions, Rules for agents, Shared context (all agents read and write this), VERIFY results (§3.3, Phase 0)
+### Community 56 - "test_run_watch_relists_after_error"
+Cohesion: 0.33
+Nodes (3): FakeResp, test_run_watch_relists_after_error(), list_fn()
+
+### Community 68 - "Done (with proof)"
+Cohesion: 0.12
+Nodes (8): call_tool(), read(), Blocked / waiting on, Done (with proof), In progress, Muaz [M]: state, Next, Notes for my next session
 
 ## Knowledge Gaps
 - **1 isolated node(s):** `oncall-agent`
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 325 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **14 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 323 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **19 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `kubectl()` connect `test_chaos.py` to `Anirudh [A]: architecture of my part`, `6.4 Gateway (`gateway/`) [M] P0 unless marked`, `9. Benchmark (`bench/`) [T] P1`, `3. Environment setup`?**
-  _High betweenness centrality (0.100) - this node is a cross-community bridge._
+- **Why does `kubectl()` connect `json` to `6.4 Gateway (`gateway/`) [M] P0 unless marked`, `9. Benchmark (`bench/`) [T] P1`, `3. Environment setup`, `models.py`?**
+  _High betweenness centrality (0.096) - this node is a cross-community bridge._
 - **Are the 14 inferred relationships involving `ActionRequest` (e.g. with `call_tool()` and `DiagnosisResult`) actually correct?**
   _`ActionRequest` has 14 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `oncall-agent` to the rest of the system?**
   _1 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `NotifierState` be split into smaller, more focused modules?**
-  _Cohesion score 0.05925925925925926 - nodes in this community are weakly interconnected._
-- **Why does `GatewayDecision` connect `GatewayDecision` to `NotifierState`, `test_audit.py`, `test_gateway.py`, `harness.py`, `test_brain.py`, `Contracts (agreed interfaces between owners)`, `Incident`, `ActionRequest`, `models.py`, `checklist.py`, `NotificationConsumer`, `build_from_env`?**
-  _High betweenness centrality (0.072) - this node is a cross-community bridge._
+- **Should `test_audit.py` be split into smaller, more focused modules?**
+  _Cohesion score 0.05513612445664608 - nodes in this community are weakly interconnected._
+- **Why does `ActionRequest` connect `ActionRequest` to `test_gateway.py`, `test_audit.py`, `Done (with proof)`, `DiagnosisService`, `dryrun.py`, `connect`, `brain/main.py`, `models.py`, `checklist.py`, `8. Testing`, `test_attacks.py`?**
+  _High betweenness centrality (0.061) - this node is a cross-community bridge._
 - **Are the 10 inferred relationships involving `GatewayDecision` (e.g. with `HttpTrialServices` and `Brain`) actually correct?**
   _`GatewayDecision` has 10 INFERRED edges - model-reasoned connections that need verification._
-- **Should `test_audit.py` be split into smaller, more focused modules?**
-  _Cohesion score 0.052349336057201226 - nodes in this community are weakly interconnected._
+- **Should `6.4 Gateway (`gateway/`) [M] P0 unless marked` be split into smaller, more focused modules?**
+  _Cohesion score 0.0463768115942029 - nodes in this community are weakly interconnected._

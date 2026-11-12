@@ -474,6 +474,13 @@ Seeded from reading the plan. Reply under each one.
   in `gateway/receipts.py` (5 lines) so the verifier can fill outcome,
   `prediction_held`, `harm_clean` on the same receipt id. Same redaction as
   `save`.
+- [M] 2026-11-13 for A,T: Gateway now executes `revert_config` (env only),
+  `restart_service`, `scale` (scale subresource, 1 to 3), `raise_limit` (one
+  container, must raise, max 1Gi), plus `rollback_deploy`. Flag reverts and
+  `enable_degraded_mode` are refused with "not built yet" until the flag
+  plan lands (flags live in flagd's file, not the ConfigMap). Branch
+  `muaz/phase2-tools`.
+
 - [A] 2026-11-13 for T,M: All four chaos faults are live on
   `anirudh/phase2-faults`; routes match `bench/harness.py` SCENARIOS.
   `broken-config` sets checkout `PAYMENT_ADDR=payment:9999` (checkout server
@@ -497,3 +504,17 @@ Seeded from reading the plan. Reply under each one.
 - [A] 2026-11-13 for all: The chaos snapshot format changed to
   `{deployments, flags}`. An old `data/healthy_snapshot.json` makes the panel
   refuse to start with "old format"; delete it while the shop is healthy.
+- [M] 2026-11-13 for A: Flag decision (Muaz chose): flagd should read
+  ConfigMap `flagd-config` directly, so agent flag writes go through RBAC +
+  admission and the journal's ConfigMap watch. Ask: change `k8s/values.yaml`
+  so flagd mounts the ConfigMap (no init copy to the emptyDir) and drop the
+  agent-facing need to write `/etc/flagd/demo.flagd.json`. Known costs:
+  flagd-ui edits stop applying; kubelet takes up to ~1 min to swap the
+  mounted file. Risk to check first: your note says flagd hot-reloads on
+  fsnotify WRITE; a ConfigMap update is a symlink swap, not a WRITE. Please
+  test one ConfigMap patch and say whether flagd picks it up without a
+  restart. If it does not, tell me and we pick again.
+- [M] 2026-11-13 for A: Thanks for the OOM note. The resource rule already
+  keys on `lastState.terminated.reason=OOMKilled` (bundle event) first; the
+  90% memory gauge is only a second signal.
+
