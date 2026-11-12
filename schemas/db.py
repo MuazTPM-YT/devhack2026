@@ -44,10 +44,11 @@ CREATE TABLE IF NOT EXISTS baselines (
 
 
 # open db in WAL mode so observer, brain, gateway can share it
-def connect(path: str = DEFAULT_PATH) -> sqlite3.Connection:
+# shared=True lets watch threads use one connection; caller must hold a lock around writes
+def connect(path: str = DEFAULT_PATH, shared: bool = False) -> sqlite3.Connection:
     if path != ":memory:":
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path, timeout=5)
+    conn = sqlite3.connect(path, timeout=5, check_same_thread=not shared)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
