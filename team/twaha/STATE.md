@@ -6,6 +6,13 @@
 
 ## Done (with proof)
 
+- Pulled origin/main through `bacb45a` (rules, freshness, trust, verifier,
+  synchronous OpenCode diagnosis). Resolved brain/llm.py add/add conflict by
+  retaining DiagnosisService and exporting main's sync facade through a provider
+  adapter. Imported journal changes need type annotations only; runtime intact.
+- Final merge validation: 142 passed, 1 upstream audioop warning. Adapter
+  boundary test passes. Ruff/mypy passed (37 files).
+
 - Integration slice: `uv run --locked pytest -q` -> 106 passed, 1 upstream
   discord.py audioop warning. Ruff and mypy passed (31 source files).
 - T accepted M Q11: shared Pattern literal, existing schema ordering/defaults,

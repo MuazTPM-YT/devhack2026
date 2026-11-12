@@ -1,16 +1,16 @@
 # Graph Report - devhack2026  (2026-11-13)
 
 ## Corpus Check
-- 65 files · ~30,852 words
+- 76 files · ~34,869 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 526 nodes · 980 edges · 44 communities (40 shown, 4 thin omitted)
-- Extraction: 93% EXTRACTED · 7% INFERRED · 0% AMBIGUOUS · INFERRED: 65 edges (avg confidence: 0.53)
+- 622 nodes · 1175 edges · 47 communities (43 shown, 4 thin omitted)
+- Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 76 edges (avg confidence: 0.56)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `4c78e795`
+- Built from commit: `f6d52e27`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -47,19 +47,22 @@
 - 9. Benchmark (`bench/`) [T] P1
 - manual_baseline.md
 - oncall-agent
+- test_verifier.py
 - JournalTest
 - find_culprit
 - det
 - journal.py
 - security_check.sh
 - make_kubeconfigs.sh
+- LlmTest
+- match
 
 ## God Nodes (most connected - your core abstractions)
 1. `DiagnosisService` - 25 edges
 2. `NotifierState` - 25 edges
 3. `Card` - 22 edges
-4. `ApprovalController` - 18 edges
-5. `FakeProvider` - 18 edges
+4. `FakeProvider` - 19 edges
+5. `ApprovalController` - 18 edges
 6. `DiscordNotifier` - 17 edges
 7. `GatewayDecision` - 17 edges
 8. `redact_value()` - 16 edges
@@ -75,33 +78,33 @@
   bench/harness.py → schemas/models.py
 - `HttpTrialServices` --uses--> `GatewayDecision`  [INFERRED]
   bench/harness.py → schemas/models.py
-- `test_adversarial_proposal()` --calls--> `DiagnosisService`  [EXTRACTED]
-  tests/redteam/test_attacks.py → brain/llm.py
+- `FakeProvider` --uses--> `OpenCodeGoSyncAdapter`  [INFERRED]
+  tests/test_inference.py → brain/providers/opencode_go_sync.py
 
 ## Import Cycles
 - None detected.
 
-## Communities (44 total, 4 thin omitted)
+## Communities (47 total, 4 thin omitted)
 
 ### Community 0 - "NotifierState"
-Cohesion: 0.06
-Nodes (39): Any, quarantine(), redact(), redact_value(), Any, AsyncClient, read_events(), Interaction (+31 more)
+Cohesion: 0.08
+Nodes (26): Interaction, Notifier, Protocol, NotificationConsumer, AsyncClient, ApprovalButton, ApprovalController, ApprovalView (+18 more)
 
 ### Community 1 - "test_audit.py"
-Cohesion: 0.11
-Nodes (36): AuditLog, canonical(), EventBus, Any, Path, verify(), active_bus(), create_events_router() (+28 more)
+Cohesion: 0.09
+Nodes (45): Any, quarantine(), redact(), redact_value(), AuditLog, canonical(), EventBus, Any (+37 more)
 
 ### Community 2 - "6.4 Gateway (`gateway/`) [M] P0 unless marked"
 Cohesion: 0.05
 Nodes (40): 6.1 Chaos panel (`chaos/`) [A] P0, 6.2.1 Baselines (`baselines.py`), 6.2.2 Detector (`detector.py`), 6.2.3 Kubernetes watch (`kube_watch.py`), 6.2.4 Change journal (`journal.py`), 6.2.5 Flags (`flags.py`), 6.2 Observer (`observer/`) [M] P0, 6.3.1 Dependency graph (`graph.py`) (+32 more)
 
 ### Community 3 - "consumer.py"
-Cohesion: 0.09
-Nodes (25): Harness, HttpTrialServices, main(), Any, AsyncClient, Path, Protocol, TrialResult (+17 more)
+Cohesion: 0.08
+Nodes (27): Harness, HttpTrialServices, main(), Any, AsyncClient, Path, Protocol, TrialResult (+19 more)
 
 ### Community 4 - "DiagnosisService"
-Cohesion: 0.13
-Nodes (32): DiagnosisResult, DiagnosisService, Path, InferenceProvider, InferenceRequest, InferenceResponse, ProviderError, Protocol (+24 more)
+Cohesion: 0.12
+Nodes (34): DiagnosisResult, DiagnosisService, Path, InferenceProvider, InferenceRequest, InferenceResponse, ProviderError, Protocol (+26 more)
 
 ### Community 5 - "models.py"
 Cohesion: 0.11
@@ -136,8 +139,8 @@ Cohesion: 0.29
 Nodes (6): 12. Risks and fallbacks, 13. Submission checklist, 14. Command cheat sheet, 2. Repository layout, 7. End-to-end flows (acceptance scenarios), Implementation Plan: the on-call agent that has to earn its autonomy
 
 ### Community 13 - "On-call agent: Twaha components"
-Cohesion: 0.25
-Nodes (7): Benchmarks and adversarial checks, Discord notifier, Gateway mounting, Inference, On-call agent: Twaha components, Project graph, Setup and checks
+Cohesion: 0.22
+Nodes (8): Benchmarks and adversarial checks, Discord notifier, Gateway mounting, Inference, Main-branch diagnosis compatibility, On-call agent: Twaha components, Project graph, Setup and checks
 
 ### Community 14 - "Anirudh [A]: architecture of my part"
 Cohesion: 0.29
@@ -203,9 +206,13 @@ Nodes (4): 5.1 SQLite (`data/oncall.db`, WAL mode) [M] P0, 5.2 Shared schemas (`
 Cohesion: 0.50
 Nodes (4): 9.1 Harness (`harness.py`), 9.2 Manual baseline (`manual_baseline.md`), 9.3 Report (`report.py`), 9. Benchmark (`bench/`) [T] P1
 
+### Community 38 - "test_verifier.py"
+Cohesion: 0.14
+Nodes (10): spec_hashes(), harm_check(), ledger_effect(), service_score(), Verification, HarmCheckTest, health(), svc() (+2 more)
+
 ### Community 39 - "JournalTest"
-Cohesion: 0.19
-Nodes (5): connect(), Connection, DbTest, deploy(), JournalTest
+Cohesion: 0.08
+Nodes (16): check(), check(), counts(), eligible(), lower_bound(), Connection, record(), still_live() (+8 more)
 
 ### Community 40 - "find_culprit"
 Cohesion: 0.27
@@ -216,28 +223,36 @@ Cohesion: 0.23
 Nodes (3): Detector, det(), DetectorTest
 
 ### Community 42 - "journal.py"
-Cohesion: 0.32
-Nodes (11): author(), _configmap_changes(), _containers(), _deployment_changes(), entry(), insert(), Connection, read() (+3 more)
+Cohesion: 0.31
+Nodes (12): author(), _configmap_changes(), _containers(), current(), _deployment_changes(), entry(), insert(), Connection (+4 more)
+
+### Community 45 - "LlmTest"
+Cohesion: 0.15
+Nodes (9): config_from_env(), _diagnose(), OpenCodeGoSyncAdapter, request_body(), test_main_branch_sync_facade_uses_provider_adapter(), FakePost, LlmTest, reply() (+1 more)
+
+### Community 46 - "match"
+Cohesion: 0.29
+Nodes (7): _action(), latest_change_before_onset(), match(), to_bytes(), change(), incident(), RulesTest
 
 ## Knowledge Gaps
-- **160 isolated node(s):** `oncall-agent`, `make_kubeconfigs.sh script`, `Communication`, `Code comments`, `Workflow` (+155 more)
+- **161 isolated node(s):** `oncall-agent`, `make_kubeconfigs.sh script`, `Communication`, `Code comments`, `Workflow` (+156 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `GatewayDecision` connect `test_audit.py` to `NotifierState`, `consumer.py`, `models.py`?**
-  _High betweenness centrality (0.050) - this node is a cross-community bridge._
 - **Why does `connect()` connect `JournalTest` to `test_audit.py`?**
-  _High betweenness centrality (0.031) - this node is a cross-community bridge._
+  _High betweenness centrality (0.081) - this node is a cross-community bridge._
+- **Why does `GatewayDecision` connect `test_audit.py` to `NotifierState`, `consumer.py`, `models.py`?**
+  _High betweenness centrality (0.043) - this node is a cross-community bridge._
 - **Why does `Card` connect `NotifierState` to `test_audit.py`, `models.py`?**
-  _High betweenness centrality (0.025) - this node is a cross-community bridge._
+  _High betweenness centrality (0.024) - this node is a cross-community bridge._
 - **Are the 7 inferred relationships involving `DiagnosisService` (e.g. with `InferenceProvider` and `InferenceRequest`) actually correct?**
   _`DiagnosisService` has 7 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 5 inferred relationships involving `NotifierState` (e.g. with `NotificationConsumer` and `ApprovalButton`) actually correct?**
   _`NotifierState` has 5 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 7 inferred relationships involving `Card` (e.g. with `ReceiptStore` and `Notifier`) actually correct?**
   _`Card` has 7 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 3 inferred relationships involving `ApprovalController` (e.g. with `NotifierState` and `Card`) actually correct?**
-  _`ApprovalController` has 3 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 8 inferred relationships involving `FakeProvider` (e.g. with `DiagnosisService` and `InferenceRequest`) actually correct?**
+  _`FakeProvider` has 8 INFERRED edges - model-reasoned connections that need verification._

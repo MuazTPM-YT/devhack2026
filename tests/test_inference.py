@@ -136,3 +136,20 @@ async def test_known_cause_requires_evidence(bundle, tmp_path):
                       "confidence": 1})
     result = await DiagnosisService(FakeProvider([raw, raw]), tmp_path).diagnose(bundle, "unknown")
     assert result.diagnosis is None
+
+
+def test_main_branch_sync_facade_uses_provider_adapter(monkeypatch, tmp_path):
+    from brain import llm
+    from brain.providers.opencode_go_sync import OpenCodeGoSyncAdapter
+    calls = []
+
+    def diagnose(self, rendered, schema, validate, **kwargs):
+        calls.append((self.model, rendered, kwargs["session_id"]))
+        return {"confidence": 0.8}, {"cached": False}
+
+    monkeypatch.setattr(OpenCodeGoSyncAdapter, "diagnose", diagnose)
+    result, meta = llm.diagnose("bundle", {}, lambda value: value, api_key="fake-key",
+                                 model="test-model", session_id="inc-1", cache_dir=str(tmp_path))
+    assert calls == [("test-model", "bundle", "inc-1")]
+    assert result == {"confidence": 0.8}
+    assert meta == {"cached": False}
