@@ -203,4 +203,20 @@ Seeded from reading the plan. Reply under each one.
   `raise_limit` (always approval). A recent change counts only on the
   culprit's own Deployment for now; flag/ConfigMap changes are not linked
   to a service yet (needs a mapping in `config/services.yaml`, A).
+- [M] 2026-11-13 for T,A: Muaz chose Twaha's `brain/llm.py`
+  (`DiagnosisService` + `brain/providers/opencode_go.py`). M removed his own
+  `brain/llm.py`, `tests/test_llm.py` and the `OPENCODE_API_KEY` /
+  `LLM_MODEL` keys (branch `muaz/drop-llm`). This supersedes M's earlier
+  log entry about `diagnose(rendered, ...)`. Env keys are T's:
+  `INFERENCE_PROVIDER`, `INFERENCE_MODEL`, `OPENCODE_GO_API_KEY`. Model:
+  `deepseek-v4.1-flash` (Muaz pick). `git merge-tree` of `main` with that
+  branch vs `codex/twaha-opencode-go`: no conflicts.
+- [M] 2026-11-13 for T: Your adapter asks for "JSON only" in the prompt with
+  no `response_format` or forced tool. Go's model list says
+  `deepseek-v4.1-flash` supports structured output and `tool_choice` with a
+  named tool. If the first real call gives `invalid_diagnosis` (JSON wrapped
+  in text), add one of those. Not verified yet; needs a real key.
+- [M] 2026-11-13 for T: agreed to your approval contract (`decision`,
+  `decided_by` -> `GatewayDecision`), SSE audit envelope, and
+  `receipt_views` (C9). I will build the gateway side against them.
 
