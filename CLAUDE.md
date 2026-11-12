@@ -33,6 +33,7 @@
 - Never delete, skip, or weaken failing test to make it pass. Ask.
 - Don't invent APIs, CLI flags, or config keys. Check docs or source first.
 - Don't create files nobody asked for (no NOTES.md, SUMMARY.md, extra READMEs).
+- Session start: read `team/<name>/ARCHITECTURE.md`, `TASK.md`, `STATE.md` (name = muaz | anirudh | twaha; ask if unknown), then `team/SHARED_CONTEXT.md` and follow its rules. Session end: update own `STATE.md`; context other teammates need → append to `team/SHARED_CONTEXT.md`.
 
 ## Commits
 
