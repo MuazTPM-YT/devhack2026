@@ -30,7 +30,7 @@ Priority: P0 = minimum deliverable, P1 = to win, P2 = stretch.
 
 Exit: `scripts/smoke.sh` (A) passes: bad deploy detected, rolled back on "ask" via curl approve, verified, receipt written.
 
-Exit status: NOT MET yet. All Phase 1 code is merged; the smoke run on A's cluster has not been done.
+Exit status: NOT MET yet. All Phase 1 code is merged; the smoke run on A's cluster has not been done. The run needs one manual `curl` approval (`smoke.sh` waits for it).
 
 ## Phase 2: the other failures and the checks
 
