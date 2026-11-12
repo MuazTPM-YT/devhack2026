@@ -148,3 +148,46 @@ async def test_failed_attempts_count_toward_resume_target(tmp_path):
     assert services.calls == 2
     assert await Harness(services, output).run(["bad-deploy"], 2, resume=True) == []
     assert services.calls == 2
+
+
+async def test_health_wait_requires_current_metrics_and_retries_startup(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    responses = [
+        httpx.Response(503),
+        httpx.Response(200, json={"severity": 0, "prometheus_ok": False}),
+        httpx.Response(200, json={"severity": 0}),
+        httpx.Response(200, json={"severity": False, "prometheus_ok": True}),
+        httpx.Response(200, json={"severity": 0, "prometheus_ok": True}),
+    ]
+    calls = []
+    def handle(request):
+        calls.append(request.url.path)
+        return responses.pop(0)
+    sleep = AsyncMock()
+    monkeypatch.setattr("bench.harness.asyncio.sleep", sleep)
+    monkeypatch.setattr("bench.harness.time", SimpleNamespace(monotonic=lambda: 100))
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        services = HttpTrialServices(client, "http://gateway", "http://observer", "http://chaos", stable_s=0)
+        await services.wait_healthy()
+    assert len(calls) == 5
+    assert sleep.await_count == 4
+
+
+async def test_stale_metrics_restart_the_entire_stability_window(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    samples = iter([True, False, True, True, True])
+    ticks = iter([0, 1, 2, 3, 4])
+    calls = []
+    def handle(request):
+        calls.append(request)
+        return httpx.Response(200, json={"severity": 0, "prometheus_ok": next(samples)})
+    monkeypatch.setattr("bench.harness.asyncio.sleep", AsyncMock())
+    monkeypatch.setattr("bench.harness.time", SimpleNamespace(monotonic=lambda: next(ticks)))
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        services = HttpTrialServices(client, "http://gateway", "http://observer", "http://chaos", stable_s=2)
+        await services.wait_healthy()
+    assert len(calls) == 5

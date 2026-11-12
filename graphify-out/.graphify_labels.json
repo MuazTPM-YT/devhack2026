@@ -1,8 +1,10 @@
 {
+  "2": "6.4 Gateway (`gateway/`) [M] P0 unless marked",
   "6": "AGENTS.md",
   "7": "CLAUDE.md",
   "8": "10. Build plan",
   "12": "Implementation Plan: the on-call agent that has to earn its autonomy",
+  "14": "Anirudh [A]: architecture of my part",
   "15": "Anirudh [A]: state",
   "21": "3. Environment setup",
   "22": "8. Testing",
@@ -17,5 +19,11 @@
   "35": "__init__.py",
   "36": "oncall-agent",
   "43": "security_check.sh",
-  "44": "make_kubeconfigs.sh"
+  "44": "make_kubeconfigs.sh",
+  "45": "install_shop.sh",
+  "46": "match",
+  "47": "setup_cluster.sh",
+  "54": "charge.js",
+  "62": "build_bad_payment.sh",
+  "63": "smoke.sh"
 }

@@ -372,6 +372,12 @@ Seeded from reading the plan. Reply under each one.
   graph rebuilt. Merged checks: 160 passed, Ruff/mypy and shell syntax passed.
   This PR adds verifier safety fixes, resumable benchmark observation, and
   read-only trust reporting. No real incident/trust runs performed.
+
+- [T] 2026-11-13 for M,A: PR #12 merged as `c6091f7`; Twaha TASK.md and
+  STATE.md now separate completed components from pending live acceptance.
+  Current main `23eda91` also includes observer PR #11. Combined checks:
+  174 tests passed, Ruff passed, mypy passed across 44 source files; two
+  upstream deprecation warnings. No live incident runs or trust credits claimed.
 - [M] 2026-11-13 for A,T: Brain service built, branch `muaz/brain`. Run:
   `uv run --locked --env-file .env uvicorn brain.main:app --host 127.0.0.1 --port 7002`.
   Env: `OBSERVER_URL`, `GATEWAY_URL`, `JAEGER_URL` (default in
@@ -434,3 +440,20 @@ Seeded from reading the plan. Reply under each one.
   `pydantic>=2.12`, we pin `~=2.11.7`. So the VERIFY row's mcp 2.3.0 API
   (`MCPServer`) does not apply; we use `mcp.server.fastmcp.FastMCP`.
 
+
+- [T] 2026-11-13 for M,A: Merged main through `816de30` (observer and chaos),
+  preserving both sides of the shared-note conflict. Benchmark readiness now
+  retries observer startup 503 and requires numeric zero severity plus
+  `prometheus_ok=true` throughout the stability window. Stale metrics reset it.
+- [T] 2026-11-13 for A,M: `python -m bench.report <results.jsonl> --manual
+  <manual.jsonl> --output-dir data/report` exports summary JSON, CSV, Markdown,
+  and SVG timing charts. Manual input is optional. Exports show failures, missing
+  measurements, sample counts, and rehearsal sources; no live evidence claimed.
+  Checks: 203 tests passed, Ruff passed, mypy passed across 50 files. README and
+  both repo guidance type-check commands now include observer and chaos.
+
+- [T] 2026-11-13 for M,A: PR #15 now includes main `1b980a0` and brain PR #14.
+  Shared-note conflicts retained both sides; combined code graph rebuilt.
+  Final checks: 215 tests passed, Ruff passed, mypy passed across 53 files.
+  TASK.md now marks brain result-event forwarding implemented. Live gateway
+  delivery, action handoff, approvals, and trial collection remain pending.
