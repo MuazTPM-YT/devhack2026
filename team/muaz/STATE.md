@@ -5,8 +5,8 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** 4 done in code; live smoke pending on A's machine
-**Branches:** PR #20 (`muaz/phase3`) open. Now `muaz/phase4` on top of #20 (not pushed)
+**Current phase:** Phases 0 to 4 built in code (fakes only); nothing verified on the live cluster yet
+**Branches:** all my work merged up to PR #20; PR #22 (`muaz/phase4`) open.
 
 ## Done (with proof)
 
@@ -219,44 +219,46 @@ section. Only my own work here; cross-team facts go in
 
 ## In progress
 
-- Phase 1 spine complete in code (fakes only). Next: A runs
-  `scripts/smoke.sh` on the cluster with observer, brain, gateway up; fix
-  what the real API server and Jaeger show. Then Phase 2 tools.
+- Nothing running. All code for Phases 0 to 4 is written and tested with
+  fakes. The next work depends on live results from A.
 
 ## Blocked / waiting on
 
-- Load rate: Muaz chose "A raises the load generator rate" (payment ~1
-  req/min makes 1 m windows flap). Waiting on A.
-- Scenario 3: flag -> service map proposed for `config/services.yaml` (A,
-  C7); waiting on A's `agreed`.
-- Flags: Muaz chose "flagd reads ConfigMap `flagd-config` directly" (A
-  changes `k8s/values.yaml`). Waiting on A to confirm flagd reloads a
-  mounted-ConfigMap update without a restart. Until then flag reverts and
+- **Live cluster (A):** run `./scripts/security_check.sh` (§6.5.5 table)
+  and `./scripts/smoke.sh` with observer (7001), brain (7002), gateway
+  (7003) up. Nothing of mine has run against the real cluster yet. Unverified
+  until then: Jaeger response shapes, the failed-JSON-Patch-`test` -> 422
+  assumption, OpenCode Go key header and model output (T's adapter).
+- **Load rate (A):** Muaz chose "A raises the load generator rate"; payment
+  at ~1 req/min makes the 1 m windows flap.
+- **Flags (A):** Muaz chose "flagd reads ConfigMap `flagd-config` directly".
+  A must change `k8s/values.yaml` and test that flagd reloads a ConfigMap
+  update without a restart. Until then flag reverts and
   `enable_degraded_mode` are refused.
-- Approval auth: Muaz chose allowlist only, gateway on 127.0.0.1 (no
-  shared secret).
-- JSON Patch `test` failure status (assumed 422 with "test" in the body ->
-  handed_off) not verified on a real API server.
-- **§6.5.5 security acceptance table: BLOCKED.** A's cluster is not up. No
-  row is passed. Run `kubectl apply -f k8s/`, `./scripts/make_kubeconfigs.sh`,
-  `./scripts/security_check.sh` on it.
-- Row "real `rollback_deploy` through the executor": needs the gateway
-  executor (Phase 1).
-- Real-cluster runs (observer smoke, §6.5.5 table, Jaeger curls) happen on Anirudh's machine.
-- VERIFY values from A: Deployment names, `flagd-config` name, image prefixes.
-- Jaeger paths: need one curl on A's cluster (asked in SHARED_CONTEXT log).
-- OpenCode Go: one real call with Muaz's key through Twaha's adapter.
-- Schemas (C1): waiting on T's reply to Q11. Blocks `rules.py`, bundle, gateway.
-- Deps + commands (Q9/Q10): block every network/cluster part of Phase 1.
-- Q replies need the other owners to answer `agreed`.
+- **Scenario 3 (A):** flag -> service map proposed for
+  `config/services.yaml`; waiting on A's `agreed`.
+- **Scenario 10 (A):** `/chaos/shared-outage` (Q6).
+- **PR #22** open (Phase 4 + this cleanup).
+
+## Decisions made (Muaz)
+
+- LLM: OpenCode Go, model `deepseek-v4.1-flash`, through T's
+  `DiagnosisService`; my own `brain/llm.py` removed.
+- Approvals: allowlist only, gateway bound to 127.0.0.1, no shared secret.
+- MCP: `mcp~=1.30.0` (2.x needs pydantic 2.12).
+- `kubernetes~=36.0.3` (37 needs pydantic 2.13).
+- Property tests: stdlib `random`, not Hypothesis.
 
 ## Next
 
-1. Pull A's and T's work when pushed; read new SHARED_CONTEXT replies.
-2. Run the §6.5.5 table on A's cluster; paste the output here.
-3. When deps land: wire detector + journal to Prometheus and kube watch,
-   add `/health/now`, `/journal`; then rules, gateway, verifier.
-4. When llm.py lands: add `OPENCODE_API_KEY`, `LLM_MODEL` to `.env.example` in the same commit.
+1. Merge PR #22.
+2. When A's outputs arrive: fix what the cluster shows; tick the §6.5.5 row
+   and the Phase 1 exit in TASK.md only with that output.
+3. After A agrees the flag map: link flag changes to services in the rules,
+   then ConfigMap flag revert + `enable_degraded_mode` (TASK Phase 2).
+4. If the first real LLM call returns `invalid_diagnosis`: ask T to add a
+   forced tool or JSON mode to the adapter.
+5. Stretch (Phase 6): one retry after a clean undo (§6.4.11).
 
 ## Notes for my next session
 
