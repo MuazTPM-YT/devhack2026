@@ -100,3 +100,16 @@ test("bad payload values fall back instead of crashing", () => {
   assert.deepEqual(inc.victims, []);
   assert.equal(inc.ticks[0].severity, null);
 });
+
+test("demo script ends resolved with every tile done", async () => {
+  const { DEMO_SCRIPT } = await import("./demo.ts");
+  const s = DEMO_SCRIPT.reduce<LiveState>((acc, step, i) => reduce(acc, {
+    seq: i + 1, ts: 1000 + step.at, event: { type: step.type, incident_id: "inc-demo-1", payload: step.payload },
+  }), initialState);
+  const inc = s.incidents["inc-demo-1"];
+  assert.equal(inc.outcome, "resolved");
+  assert.ok(Object.values(inc.stages).every((v) => v === "done"));
+  assert.equal(inc.groupings, 2);
+  assert.equal(inc.checklist.length, 8);
+  assert.ok(DEMO_SCRIPT.every((step, i) => i === 0 || step.at >= DEMO_SCRIPT[i - 1].at));
+});
