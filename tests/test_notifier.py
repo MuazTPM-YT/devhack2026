@@ -114,3 +114,48 @@ def test_notifier_rejects_rehearsal_identity_in_human_allowlist(monkeypatch):
     monkeypatch.setenv("ONCALL_APPROVER_IDS", "rehearsal-harness")
     with pytest.raises(ValueError, match="rehearsal-harness"):
         load_approvers()
+
+
+class PagerNotifier:
+    def __init__(self):
+        self.pages = []
+    async def request_approval(self, *args):
+        pass
+    async def wake(self, card, briefing):
+        self.pages.append(briefing)
+    async def close_approval(self, approval_id, row, decision):
+        pass
+
+
+def approval_record(seq=1):
+    card = {"incident_id": "i", "status": "AWAITING APPROVAL", "text": "approve?", "evidence_ids": []}
+    return {"seq": seq, "event": {"type": "approval_requested", "incident_id": "i", "payload": {
+        "approval_id": "a", "card": card, "diff": "d", "forecast": "f", "expires_at": 99}}}
+
+
+async def test_approved_decision_stops_approval_repage(tmp_path, monkeypatch):
+    monkeypatch.setattr("notifier.consumer.time.time", lambda: 50)
+    state = NotifierState(tmp_path / "state.db")
+    notifier = PagerNotifier()
+    async with httpx.AsyncClient() as client:
+        consumer = NotificationConsumer(client, "http://gateway", notifier, state, repage_s=10)
+        await consumer.handle(approval_record())
+        await consumer.handle({"seq": 2, "event": {"type": "approval_decided", "incident_id": "i",
+                                                   "payload": {"approval_id": "a", "decision": "approved"}}})
+        monkeypatch.setattr("notifier.consumer.time.time", lambda: 90)
+        await consumer.repage_once()
+    assert notifier.pages == []
+
+
+async def test_expired_approval_repages_as_expired(tmp_path, monkeypatch):
+    monkeypatch.setattr("notifier.consumer.time.time", lambda: 50)
+    state = NotifierState(tmp_path / "state.db")
+    state.set("approval:a", {"expires_at": 99, "message_id": 1, "channel_id": 2})
+    notifier = PagerNotifier()
+    async with httpx.AsyncClient() as client:
+        consumer = NotificationConsumer(client, "http://gateway", notifier, state, repage_s=10)
+        await consumer.handle(approval_record())
+        monkeypatch.setattr("notifier.consumer.time.time", lambda: 120)
+        await consumer.expire_once()
+        await consumer.repage_once()
+    assert notifier.pages == ["Approval expired; no action taken"]
