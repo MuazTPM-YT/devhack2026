@@ -6,10 +6,23 @@ section. Only my own work here; cross-team facts go in
 
 **Last updated:** 2026-11-13
 **Current phase:** 1 (stdlib-only core done; IO wiring waits on deps + schemas)
-**Branches:** `muaz/phase0-security` (pushed), `muaz/phase1-core` (from phase0, not pushed)
+**Branches:** phase 0 + phase 1 core merged to `main` (PR #1, #3). Now `muaz/verify-rows` (not pushed)
 
 ## Done (with proof)
 
+- My VERIFY rows filled in `team/SHARED_CONTEXT.md` (commit `e90fd78`).
+  Proof is the source each came from:
+  - Claude: pricing page, `claude-sonnet-5-5` $2 in / $10 out per MTok.
+    Forced `tool_choice` + `temperature` return 400 on it (claude-api skill
+    docs); llm.py must use `client.messages.parse(output_format=Diagnosis)`.
+  - kubernetes 37.0.1 wheel, `kubernetes/client/api_client.py:724`
+    `select_header_content_type` returns first `json` match, so every patch
+    defaults to `application/json-patch+json`; pass `_content_type`.
+  - mcp 2.3.0 wheel, `mcp/server/fastmcp.py` raises `ModuleNotFoundError`
+    ("FastMCP was renamed to MCPServer"); `MCPServer.streamable_http_app`
+    default path `/mcp`.
+  - Jaeger docs: `/api/dependencies` (`endTs`, `lookback` in ms) is
+    internal; `/api/traces` search params not documented. NOT checked live.
 - Phase 1 stdlib-only core on `muaz/phase1-core` (Muaz chose: no new deps
   until T's Q9/Q10). Proof: `python3 -m unittest discover -s tests` ->
   `Ran 24 tests ... OK` on Python 3.14.9 and 3.12.12. Mutation check
@@ -84,6 +97,7 @@ section. Only my own work here; cross-team facts go in
   executor (Phase 1).
 - A's cluster: Anirudh and Twaha are setting theirs up now (2026-11-13).
 - VERIFY values from A: Deployment names, `flagd-config` name, image prefixes.
+- Jaeger paths: need one curl on A's cluster (asked in SHARED_CONTEXT log).
 - Schemas (C1): waiting on T's reply to Q11. Blocks `rules.py`, bundle, gateway.
 - Deps + commands (Q9/Q10): block every network/cluster part of Phase 1.
 - Q replies need the other owners to answer `agreed`.
@@ -94,8 +108,7 @@ section. Only my own work here; cross-team facts go in
 2. Run the §6.5.5 table on A's cluster; paste the output here.
 3. When deps land: wire detector + journal to Prometheus and kube watch,
    add `/health/now`, `/journal`; then rules, gateway, verifier.
-4. Fill my VERIFY rows (Jaeger API paths, MCP transport, JSON Patch content
-   type, Claude model id + price).
+4. When llm.py lands: add `CLAUDE_MODEL` to `.env.example` in the same commit.
 
 ## Notes for my next session
 
