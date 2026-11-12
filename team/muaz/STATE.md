@@ -225,6 +225,10 @@ section. Only my own work here; cross-team facts go in
 
 ## Blocked / waiting on
 
+- Load rate: Muaz chose "A raises the load generator rate" (payment ~1
+  req/min makes 1 m windows flap). Waiting on A.
+- Scenario 3: flag -> service map proposed for `config/services.yaml` (A,
+  C7); waiting on A's `agreed`.
 - Flags: Muaz chose "flagd reads ConfigMap `flagd-config` directly" (A
   changes `k8s/values.yaml`). Waiting on A to confirm flagd reloads a
   mounted-ConfigMap update without a restart. Until then flag reverts and
