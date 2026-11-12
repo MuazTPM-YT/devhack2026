@@ -2,6 +2,7 @@
 # ApiClient().sanitize_for_serialization(obj); the client's .to_dict() gives snake_case and will not match.
 import json
 import sqlite3
+from typing import Any, cast
 
 AGENT_MANAGER = "oncall-agent"
 RESTART_KEY = "kubectl.kubernetes.io/restartedAt"
@@ -34,7 +35,9 @@ def _undo_env(old: list, new: list) -> list:
 
 
 def _deployment_changes(old: dict, new: dict) -> tuple[str, dict, list] | None:
-    diff, kinds, patches = {}, set(), []
+    diff: dict[str, Any] = {}
+    kinds: set[str] = set()
+    patches: list[dict[str, Any]] = []
     oc, nc = _containers(old), _containers(new)
     if oc.keys() != nc.keys():
         diff["containers"] = {"old": sorted(oc), "new": sorted(nc)}
@@ -72,7 +75,7 @@ def _deployment_changes(old: dict, new: dict) -> tuple[str, dict, list] | None:
         rev = (old.get("metadata", {}).get("annotations") or {}).get("deployment.kubernetes.io/revision")
         inverse.append({"op": "rollback", "revision": rev})
     else:
-        template = {}
+        template: dict[str, Any] = {}
         if patches:
             template["spec"] = {"containers": patches}
         if ann_undo:
@@ -101,7 +104,7 @@ def _configmap_changes(old: dict, new: dict, is_flags: bool) -> tuple[str, dict,
 
 # newest writer wins; status writes come from controllers, not people, so skip them
 def author(obj: dict) -> str | None:
-    fields = [m for m in obj.get("metadata", {}).get("managedFields") or [] if m.get("subresource") != "status"]
+    fields: list[dict[str, Any]] = [m for m in obj.get("metadata", {}).get("managedFields") or [] if m.get("subresource") != "status"]
     return max(fields, key=lambda m: m.get("time") or "", default={}).get("manager")
 
 
@@ -148,12 +151,13 @@ def insert(conn: sqlite3.Connection, e: dict) -> int:
         (e["ts"], e["kind"], e["object"], e["field_manager"], e["resource_version"],
          json.dumps(e["diff"], sort_keys=True), json.dumps(e["inverse"], sort_keys=True), int(e["by_agent"])))
     conn.commit()
-    return cur.lastrowid
+    return cast(int, cur.lastrowid)
 
 
 # backs GET /journal?since=&object=
 def read(conn: sqlite3.Connection, since: float = 0, obj: str | None = None) -> list[dict]:
-    sql, args = "SELECT * FROM journal WHERE ts >= ?", [since]
+    sql = "SELECT * FROM journal WHERE ts >= ?"
+    args: list[Any] = [since]
     if obj:
         sql += " AND object = ?"
         args.append(obj)

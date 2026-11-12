@@ -132,6 +132,11 @@ Seeded from reading the plan. Reply under each one.
   `Prediction`, so checklist step 1 refuses unknown fields.
   (d) `GatewayDecision`: default `None` on `failed_step`, `reason`, `receipt_id`,
   `approval_id`. Reply `agreed` or counter.
+  -> [T] 2026-11-13: agreed to Q11 (a)-(d). Shared `Pattern` now types
+  `ActionRequest.pattern`, diagnosis event pattern, and diagnosis service input.
+  ActionRequest already precedes Diagnosis, extra fields are forbidden, and all
+  optional GatewayDecision fields default to None. No SQLite migration needed;
+  M's incidents.pattern column stays TEXT with these four application values.
 
 ---
 
@@ -140,6 +145,51 @@ Seeded from reading the plan. Reply under each one.
 - [plan] 2026-11-12 for all: Team files created: `team/<name>/ARCHITECTURE.md`,
   `TASK.md`, `STATE.md` for muaz, anirudh, twaha. Nothing is built yet; the
   repo holds only `IMPLEMENTATION.md`, `CLAUDE.md`, `README.md`, `LICENSE`.
+
+- [T] 2026-11-13 for M,A: User approved Twaha components plus inference adapter on
+  `codex/twaha-opencode-go`. Implementation is component-tested; no cluster code
+  or teammate entrypoints were changed. Existing C1-C10 statuses remain proposed.
+- [T] 2026-11-13 for M,A: User selected OpenCode Go subscription instead of Claude
+  API. Provider protocol and Go adapter are implemented. Required settings:
+  `INFERENCE_PROVIDER=opencode_go`, `INFERENCE_MODEL`, `OPENCODE_GO_API_KEY`.
+  No model default, CLI subprocess, Claude fallback, or paid-endpoint fallback.
+- [T] 2026-11-13 for M: Q7/Q8 implementation proposal: T owns `brain/redact.py`;
+  mount `create_events_router(EventBus(AuditLog(path)))` and
+  `create_receipts_router(ReceiptStore(path))` in your gateway. Use one audit
+  writer/worker. README contains exact imports and lifecycle boundaries.
+- [T] 2026-11-13 for M,A: C2/C3 wire proposal: SSE data is the audit envelope
+  `{seq, ts, event, prev_hash, hash}`; inner event is `{type, incident_id, payload}`.
+  SSE IDs equal audit sequences and support `Last-Event-ID` replay. UI must read
+  inner payload. Gateway must configure UI CORS if browser origins differ.
+- [T] 2026-11-13 for M: C2 payload proposal: `diagnosis_ready` includes `pattern`
+  and `culprit`; notification terminal events include `card`; approval requests
+  include `approval_id`, `card`, `diff`, `forecast`, `expires_at`. Typed payloads
+  live in `schemas/models.py`; remaining producer payloads stay extensible.
+- [T] 2026-11-13 for M: C9 storage proposal: receipt views use `receipt_views` in
+  SQLite. They contain redacted display data only. Executor must retain usable
+  inverses and verification state separately; no undo route was added here.
+- [T] 2026-11-13 for M: Approval contract proposal: notifier POSTs `decision`
+  (`approved` or `rejected`) and `decided_by`; endpoint returns `GatewayDecision`.
+  Notifier confirms approval only for `executed`. Gateway must independently
+  authenticate caller/identity, check expiry/state, and rerun safety checks.
+- [T] 2026-11-13 for M: Q2/Q3 proposal: rehearsal-only routes
+  `POST /rehearsal/approvals/{id}/decide` with `{decision: "approved"}` and
+  `POST /rehearsal/ledger` with `{incident_id, diagnosis_correct}`. Harness calls
+  them only with `--rehearsal` plus `REHEARSAL_ENABLED=true`. Server must disable
+  them by default, restrict known rehearsal incidents, and require its own
+  prediction/harm evidence before trust credit. No raw ground truth is sent.
+- [T] 2026-11-13 for A: C6 response proposal: injections return `ts`, `type`,
+  `target`; optional `should_wake` sets paging expectation. Harness needs observer
+  `/health/now` numeric severity and 60 seconds of stable health before injection.
+- [T] 2026-11-13 for M,A: User approved uv + FastAPI/Pydantic/HTTPX/discord.py/
+  Uvicorn, with pytest/pytest-asyncio/Ruff/mypy. Root `pyproject.toml`, `uv.lock`,
+  and Commands sections now exist. Other owner-specific dependencies still need
+  agreement. Run `uv sync --locked`, `uv run pytest`, `uv run ruff check .`,
+  `uv run mypy schemas brain gateway notifier bench`.
+- [T] 2026-11-13 for M,A: Offline red-team report covers 12 component checks.
+  It explicitly does not verify RBAC, admission policy, protected-target policy,
+  budgets, freshness, or auto-undo. Live runs and rehearsal trust credits remain
+  unperformed. README records integration contracts and current limitations.
 - [M] 2026-11-13 for T: Created `.gitignore` (`.env`, `data/`, `*.kubeconfig`,
   `*.token`, `node_modules/`) and `.env.example` (`ONCALL_APPROVER_IDS`) on
   branch `muaz/phase0-security`, because `make_kubeconfigs.sh` writes secret
@@ -204,3 +254,40 @@ Seeded from reading the plan. Reply under each one.
   culprit's own Deployment for now; flag/ConfigMap changes are not linked
   to a service yet (needs a mapping in `config/services.yaml`, A).
 
+- [T] 2026-11-13 for M,A: Merged origin/main at `1741b6a` into
+  `codex/twaha-opencode-go` (merge `b78792f`). Kept both sets of env keys,
+  ignore rules, and shared-context entries. Added only type annotations to
+  culprit counter/set. Combined suite: 90 passed; Ruff and mypy passed.
+  Rehearsal endpoint/env and event-router interface proposals still differ;
+  merge does not mark those contracts agreed. OpenCode Go remains the selected
+  provider under the user's instruction; imported Claude notes are historical.
+
+- [T] 2026-11-13 for M: agreed to your Q7/Q8 interface. `gateway.events.router`
+  and `await gateway.events.publish(event)` now exist. Router lifespan owns one
+  bus/audit writer; `app.include_router(events.router)` is sufficient. Optional
+  `app.state.audit_path` overrides data/audit.jsonl before startup. Explicit
+  factory injection remains supported for tests. Your gateway entrypoint was
+  not changed. Tests cover shared HTTP/in-process hash chain, restart, and SSE.
+- [T] 2026-11-13 for M: agreed to your Q2/Q3 names, superseding my earlier
+  rehearsal proposals. Client now uses `ONCALL_REHEARSAL=1`, normal
+  `/approvals/{id}/decide` with `decided_by=rehearsal-harness`, and
+  `POST /ledger/rehearsal` with `{receipt_id, diagnosis_matched}`. No receipt
+  means no credit submission; approval refusal stops the run. Server enforcement
+  and authoritative prediction/harm evidence remain yours to implement.
+- [T] 2026-11-13 for M,A: Notifier now shares `ONCALL_APPROVER_IDS` with the
+  gateway. Deprecated `DISCORD_APPROVER_IDS` and `REHEARSAL_ENABLED` are ignored;
+  update local .env files. Template uses `ONCALL_REHEARSAL=0` by default. The
+  reserved rehearsal identity is rejected in the notifier's human allowlist.
+- [T] 2026-11-13 for M: Shared database integration test confirms `receipt_views`
+  coexists with your journal/incidents/receipts tables without replacing them.
+  Schemas and event integration are ready for your IO wiring. No Kubernetes,
+  MCP, PyYAML, or Anthropic dependency was added; Go remains the provider.
+
+- [T] 2026-11-13 for M,A: Pulled main through `bacb45a` into the Twaha branch.
+  brain/llm.py conflicted: retained typed async DiagnosisService and main's sync
+  diagnose/config/body interfaces. Sync HTTP now lives behind
+  `brain/providers/opencode_go_sync.py` OpenCodeGoSyncAdapter; existing sync tests
+  pass unchanged. Both env naming sets remain available for their respective
+  interfaces. Sync caller still owns redaction/evidence validation; async service
+  retains its stricter bundle checks and deadline. Combined suite: 142 passed;
+  Ruff/mypy passed. Journal edits during merge were type annotations only.
