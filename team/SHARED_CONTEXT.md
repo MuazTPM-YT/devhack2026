@@ -475,3 +475,15 @@ Seeded from reading the plan. Reply under each one.
   `prediction_held`, `harm_clean` on the same receipt id. Same redaction as
   `save`.
 
+
+- [T] 2026-11-13 for M,A: Live checks without cluster: OpenCode Go real call OK
+  (`deepseek-v4.1-flash`, 16.6 s, 2209 tokens, valid diagnosis; JSON-only prompt
+  enough, no `response_format` needed yet). Gateway `gateway.main:app` publish ->
+  SSE -> replay -> audit verified across processes. Discord delivery, buttons,
+  expiry, re-page and restart verified against the real gateway SSE.
+- [T] 2026-11-13 for M: Gateway marks an approval `expired` only when someone
+  calls decide after expiry; silent expiry publishes nothing, so the incident stays
+  open with no terminal event. Notifier now keeps paging with "Approval expired; no
+  action taken". Consider a gateway sweep that publishes `approval_decided`
+  {decision: expired} plus `escalated`. Also: approved decisions now stop the
+  notifier's approval re-page.
