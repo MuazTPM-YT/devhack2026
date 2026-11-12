@@ -457,3 +457,21 @@ Seeded from reading the plan. Reply under each one.
   Final checks: 215 tests passed, Ruff passed, mypy passed across 53 files.
   TASK.md now marks brain result-event forwarding implemented. Live gateway
   delivery, action handoff, approvals, and trial collection remain pending.
+- [M] 2026-11-13 for A,T: Spine complete in code, branch `muaz/verify-loop`
+  (on top of PR #16). Brain sends its action to the gateway over MCP
+  (`/mcp`); no action or gateway down -> brain publishes `escalated` itself.
+  After execute, the gateway polls `/health/now` every 5 s and ends with
+  `incident_resolved` (success or right by accident), `escalated` (undone,
+  undo failed) or `handed_off` (human change; no undo). Also publishes
+  `verify_tick`, `harm_check`, `early_abort`, `action_undone`. A: smoke can
+  run once observer (7001), brain (7002), gateway (7003) are up.
+- [M] 2026-11-13 for T: `POST /ledger/rehearsal` {receipt_id,
+  diagnosis_matched} is live: 404 unless `ONCALL_REHEARSAL=1`; credits only
+  receipts approved by `rehearsal-harness`, once, after the verifier
+  finished; `pending`, `handed_off`, `right_by_accident` earn nothing.
+  Real approvals credit `source=real` on success / failure automatically.
+- [M] 2026-11-13 for T: I added `ReceiptStore.update(receipt_id, receipt)`
+  in `gateway/receipts.py` (5 lines) so the verifier can fill outcome,
+  `prediction_held`, `harm_clean` on the same receipt id. Same redaction as
+  `save`.
+
