@@ -96,3 +96,38 @@ async def test_event_router_validates_before_persisting_and_shares_database(tmp_
         record = await events.publish({"type": "blocked", "payload": {"password": "fake-private-value"}})
         assert record["event"]["payload"]["password"] == "[REDACTED]"
     assert "fake-private-value" not in app.state.audit_path.read_text()
+
+
+async def test_sse_wire_format_and_disconnect_cleanup(tmp_path):
+    import asyncio
+    import json
+    bus = EventBus(AuditLog(tmp_path / "audit.jsonl"))
+    app = FastAPI()
+    app.include_router(create_events_router(bus))
+    await bus.publish({"type": "blocked", "payload": {"reason": "test"}})
+    disconnected = asyncio.Event()
+    messages = []
+
+    async def receive():
+        await disconnected.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        messages.append(message)
+        if message["type"] == "http.response.body" and message.get("body"):
+            disconnected.set()
+
+    scope = {
+        "type": "http", "asgi": {"version": "3.0", "spec_version": "2.0"},
+        "method": "GET", "path": "/events", "raw_path": b"/events", "query_string": b"",
+        "root_path": "", "scheme": "http", "http_version": "1.1",
+        "server": ("test", 80), "client": ("test", 1234), "headers": [],
+    }
+    await asyncio.wait_for(app(scope, receive, send), timeout=2)
+    frame = next(message["body"].decode() for message in messages
+                 if message["type"] == "http.response.body" and message.get("body"))
+    assert frame.startswith("id: 1\nevent: blocked\ndata: ")
+    record = json.loads(frame.split("data: ", 1)[1])
+    assert record["event"]["payload"]["reason"] == "test"
+    assert record["hash"] == verify(bus.audit.path)[0]["hash"]
+    assert not bus.subscribers
