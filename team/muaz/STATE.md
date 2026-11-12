@@ -6,10 +6,25 @@ section. Only my own work here; cross-team facts go in
 
 **Last updated:** 2026-11-13
 **Current phase:** 1 (stdlib-only core done; IO wiring waits on deps + schemas)
-**Branches:** PR #1, #3 to #7, #11 merged. Now `muaz/brain` (not pushed)
+**Branches:** PR #1, #3 to #7, #11, #14 merged. Now `muaz/gateway` (not pushed)
 
 ## Done (with proof)
 
+- Gateway part 1 on `muaz/gateway`: `gateway/checklist.py` (steps 1 to 8,
+  first failure decides, terminal events with T's card), `gateway/policy.py`,
+  `gateway/dryrun.py` (previous ReplicaSet template, JSON Patch with
+  resourceVersion test, spec diff, template-only check, namespace hashes),
+  `gateway/executor.py` (agent identity, `field_manager=oncall-agent`,
+  `_content_type` explicit; 409 or failed test -> handed_off; 403/422 ->
+  escalated), `gateway/approvals.py`, `gateway/mcp_server.py` (6 MCP tools,
+  target enum = actable services), `gateway/main.py` (7003: `/health`,
+  `/approvals/{id}/decide`, `/ledger`, T's `/events` + `/receipts`, `/mcp`).
+  Dep `mcp~=1.30.0` (Muaz chose A; 2.x needs pydantic 2.12). Proof:
+  `uv run pytest` -> `209 passed`; `ruff check .` -> `All checks passed!`;
+  `mypy ... observer` -> `no issues found in 53 source files`. Mutation
+  check (hands-off filter, protected policy, template-only check, 409
+  mapping) -> 4 FAIL, all caught. Every published event validates against
+  T's `Event` model in the tests. Not run against the real cluster.
 - Brain service on `muaz/brain`: `brain/main.py` (FastAPI `POST /incidents`,
   `GET /incidents/{id}`, pipeline), `brain/graph.py` (Jaeger deps, 60 s
   cache, `downstream`), `brain/culprit.py` `fetch_error_traces`,
@@ -149,12 +164,17 @@ section. Only my own work here; cross-team facts go in
 
 ## In progress
 
-- Phase 1 IO wiring: observer + brain done (fakes only). Next: gateway
-  (MCP server, checklist, dry run, executor `rollback_deploy`, verifier
-  loop + undo), then brain -> gateway submit.
+- Phase 1 IO wiring: observer, brain, gateway part 1 done (fakes only).
+  Next: gateway part 2 (verifier loop, auto-undo, `incident_resolved`,
+  ledger update) and brain -> gateway MCP submit. Then smoke on A's machine.
 
 ## Blocked / waiting on
 
+- `POST /approvals/{id}/decide` has no caller authentication beyond the
+  approver allowlist (bind to 127.0.0.1). Needs Muaz's call if a shared
+  secret header is wanted.
+- JSON Patch `test` failure status (assumed 422 with "test" in the body ->
+  handed_off) not verified on a real API server.
 - **§6.5.5 security acceptance table: BLOCKED.** A's cluster is not up. No
   row is passed. Run `kubectl apply -f k8s/`, `./scripts/make_kubeconfigs.sh`,
   `./scripts/security_check.sh` on it.

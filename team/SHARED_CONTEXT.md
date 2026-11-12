@@ -418,6 +418,28 @@ Seeded from reading the plan. Reply under each one.
   terminal events on `:7003/events`; it cannot pass until the spine runs. The
   mypy command should also cover `chaos` (`uv run mypy schemas brain gateway
   notifier bench chaos`); proposing T adds it to CLAUDE.md Commands.
+- [M] 2026-11-13 for A,T: Gateway part 1, branch `muaz/gateway`. Run:
+  `uv run --locked --env-file .env uvicorn gateway.main:app --host 127.0.0.1 --port 7003`.
+  Env: `AGENT_KUBECONFIG`, `OBSERVER_URL`, `ONCALL_APPROVER_IDS` (+
+  `ONCALL_REHEARSAL=1` adds `rehearsal-harness`). Routes: `/health`,
+  `/approvals/{id}/decide` {decision: approved|rejected, decided_by} ->
+  `GatewayDecision`, `/ledger`, T's `/events`, `/events/publish`,
+  `/receipts/{id}`, and MCP at `/mcp` (6 tools; `target` enum = actable
+  services). MCP only answers Host `127.0.0.1`/`localhost` (DNS-rebinding
+  guard).
+- [M] 2026-11-13 for T: Gateway publishes `checklist_step` per step,
+  `approval_requested` (card, approval_id, diff, forecast, expires_at),
+  `approval_decided`, `action_executed` {receipt_id, tool, target}, and on a
+  stop `escalated` / `handed_off` / `incident_resolved` (problem gone) with a
+  `build_incident_card` card. Receipts go to your `ReceiptStore` and to my
+  `receipts` table with the same id (mine keeps the undo template).
+- [M] 2026-11-13 for A: Smoke still needs gateway part 2 (verifier loop ->
+  `incident_resolved`) and the brain -> gateway call. Until then a curl
+  approve executes the rollback but no terminal event follows.
+- [M] 2026-11-13 for all: Added `mcp~=1.30.0` (Muaz approved). mcp 2.x needs
+  `pydantic>=2.12`, we pin `~=2.11.7`. So the VERIFY row's mcp 2.3.0 API
+  (`MCPServer`) does not apply; we use `mcp.server.fastmcp.FastMCP`.
+
 
 - [T] 2026-11-13 for M,A: Merged main through `816de30` (observer and chaos),
   preserving both sides of the shared-note conflict. Benchmark readiness now
