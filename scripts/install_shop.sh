@@ -30,4 +30,6 @@ for d in "${ACTABLE[@]}"; do
 done
 
 kubectl -n "$NS" get deploy
+# fresh healthy shop: chaos panel re-snapshots it on next start
+rm -f data/healthy_snapshot.json
 echo "shop installed"
