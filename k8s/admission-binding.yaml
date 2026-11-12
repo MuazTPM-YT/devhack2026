@@ -1,0 +1,20 @@
+# Bind both agent policies to the shop namespace, deny on failure (IMPLEMENTATION.md §6.5.4).
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata: {name: oncall-agent-fields}
+spec:
+  policyName: oncall-agent-fields
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels: {kubernetes.io/metadata.name: shop}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata: {name: oncall-agent-scale}
+spec:
+  policyName: oncall-agent-scale
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels: {kubernetes.io/metadata.name: shop}

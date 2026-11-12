@@ -1,0 +1,39 @@
+# The only write identity, used by the gateway (IMPLEMENTATION.md §6.5.2).
+# Patch only, only named objects. No delete/create/update/exec/secrets, nothing outside shop.
+# Protected data stores (valkey-cart, kafka) are absent from resourceNames on purpose.
+# VERIFY: resourceNames must match actable names in config/services.yaml (C7) and real Deployment names.
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: oncall-agent, namespace: shop}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: oncall-agent, namespace: shop}
+rules:
+- apiGroups: [""]
+  resources: [pods, pods/log, events, configmaps]
+  verbs: [get, list, watch]
+- apiGroups: [apps]
+  resources: [deployments, replicasets]
+  verbs: [get, list, watch]
+- apiGroups: [metrics.k8s.io]
+  resources: [pods]
+  verbs: [get, list]
+- apiGroups: [apps]
+  resources: [deployments]
+  resourceNames: [payment, checkout, cart, frontend, recommendation, ad, email]
+  verbs: [patch]
+- apiGroups: [apps]
+  resources: [deployments/scale]
+  resourceNames: [payment, checkout, cart, frontend, recommendation, ad, email]
+  verbs: [patch]
+- apiGroups: [""]
+  resources: [configmaps]
+  resourceNames: [flagd-config]   # VERIFY name (§3.3)
+  verbs: [patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: oncall-agent, namespace: shop}
+subjects: [{kind: ServiceAccount, name: oncall-agent, namespace: shop}]
+roleRef: {kind: Role, name: oncall-agent, apiGroup: rbac.authorization.k8s.io}

@@ -1,0 +1,82 @@
+# Field limits on the agent's writes (IMPLEMENTATION.md §6.5.3). Applies only to the oncall-agent SA.
+# CEL errors on missing fields, and failurePolicy Fail turns an error into a deny, so every
+# optional field uses: has(new) == has(old) && (!has(new) || new == old).
+# VERIFY: image prefixes against the real shop images (A, §3.3).
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata: {name: oncall-agent-fields}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: ["apps"]
+      apiVersions: ["v1"]
+      operations: ["UPDATE"]
+      resources: ["deployments"]
+  matchConditions:
+  - name: only-the-agent
+    expression: "request.userInfo.username == 'system:serviceaccount:shop:oncall-agent'"
+  variables:
+  - name: new
+    expression: "object.spec.template.spec"
+  - name: old
+    expression: "oldObject.spec.template.spec"
+  validations:
+  - message: "agent may not change the service account"
+    expression: >-
+      has(variables.new.serviceAccountName) == has(variables.old.serviceAccountName)
+      && (!has(variables.new.serviceAccountName) || variables.new.serviceAccountName == variables.old.serviceAccountName)
+      && has(variables.new.serviceAccount) == has(variables.old.serviceAccount)
+      && (!has(variables.new.serviceAccount) || variables.new.serviceAccount == variables.old.serviceAccount)
+  - message: "agent may not change volumes"
+    expression: >-
+      has(variables.new.volumes) == has(variables.old.volumes)
+      && (!has(variables.new.volumes) || variables.new.volumes == variables.old.volumes)
+  - message: "agent may not change the pod securityContext"
+    expression: >-
+      has(variables.new.securityContext) == has(variables.old.securityContext)
+      && (!has(variables.new.securityContext) || variables.new.securityContext == variables.old.securityContext)
+  - message: "agent may not change hostNetwork, hostPID or hostIPC"
+    expression: >-
+      has(variables.new.hostNetwork) == has(variables.old.hostNetwork)
+      && (!has(variables.new.hostNetwork) || variables.new.hostNetwork == variables.old.hostNetwork)
+      && has(variables.new.hostPID) == has(variables.old.hostPID)
+      && (!has(variables.new.hostPID) || variables.new.hostPID == variables.old.hostPID)
+      && has(variables.new.hostIPC) == has(variables.old.hostIPC)
+      && (!has(variables.new.hostIPC) || variables.new.hostIPC == variables.old.hostIPC)
+  - message: "agent may not change initContainers"
+    expression: >-
+      has(variables.new.initContainers) == has(variables.old.initContainers)
+      && (!has(variables.new.initContainers) || variables.new.initContainers == variables.old.initContainers)
+  - message: "agent may not add containers or change commands, args or container securityContext"
+    expression: >-
+      variables.new.containers.all(c, variables.old.containers.exists(o, o.name == c.name
+        && has(c.command) == has(o.command) && (!has(c.command) || c.command == o.command)
+        && has(c.args) == has(o.args) && (!has(c.args) || c.args == o.args)
+        && has(c.securityContext) == has(o.securityContext)
+        && (!has(c.securityContext) || c.securityContext == o.securityContext)))
+  - message: "image must come from an approved source"
+    expression: >-
+      variables.new.containers.all(c,
+        c.image.startsWith('ghcr.io/open-telemetry/') || c.image.startsWith('payment:'))
+  - message: "replicas must stay between 1 and 3"
+    expression: "!has(object.spec.replicas) || (object.spec.replicas >= 1 && object.spec.replicas <= 3)"
+---
+# The scale subresource skips the policy above, so bound replicas here too.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata: {name: oncall-agent-scale}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: ["apps"]
+      apiVersions: ["v1"]
+      operations: ["UPDATE"]
+      resources: ["deployments/scale"]
+  matchConditions:
+  - name: only-the-agent
+    expression: "request.userInfo.username == 'system:serviceaccount:shop:oncall-agent'"
+  validations:
+  - message: "replicas must stay between 1 and 3"
+    expression: "has(object.spec.replicas) && object.spec.replicas >= 1 && object.spec.replicas <= 3"
