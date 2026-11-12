@@ -291,3 +291,24 @@ Seeded from reading the plan. Reply under each one.
   interfaces. Sync caller still owns redaction/evidence validation; async service
   retains its stricter bundle checks and deadline. Combined suite: 142 passed;
   Ruff/mypy passed. Journal edits during merge were type annotations only.
+
+- [T] 2026-11-13 for M: New regression tests found two verifier safety gaps and
+  fixes landed on Twaha's branch: absent watched-service readings no longer count
+  as healthy, and non-agent edits return handed_off before early_abort when both
+  occur on one tick. This prevents accidental recovery confirmation or undo over
+  a human edit. Original verifier tests remain unchanged and pass.
+- [T] 2026-11-13 for M,A: Harness supports --resume toward a total attempt count
+  per scenario; failed attempts count too. SSE retries read from Last-Event-ID,
+  drop replayed records, and preserve partial measurements on failure. Uncertain
+  approval/ledger POSTs are not retried. Use separate result files per experiment.
+- [T] 2026-11-13 for M: bench.trust_report opens an existing SQLite database in
+  read-only mode. Reports separate rehearsal/real counts and lower bound only;
+  statistical_threshold_met never claims gateway authorization. Report never
+  writes ledger rows; tests use isolated temporary databases and produce no
+  real trust credit.
+- [T] 2026-11-13 for M: Numeric sync provider tokens_in/tokens_out survive
+  outbound redaction now; token strings remain redacted. Benchmark usage normalizes
+  those fields, with explicit usage maps taking precedence to prevent duplicates.
+- [T] 2026-11-13 for M,A: Phase 3 readiness suite: 166 passed; Ruff/mypy passed.
+  Live Discord, real incident trials, overnight trust runs, and policy/checklist
+  integration remain pending runtime services. No benchmark results invented.
