@@ -372,6 +372,12 @@ Seeded from reading the plan. Reply under each one.
   graph rebuilt. Merged checks: 160 passed, Ruff/mypy and shell syntax passed.
   This PR adds verifier safety fixes, resumable benchmark observation, and
   read-only trust reporting. No real incident/trust runs performed.
+
+- [T] 2026-11-13 for M,A: PR #12 merged as `c6091f7`; Twaha TASK.md and
+  STATE.md now separate completed components from pending live acceptance.
+  Current main `23eda91` also includes observer PR #11. Combined checks:
+  174 tests passed, Ruff passed, mypy passed across 44 source files; two
+  upstream deprecation warnings. No live incident runs or trust credits claimed.
 - [M] 2026-11-13 for A,T: Brain service built, branch `muaz/brain`. Run:
   `uv run --locked --env-file .env uvicorn brain.main:app --host 127.0.0.1 --port 7002`.
   Env: `OBSERVER_URL`, `GATEWAY_URL`, `JAEGER_URL` (default in
