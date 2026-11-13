@@ -214,6 +214,9 @@ def symptom(health: dict | None, services: list[str]) -> str | None:
         if isinstance(p95, (int, float)) and isinstance(base, (int, float)) and 0 < base < p95:
             fine = "; no requests are failing" if err is not None else ""
             return f"{s} is slow: 95% of requests finish within {ms(p95)}, normal is {ms(base)}{fine}"
+        # datastores have no request metrics; the kube watch counts their sick pods (observer pod_bad)
+        if (n := v.get("bad_pods")) and isinstance(n, int):
+            return f"{n} {s} pod{'s are' if n > 1 else ' is'} crashing, out of memory or not ready"
     return None
 
 

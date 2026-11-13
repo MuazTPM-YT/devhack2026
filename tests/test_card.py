@@ -208,6 +208,13 @@ def test_schema_refusal_reads_as_blocked_not_as_a_suggestion():
     assert card.text.splitlines()[1] == "Why: astronomy-db ran out of memory or CPU"
 
 
+# live: "astronomy-db is unhealthy" said nothing; a datastore has no request metrics, only sick pods
+def test_datastore_symptom_counts_sick_pods():
+    db = INC.model_copy(update={"culprit": "astronomy-db", "unhealthy": ["astronomy-db"], "victims": []})
+    card = build_incident_card(db, health={"services": {"astronomy-db": {"err_ratio": None, "bad_pods": 1}}})
+    assert card.summary == "1 astronomy-db pod is crashing, out of memory or not ready."
+
+
 # security review: a refused fix must not come with a command that walks around the policy
 @pytest.mark.parametrize("reason", ["valkey-cart is protected; a human must act", "tool scale not allowed",
                                     "approval rejected", "major incident: one restart per incident"])
