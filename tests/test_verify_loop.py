@@ -91,6 +91,12 @@ async def test_early_abort_pauses_undoes_resumes(tmp_path):
     assert w.apps.dep["spec"]["paused"] is False
 
 
+# live run 2026-11-13: checkout turned sick 5 s after the right rollback, severity 7 -> 8, early abort undid it
+async def test_lagging_victim_inside_grace_does_not_abort(tmp_path):
+    w, d, outcome = await executed(tmp_path, [sick(severity=9)] * 6 + [healthy()])
+    assert outcome == "success" and "early_abort" not in w.types()
+
+
 async def test_human_change_during_verify_hands_off_without_undo(tmp_path):
     human = [{"id": 50, "object": "deployment/payment", "kind": "replicas", "ts": 1001.0,
               "field_manager": "kubectl", "by_agent": False, "diff": {}}]

@@ -352,10 +352,11 @@ class Gateway:
     async def verify(self, receipt_id: int, action: ActionRequest, row: dict, plan: dict, receipt: Receipt) -> str:
         victims = json.loads(row.get("victims_json") or "[]")
         cfg = self.policy["verify"]
+        extra = cfg["flag_extra_seconds"] if plan["patch"]["kind"] == "configmap" else 0  # flagd reload ~60 s
         v = Verification(self.clock(), plan["health"], action.target, victims,
                          action.prediction.model_dump() if action.prediction else None,
-                         cfg["window_seconds"] + (cfg["flag_extra_seconds"] if plan["patch"]["kind"] == "configmap" else 0),
-                         cfg["early_abort"])  # flagd needs ~60 s to reload the ConfigMap
+                         cfg["window_seconds"] + extra, cfg["early_abort"],
+                         grace_s=cfg["early_abort_grace_seconds"] + extra)
         health, human, result = plan["health"], [], None
         while result is None:
             await asyncio.sleep(self.verify_every)
