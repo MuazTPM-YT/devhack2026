@@ -13,9 +13,10 @@ RESTART_KEY = "kubectl.kubernetes.io/restartedAt"
 
 
 class WriteRefused(Exception):
-    def __init__(self, outcome: str, reason: str):
+    # unknown: a real write got no answer, so it may have landed (never retried, never undone blind)
+    def __init__(self, outcome: str, reason: str, unknown: bool = False):
         super().__init__(reason)
-        self.outcome, self.reason = outcome, reason
+        self.outcome, self.reason, self.unknown = outcome, reason, unknown
 
 
 def _h(part: Any) -> str:

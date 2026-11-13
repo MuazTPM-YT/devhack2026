@@ -18,7 +18,7 @@ def test_connect_never_migrates(tmp_path):
 
 def test_empty_db_upgrades_and_rerun_is_noop(tmp_path):
     conn = connect(str(tmp_path / "x.db"))
-    assert migrations.migrate(conn, clock=lambda: 5.0) == [1]
+    assert migrations.migrate(conn, clock=lambda: 5.0) == [1, 2]
     assert migrations.version(conn) == migrations.LATEST
     assert {"orchestration_workspaces", "signal_episodes", "investigation_tasks", "event_outbox",
             "model_calls", "task_evidence", "coordinator_leases"} <= tables(conn)
@@ -77,7 +77,7 @@ def test_cli_backs_up_first(tmp_path, capsys):
     copy = sqlite3.connect(backups[0])
     assert copy.execute("SELECT id FROM incidents").fetchone()[0] == "inc-9"
     assert "orchestration_workspaces" not in {r[0] for r in copy.execute("SELECT name FROM sqlite_master")}
-    assert "schema version 1" in capsys.readouterr().out
+    assert "schema version 2" in capsys.readouterr().out
 
 
 def test_cli_refuses_missing_db(tmp_path):

@@ -15,9 +15,9 @@ from brain.correlation import Decision, correlate
 from brain.culprit import fetch_error_traces, from_traces
 from gateway.client import read_events
 from schemas import auth
-from schemas.models import GatewayDecision, Incident
-from schemas.orchestration import (IncidentLink, Membership, OrchestrationPolicy, SignalAck, SignalBatch,
-                                   SignalEpisode)
+from schemas.models import ActionRequest, GatewayDecision, Incident
+from schemas.orchestration import (IncidentLink, IntentEnvelope, IntentSubmission, Membership, OrchestrationPolicy,
+                                   SignalAck, SignalBatch, SignalEpisode, intent_fingerprint)
 from schemas.workspace import Workspace
 
 if TYPE_CHECKING:
@@ -34,6 +34,19 @@ GIVEN_UP = ("deadline", "queue_wait", "max_age", "restart", "scope_churn")
 
 class ModeMismatch(Exception):
     pass
+
+
+# what the commander's hand-over understands; queued counts as waiting on the gateway, like an approval
+def as_decision(sub: IntentSubmission) -> GatewayDecision:
+    if sub.status in ("executing", "verifying"):
+        return GatewayDecision(decision="executed", receipt_id=sub.receipt_id)
+    if sub.status in ("queued", "awaiting_approval"):
+        return GatewayDecision(decision="awaiting_approval", approval_id=sub.approval_id,
+                               reason=sub.reason or sub.status)
+    if sub.status == "superseded":
+        return GatewayDecision(decision="refused", failed_step="intent", reason=sub.reason or "plan changed")
+    # terminal / refused / execution_unknown: the gateway already ended or escalated the incident
+    return GatewayDecision(decision="escalated", failed_step="gateway", reason=sub.reason or sub.status)
 
 
 def scoped_severity(health: dict, services: list[str]) -> float:
@@ -54,6 +67,7 @@ class Coordinator:
         # shadow only: virtual incidents, key -> {"cause": str | None, "episodes": set[str]}
         self.shadow_groups: dict[str, dict[str, Any]] = {}
         self.shadow_seq = 0
+        self.parents: dict[tuple[str, int], str] = {}  # (incident, plan) -> first intent, parent of follow-ups
 
     # ---- lifecycle
 
@@ -297,6 +311,9 @@ class Coordinator:
         else:
             await self.give_up(iid, "scope_churn", "the incident kept growing while it was diagnosed; look by hand")
             return record
+        if (record.get("gateway") or {}).get("failed_step") == "intent":
+            await self.give_up(iid, "scope_churn", f"the fix was not sent: {record['gateway'].get('reason')}")
+            return record
         decision = (record.get("gateway") or {}).get("decision")
         phase = {"executed": "monitoring", "awaiting_approval": "awaiting_gateway"}.get(str(decision), "needs_human")
         w = self.ws.workspace(iid)
@@ -359,6 +376,26 @@ class Coordinator:
                 await self.give_up(iid, "queue_wait", f"waited {age:.0f} s for a free investigator; look by hand")
             elif age >= max_age:
                 await self.give_up(iid, "max_age", f"no outcome {age:.0f} s after opening; look by hand")
+
+    # ---- action intents: the gateway runs each proposed execution once (handoff §9)
+
+    # the id comes from incident + plan + action, so a retry after a crash names the same intent
+    def envelope(self, action: ActionRequest) -> IntentEnvelope:
+        w = self.ws.workspace(action.incident_id)
+        plan = int(w["plan_revision"]) if w else 0
+        fp = intent_fingerprint(action.incident_id, plan, action)
+        return IntentEnvelope(intent_id=f"int-{fp[:24]}", incident_id=action.incident_id,
+                              scope_revision=int(w["scope_revision"]) if w else 0, plan_revision=plan, fingerprint=fp,
+                              action=action, parent_intent_id=self.parents.get((action.incident_id, plan)))
+
+    async def submit(self, action: ActionRequest) -> GatewayDecision:
+        env = self.envelope(action)
+        r = await self.brain.http.post(f"{self.brain.gateway_url}/orchestration/actions", timeout=60,
+                                       headers=auth.headers(), json=env.model_dump(mode="json"))
+        r.raise_for_status()
+        sub = IntentSubmission.model_validate(r.json())
+        self.parents.setdefault((env.incident_id, env.plan_revision), env.intent_id)  # follow-ups hang off it
+        return as_decision(sub)
 
     # ---- events: outbox first, then the bus
 

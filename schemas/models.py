@@ -169,7 +169,7 @@ class ApprovalRequestedPayload(CardPayload):
 
 class ApprovalDecidedPayload(Payload):
     approval_id: str
-    decision: Literal["approved", "rejected", "expired"]
+    decision: Literal["approved", "rejected", "expired", "superseded"]  # superseded: plan changed
     acknowledged: bool = False
     decided_by: str | None = None
     via: Literal["discord", "akira-mcp"] | None = None

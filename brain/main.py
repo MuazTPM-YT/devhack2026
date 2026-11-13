@@ -352,6 +352,7 @@ def build_from_env() -> Brain:
         brain.coordinator = Coordinator(brain, workspace, brain.orch)
         if brain.orch.mode == "coordinated":
             brain.evidence_cache = EvidenceCache(workspace)
+            brain.submit = brain.coordinator.submit  # fixes go as durable intents, not legacy MCP calls
     return brain
 
 

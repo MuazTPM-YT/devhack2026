@@ -131,7 +131,25 @@ CREATE TABLE shadow_decisions (
 );
 """
 
-MIGRATIONS: list[tuple[int, str]] = [(1, V1)]
+# v2: durable action intents (handoff §9); approvals remember which intent they would authorise
+V2 = """
+CREATE TABLE action_intents (
+  intent_id TEXT PRIMARY KEY,
+  incident_id TEXT NOT NULL REFERENCES incidents(id),
+  fingerprint TEXT NOT NULL,
+  scope_revision INTEGER NOT NULL, plan_revision INTEGER NOT NULL,
+  action_json TEXT NOT NULL, parent_intent_id TEXT,
+  status TEXT NOT NULL,
+  approval_id TEXT, receipt_id INTEGER,
+  precondition_json TEXT, reason TEXT,
+  created_at REAL NOT NULL, updated_at REAL NOT NULL, executing_at REAL,
+  UNIQUE (incident_id, fingerprint)
+);
+CREATE INDEX intents_by_status ON action_intents(status, created_at);
+ALTER TABLE approvals ADD COLUMN intent_id TEXT
+"""
+
+MIGRATIONS: list[tuple[int, str]] = [(1, V1), (2, V2)]
 LATEST = MIGRATIONS[-1][0]
 
 

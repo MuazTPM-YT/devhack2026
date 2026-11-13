@@ -18,10 +18,12 @@ from gateway import events, trust
 from gateway.audit import verify
 from gateway.approvals import approvers_from_env
 from gateway.checklist import Gateway
+from gateway.intents import Conflict, IntentStore
 from gateway.mcp_server import build_mcp
 from gateway.receipts import ReceiptStore, build_card, create_receipts_router
-from schemas import auth, config
+from schemas import auth, config, migrations
 from schemas.db import DEFAULT_PATH, connect
+from schemas.orchestration import IntentEnvelope, load_policy
 from schemas import logs
 
 logs.setup()
@@ -42,7 +44,7 @@ class RehearsalCredit(BaseModel):
     diagnosis_matched: bool
 
 
-ApprovalState = Literal["pending", "approved", "rejected", "expired"]
+ApprovalState = Literal["pending", "approved", "rejected", "expired", "superseded"]
 
 
 # the model's "why" was written after reading untrusted evidence: drop it when it looks like an instruction
@@ -79,11 +81,15 @@ def build_from_env() -> Gateway:
     kubeconfig, observer, jaeger = require_env("AGENT_KUBECONFIG", "OBSERVER_URL", "JAEGER_URL")
     api = kube_config.new_client_from_config(config_file=kubeconfig)
     http = httpx.AsyncClient()
-    return Gateway(connect(DEFAULT_PATH, shared=True), client.AppsV1Api(api), client.CoreV1Api(api),
-                   http, observer, config.load("services")["services"], config.load("policy"),
-                   events.publish, ReceiptStore(Path(DEFAULT_PATH)), approvers_from_env(),
-                   graph=DependencyGraph(http, jaeger), flag_map=config.load("services").get("flags") or {},
-                   rehearsal=os.environ.get("ONCALL_REHEARSAL") == "1", books=runbooks.load())
+    gw = Gateway(connect(DEFAULT_PATH, shared=True), client.AppsV1Api(api), client.CoreV1Api(api),
+                 http, observer, config.load("services")["services"], config.load("policy"),
+                 events.publish, ReceiptStore(Path(DEFAULT_PATH)), approvers_from_env(),
+                 graph=DependencyGraph(http, jaeger), flag_map=config.load("services").get("flags") or {},
+                 rehearsal=os.environ.get("ONCALL_REHEARSAL") == "1", books=runbooks.load())
+    if load_policy().mode != "disabled":  # orchestration: durable intents (migration v2 required)
+        migrations.require(gw.conn)
+        gw.intents = IntentStore(gw.conn, gw.lock, gw.clock)
+    return gw
 
 
 def create_app(gateway: Gateway | None = None) -> FastAPI:
@@ -104,6 +110,7 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
         app.state.gateway = holder["gw"]
         async with contextlib.AsyncExitStack() as stack:
             await stack.enter_async_context(mcp.session_manager.run())
+            await holder["gw"].reconcile_intents()  # unknown writes from before a restart, before anything new
             upkeep = asyncio.create_task(holder["gw"].upkeep()) if gateway is None else None
             yield
             if upkeep:
@@ -128,6 +135,31 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
     async def decide(approval_id: str, body: Decide) -> dict:
         d = await holder["gw"].decide(approval_id, body.decision, body.decided_by, body.via)
         return d.model_dump(mode="json")
+
+    # orchestration: the brain's fix with its identity; same id + same action answers with the stored status
+    @app.post("/orchestration/actions")
+    async def submit_intent(env: IntentEnvelope) -> dict:
+        gw = holder["gw"]
+        if gw.intents is None:
+            raise HTTPException(409, "orchestration is disabled in the gateway")
+        try:
+            return (await gw.submit_intent(env)).model_dump(mode="json")
+        except Conflict as e:
+            raise HTTPException(409, str(e)) from None
+
+    @app.get("/orchestration/actions/{intent_id}")
+    def get_intent(intent_id: str) -> dict:
+        gw = holder["gw"]
+        row = gw.intents.get(intent_id) if gw.intents is not None else None
+        if row is None:
+            raise HTTPException(404, "unknown intent")
+        view = {k: v for k, v in row.items() if k not in ("precondition_json", "action_json")}
+        return redact_value({**view, "action": json.loads(row["action_json"])})
+
+    # an approver checked the cluster after a write with an unknown outcome: the slot frees, audited
+    @app.post("/orchestration/actions/{intent_id}/clear")
+    async def clear_intent(intent_id: str, body: Clear) -> dict:
+        return await holder["gw"].clear_intent(intent_id, body.decided_by)
 
     # after a failed watchdog undo: an approver confirms the cluster was checked, actions may run again
     @app.post("/receipts/{receipt_id}/clear")
