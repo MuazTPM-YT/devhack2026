@@ -103,20 +103,16 @@ export function AgentLanes({ incident, now, live, maxRequests }: {
       )}
 
       <div className={s.totals}>
-        <p className={s.spend}>
+        <p className={s.spend} title={[
+          b.specialist > 0 ? `commander ${b.commander}, specialist ${b.specialist}` : null,
+          b.tokens > 0 ? `${b.tokens.toLocaleString("en")} tokens` : null, plural(b.reads, "read"),
+        ].filter(Boolean).join(" · ")}>
           <Meter budget={b} />
           <span>
             <strong>{b.max != null ? `${b.used} of ${b.max}` : b.used}</strong> {b.max != null || b.used !== 1 ? "model requests" : "model request"}
-            {b.max != null && <> · {b.left} left</>}
-            {b.specialist > 0 && <> · commander {b.commander}, specialist {b.specialist}</>}
+            {b.reused > 0 && <> · {plural(b.reused, "read")} reused</>}
           </span>
         </p>
-        {(b.tokens > 0 || b.reads > 0) && (
-          <p className={s.spend}>
-            {b.tokens > 0 && <>{b.tokens.toLocaleString("en")} tokens · </>}{plural(b.reads, "read")}
-            {b.reused > 0 && <> · {b.reused} reused</>}
-          </p>
-        )}
         {kinds.length > 0 && (
           <p className={s.legend} aria-hidden="true">
             {kinds.map((k) => <span key={k}><i className={`${s.key} ${s[k]}`} />{LEGEND[k]}</span>)}

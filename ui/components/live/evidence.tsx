@@ -1,7 +1,8 @@
-import { plural, words } from "@/lib/format";
+import { plural } from "@/lib/format";
 import type { Incident } from "@/lib/live";
 import { readTitle } from "@/lib/request-flow";
 
+import { SheetSection } from "./sheet-section";
 import s from "./sheet.module.css";
 
 const KINDS = ["changes", "metrics", "traces", "events", "logs"] as const;
@@ -14,19 +15,11 @@ export function Evidence({ incident }: { incident: Incident }) {
   const total = KINDS.reduce((n, k) => n + (bundle[k] ?? 0), 0);
   const max = Math.max(8, ...KINDS.map((k) => bundle[k] ?? 0));
   return (
-    <section className={s.sec} aria-labelledby="sec-evidence">
-      <div className={s.head}>
-        <h2 id="sec-evidence" className={s.title}>Evidence</h2>
-        {incident.culprit && (
-          <a className="pill" href={`${JAEGER}/search?service=${encodeURIComponent(incident.culprit)}`} target="_blank" rel="noreferrer">
-            Traces in Jaeger ↗
-          </a>
-        )}
-      </div>
-      <p className={s.note}>
-        {plural(total, "item")}, redacted · {incident.pattern ? words(incident.pattern) : "no"} pattern
-        {incident.quarantined > 0 && <span className="bad"> · {plural(incident.quarantined, "line")} quarantined</span>}
-      </p>
+    <SheetSection id="sec-evidence" title="Evidence" open={incident.quarantined > 0}
+      aside={<span className="label">{plural(total, "item")}{incident.reads.length > 0 ? ` · ${plural(incident.reads.length, "read")}` : ""}</span>}>
+      {incident.quarantined > 0 && (
+        <p className={`${s.note} bad`}>{plural(incident.quarantined, "log line")} looked like an instruction and stayed out of the prompt.</p>
+      )}
       <div className={s.bars}>
         {KINDS.map((kind) => {
           const n = bundle[kind] ?? 0;
@@ -55,6 +48,11 @@ export function Evidence({ incident }: { incident: Incident }) {
       {incident.tools.length > 0 && (
         <p className={`${s.note} ${s.noteTop}`}>Rule proposes <span className="mono">{incident.tools.join(", ")}</span></p>
       )}
-    </section>
+      {incident.culprit && (
+        <a className="pill" href={`${JAEGER}/search?service=${encodeURIComponent(incident.culprit)}`} target="_blank" rel="noreferrer">
+          Traces in Jaeger ↗
+        </a>
+      )}
+    </SheetSection>
   );
 }

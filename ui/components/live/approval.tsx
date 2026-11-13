@@ -2,6 +2,7 @@ import { Tag } from "@/components/ui/tag";
 import { clock, duration } from "@/lib/format";
 import type { Incident } from "@/lib/live";
 
+import { SheetSection } from "./sheet-section";
 import s from "./sheet.module.css";
 
 // read-only: approvers decide in Discord; this shows what they are deciding and how long is left
@@ -14,16 +15,10 @@ export function Approval({ incident, now }: { incident: Incident; now: number })
     : left > 0 ? <Tag tone="warn">Waiting · {duration(left)}</Tag>
     : <Tag tone="bad">Expired</Tag>;
   return (
-    <section className={s.sec} aria-labelledby="sec-approval">
-      <div className={s.head}>
-        <h2 id="sec-approval" className={s.title}>Approval</h2>
-        {tag}
-      </div>
+    <SheetSection id="sec-approval" title="Approval" aside={tag} open={!a.decision}>
       {a.diff && <p className={`${s.note} mono`}>{a.diff}</p>}
       {a.forecast && <p className={s.note}>{a.forecast}</p>}
-      <p className={s.empty}>
-        {a.decision ? `Decided: ${a.decision}.` : `Approve or reject in Discord (#wake) before ${clock(a.expiresAt)}.`}
-      </p>
-    </section>
+      {!a.decision && <p className={s.empty}>Approve or reject in Discord (#wake) before {clock(a.expiresAt)}.</p>}
+    </SheetSection>
   );
 }

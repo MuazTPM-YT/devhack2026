@@ -1,8 +1,10 @@
+import { More } from "@/components/ui/more";
 import { Tag, type Tone } from "@/components/ui/tag";
-import { words } from "@/lib/format";
+import { lead, words } from "@/lib/format";
 import type { Choice, Incident, Outcome as OutcomeKind } from "@/lib/live";
 import type { ReceiptView } from "@/lib/use-receipt";
 
+import { SheetSection } from "./sheet-section";
 import s from "./sheet.module.css";
 
 export const OUTCOME_TAG: Record<OutcomeKind | "open", { tone: Tone; label: string }> = {
@@ -36,14 +38,14 @@ export function Outcome({ incident, receipt }: { incident: Incident; receipt: Re
   const rule = choice?.ruleChoice ?? null;
   // the card often quotes the agent's reason already; say it once
   const reason = choice?.reason && !incident.card?.text.includes(choice.reason) ? choice.reason : null;
+  const card = incident.card ? lead(incident.card.text) : null;
   return (
-    <section className={s.sec} aria-labelledby="sec-outcome">
-      <div className={s.head}>
-        <h2 id="sec-outcome" className={s.title}>Outcome</h2>
-        <Tag tone={tag.tone}>{tag.label}</Tag>
-      </div>
-      {incident.card ? (
-        <blockquote className={s.quote}>{incident.card.text}</blockquote>
+    <SheetSection id="sec-outcome" title="Outcome" aside={<Tag tone={tag.tone}>{tag.label}</Tag>}>
+      {card ? (
+        <>
+          <blockquote className={s.quote}>{card.head}</blockquote>
+          {card.rest && <More label="Full card"><p className={s.pre}>{card.rest}</p></More>}
+        </>
       ) : (
         <p className={s.note}>{action ? "Watching health after the fix." : "No action taken yet."}</p>
       )}
@@ -54,11 +56,15 @@ export function Outcome({ incident, receipt }: { incident: Incident; receipt: Re
             {choice.decision === "decline" ? "Agent declined to act."
               : choice.origin === "model" ? `${ownPick(choice)}; a human approves it.`
                 : "Agent agreed with the rule's pick."}
-          </strong>{" "}
-          {reason}
+          </strong>
           {choice.decision === "decline" && rule && <> Rule suggested <span className="mono">{rule.tool} → {rule.target}</span>.</>}
-          {choice.alternative && <><br /><span className="muted">Also weighed: {choice.alternative}</span></>}
         </p>
+      )}
+      {choice && (reason || choice.alternative) && (
+        <More label="Why">
+          {reason && <p>{reason}</p>}
+          {choice.alternative && <p className="muted">Also weighed: {choice.alternative}</p>}
+        </More>
       )}
       <dl className={s.facts}>
         <div><dt>Action</dt><dd className="mono">{action ? `${action.tool} → ${action.target}` : "–"}</dd></div>
@@ -69,6 +75,6 @@ export function Outcome({ incident, receipt }: { incident: Incident; receipt: Re
       {action && action.receiptId > 0 && (
         <a className={s.link} href={`/receipts?receipt=${action.receiptId}`}>Receipt #{action.receiptId} →</a>
       )}
-    </section>
+    </SheetSection>
   );
 }

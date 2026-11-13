@@ -78,12 +78,12 @@ function IncidentBody({ incident, demo, list, picker }: {
 
       {incident && (
         <Kpis label="Incident figures" items={[
-          { label: "Severity", value: sev ?? "–", sub: incident.severityAtOpen != null ? `${incident.severityAtOpen} at open` : undefined, tone: sev ? "warn" : "ok" },
-          { label: "Unhealthy", value: incident.unhealthy.length, sub: incident.groupings ? `${incident.groupings} folded in` : undefined },
-          { label: "Culprit", value: incident.culprit ?? "–", sub: incident.victims.length ? `victims ${incident.victims.join(", ")}` : undefined },
-          { label: "Pattern", value: incident.pattern ? words(incident.pattern) : "–", sub: incident.tools.length ? incident.tools.join(", ") : undefined },
-          { label: "Gates", value: gates.length ? `${gates.filter((g) => g.passed).length}/${gates.length}` : "–", sub: "passed" },
-          { label: open ? "Open for" : "Took", value: elapsed == null ? "–" : duration(elapsed), sub: incident.onsetAt != null ? `detected ${duration(incident.openedAt - incident.onsetAt)} after onset` : undefined },
+          { label: "Severity", value: sev ?? "–", tone: sev ? "warn" : "ok", title: incident.severityAtOpen != null ? `${incident.severityAtOpen} at open` : undefined },
+          { label: "Unhealthy", value: incident.unhealthy.length, title: incident.unhealthy.join(", ") || undefined },
+          { label: "Culprit", value: incident.culprit ?? "–", title: incident.victims.length ? `victims: ${incident.victims.join(", ")}` : undefined },
+          { label: "Pattern", value: incident.pattern ? words(incident.pattern) : "–", title: incident.tools.length ? `rule proposes ${incident.tools.join(", ")}` : undefined },
+          { label: "Gates passed", value: gates.length ? `${gates.filter((g) => g.passed).length} of ${gates.length}` : "–" },
+          { label: open ? "Open for" : "Took", value: elapsed == null ? "–" : duration(elapsed), title: incident.onsetAt != null ? `detected ${duration(incident.openedAt - incident.onsetAt)} after onset` : undefined },
         ]} />
       )}
 

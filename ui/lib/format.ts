@@ -23,3 +23,13 @@ export function clock(ts: number): string {
 export function words(snake: string): string {
   return snake.replace(/_/g, " ");
 }
+
+// a long card or note as its first line plus the rest: the gist stays on screen, the rest folds away
+export function lead(text: string): { head: string; rest: string } {
+  const t = text.trim();
+  const at = t.indexOf("\n");
+  if (at >= 0) return { head: t.slice(0, at).trim(), rest: t.slice(at + 1).trim() };
+  // one long paragraph: cut after its first sentence, never inside a number like 40.7
+  const end = t.search(/[.!?](?=\s+\S)/);
+  return end >= 0 && t.length > 140 ? { head: t.slice(0, end + 1), rest: t.slice(end + 1).trim() } : { head: t, rest: "" };
+}

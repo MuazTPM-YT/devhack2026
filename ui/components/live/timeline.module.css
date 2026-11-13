@@ -87,6 +87,11 @@
 .detail { font-size: 12px; color: var(--ink-mute); overflow-wrap: anywhere; }
 
 .route { font-family: var(--mono); font-size: 11px; color: var(--ink-mute); white-space: nowrap; padding-top: 3px; }
+/* where an event travelled is detail: shown for the picked row, and under the pointer */
+.row:not(.on) .route { visibility: hidden; }
+@media (hover: hover) and (pointer: fine) {
+  .row:hover .route { visibility: visible; }
+}
 
 .payload {
   margin: 0 16px 8px calc(16px + 62px + 10px + 14px + 10px);
