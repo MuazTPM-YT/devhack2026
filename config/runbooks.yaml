@@ -1,0 +1,185 @@
+# Company runbooks: how the agent must handle each kind of incident. SAMPLES, edit to your policy.
+# Code picks the runbook (brain/runbooks.py); the LLM only reads it. First match is shown on cards.
+#
+# match (every key given must hold; no match keys = applies to every incident):
+#   pattern:      recent_change | resource | protected | unknown (one or a list)
+#   services:     culprit / action target names from config/services.yaml
+#   tools:        the fix the rules picked (rollback_deploy, revert_config, restart_service, scale, ...)
+#   change_kinds: journal change behind the fix (image, env, resources, replicas, flag, configmap, other)
+#   evidence:     words in the evidence (e.g. OOMKilled). Advice only: the gateway never sees the
+#                 evidence, so a runbook matched on it may not carry hard rules.
+# severity: SEV-1 (customers can't pay) .. SEV-4 (cosmetic); shown on cards, decides who joins.
+# hard rules (the gateway enforces them in code, every time, approval or not):
+#   require_approval: true     -> a human must approve the action, even when the trust gate is open
+#   forbid_tools: [tool, ...]  -> these tools are never run here; a human is woken instead
+runbooks:
+  - id: RB-01
+    title: Bad deploy
+    severity: SEV-2
+    owner: service team on call
+    match: {pattern: recent_change, change_kinds: [image, other]}
+    steps:
+      - Roll back to the last good revision; never deploy forward during an incident.
+      - Confirm only the new pods fail (old revision healthy) before blaming the image.
+      - Block the bad image tag until the team ships a fix.
+
+  - id: RB-02
+    title: Broken config or env change
+    severity: SEV-2
+    owner: service team on call
+    match: {pattern: recent_change, change_kinds: [env, resources]}
+    steps:
+      - Revert the config change; never edit env values by hand at night.
+      - Name the changed keys only. Never paste env values into chat or tickets.
+
+  - id: RB-03
+    title: Feature flag flipped
+    severity: SEV-2
+    owner: feature owner of the flag
+    match: {change_kinds: [flag]}
+    steps:
+      - Revert only the flipped flag in flagd-config; leave other flags as they are.
+      - flagd reloads about 60 s after the patch; wait before judging recovery.
+      - Tell the flag owner which flag was reverted and why.
+
+  - id: RB-04
+    title: Memory exhaustion
+    severity: SEV-3
+    owner: service team (morning ticket)
+    match: {pattern: resource}
+    steps:
+      - A restart only buys time; it is MITIGATED, NOT FIXED until the leak is found.
+      - Raising the memory limit always needs a human; never above the policy cap (1Gi).
+      - Open a morning ticket with the memory graph and the restart count.
+
+  - id: RB-05
+    title: Payment restart
+    severity: SEV-1
+    owner: payments team
+    match: {services: [payment], tools: [restart_service]}
+    require_approval: true
+    steps:
+      - A payment restart drops in-flight card charges; a human approves every one.
+      - Check the payment provider status page before restarting.
+
+  - id: RB-06
+    title: Data store down
+    severity: SEV-1
+    owner: platform team
+    match: {pattern: protected, services: [valkey-cart]}
+    steps:
+      - valkey-cart holds live carts. Only scaling it back to its last replica count is allowed.
+      - Never restart or roll back a data store from the agent.
+
+  - id: RB-07
+    title: Kafka outage
+    severity: SEV-1
+    owner: platform team
+    match: {services: [kafka]}
+    forbid_tools: [restart_service, rollback_deploy, raise_limit]
+    steps:
+      - Kafka down sickens checkout, accounting and fraud-detection; fix kafka, not its consumers.
+      - Restarting kafka can lose consumer offsets; only a human-approved scale back is allowed.
+      - After kafka is back, restart checkout, accounting and fraud-detection if they hang.
+
+  - id: RB-08
+    title: Customer-facing frontend down
+    severity: SEV-1
+    owner: web platform team
+    match: {services: [frontend]}
+    steps:
+      - SEV-1 the moment checkout or the home page fails for customers; open the incident channel.
+      - Post on the status page within 10 minutes, then every 30 minutes until resolved.
+      - Prefer rolling back the last frontend change over any restart.
+
+  - id: RB-09
+    title: Frontend restart
+    severity: SEV-1
+    owner: web platform team
+    match: {services: [frontend], tools: [restart_service]}
+    require_approval: true
+    steps:
+      - A frontend restart drops every open customer session; the incident commander approves it.
+
+  - id: RB-10
+    title: Cart degraded
+    severity: SEV-2
+    owner: commerce team
+    match: {services: [cart]}
+    steps:
+      - Carts are revenue in flight. Fix within the 30-minute SLO or page the commerce lead.
+      - Never flush valkey-cart to "unstick" carts; customers lose their baskets.
+
+  - id: RB-11
+    title: Raising a memory limit
+    severity: SEV-3
+    owner: capacity owner of the service
+    match: {tools: [raise_limit]}
+    require_approval: true
+    steps:
+      - Raising a limit hides a leak. Approve only with a morning ticket to find it.
+      - Never above the policy cap (1Gi); check node headroom first.
+
+  - id: RB-12
+    title: Capacity change
+    severity: SEV-3
+    owner: service team on call
+    match: {tools: [scale]}
+    steps:
+      - Scale only back to the last known good replica count; never scale up blind at night.
+      - Note the change in the incident log; capacity changes are reviewed at the weekly ops review.
+
+  - id: RB-13
+    title: Non-critical feature failing
+    severity: SEV-4
+    owner: owning feature team (working hours)
+    match: {services: [recommendation, ad, email]}
+    steps:
+      - Customers can still buy. Do not wake a second engineer for this alone.
+      - Prefer switching the feature off over a risky fix; hand over to the team in the morning.
+
+  - id: RB-14
+    title: Crash loop
+    severity: SEV-2
+    owner: service team on call
+    match: {evidence: [CrashLoopBackOff, BackOff]}
+    steps:
+      - Read the previous container's last log lines before acting; the cause is usually there.
+      - A crash loop right after a deploy is a bad deploy (RB-01), not a capacity problem.
+
+  - id: RB-15
+    title: Image cannot be pulled
+    severity: SEV-2
+    owner: release engineering
+    match: {evidence: [ImagePullBackOff, ErrImagePull]}
+    steps:
+      - Old pods keep serving while new ones fail to pull; do not delete them.
+      - Never retag or push an image during an incident; roll back to the last pulled revision.
+
+  - id: RB-16
+    title: Upstream timeouts
+    severity: SEV-2
+    owner: service team on call
+    match: {evidence: [DeadlineExceeded, deadline exceeded, timed out, timeout]}
+    steps:
+      - Timeouts move up the call graph; fix the deepest slow service, not the first caller.
+      - Never raise client timeouts as a fix; it only hides the slow dependency.
+
+  - id: RB-17
+    title: Secret seen in logs
+    severity: SEV-2
+    owner: security on call
+    match: {evidence: ["[REDACTED]"]}
+    steps:
+      - Something secret-shaped reached the logs. Treat it as leaked until security says otherwise.
+      - Tell security on call the same day; they rotate the key. Never paste the value anywhere.
+
+  - id: RB-99
+    title: Unknown cause
+    severity: SEV-3
+    owner: on-call engineer
+    match: {pattern: unknown}
+    steps:
+      - Do not guess a fix. Read the evidence list and the trace path first.
+      - Check the change journal for anything in the last 10 minutes, including flags.
+      - Escalate to the service owner if nothing explains it within 15 minutes.

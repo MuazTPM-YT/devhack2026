@@ -17,12 +17,13 @@ from fastapi import FastAPI, HTTPException
 
 from brain import rules
 from brain.bundle import build_bundle, collect_k8s, why_text
-from brain import major
+from brain import major, memory, runbooks
 from brain.culprit import dependency_change, fetch_error_traces, find_culprit
 from brain.gateway_client import call_tool
 from brain.graph import DependencyGraph
 from brain.llm import DiagnosisService
-from schemas import config
+from brain.redact import redact
+from schemas import auth, config
 from schemas.db import DEFAULT_PATH, connect
 from schemas.models import ActionRequest, GatewayDecision, Incident
 from schemas import logs
@@ -51,12 +52,14 @@ class Brain:
         self.results: dict[str, dict] = {}
         self.majors: set[str] = set()  # incidents already analysed as major (at open or on regroup)
         self.flag_map: dict[str, str] = {}  # config/services.yaml `flags:`, set by build_from_env
+        self.runbooks: list[dict] = []  # config/runbooks.yaml, set by build_from_env
+        self.guides: dict[str, dict] = {}  # incident id -> runbook + seen-before for the escalation payload
         self.lock = threading.Lock()
         self.submit = submit or (lambda a: call_tool(self.gateway_url, a))
 
     async def publish(self, kind: str, incident_id: str | None, payload: dict) -> None:
         try:
-            r = await self.http.post(f"{self.gateway_url}/events/publish", timeout=5,
+            r = await self.http.post(f"{self.gateway_url}/events/publish", timeout=5, headers=auth.headers(),
                                      json={"type": kind, "incident_id": incident_id, "payload": payload})
             r.raise_for_status()
         except httpx.HTTPError as e:
@@ -123,10 +126,25 @@ class Brain:
         pattern, actions = rules.match(incident.model_dump(), journal_rows, [e.model_dump() for e in bundle.events],
                                        self.services, self.policy, k8s["memory_ratio"], k8s["memory_limit"],
                                        self.flag_map)
-        await self.publish("rule_matched", incident.id, {"pattern": pattern, "tools": [a["tool"] for a in actions]})
         rule_action = ActionRequest.model_validate(actions[0]) if actions else None
+        # company runbooks + verified past incidents: the model reads them, they never change the rule's fix
+        fix_entry = next((j for j in journal_rows if rule_action and j["id"] == rule_action.journal_entry), None)
+        # redacted first: a runbook can match "[REDACTED]" (secret in logs) and never sees the secret itself
+        evidence_text = redact(" ".join(e.summary for group in (bundle.changes, bundle.events, bundle.logs,
+                                                                bundle.traces) for e in group))
+        matched = runbooks.match(self.runbooks, pattern, culprit, rule_action.tool if rule_action else None,
+                                 fix_entry["kind"] if fix_entry else None, evidence_text)
+        with self.lock:
+            past = memory.similar(self.conn, incident.id, culprit, pattern)
+        self.guides[incident.id] = {"runbook": runbooks.brief(matched[0]) if matched else None,
+                                    "seen_before": memory.summary(past)}
+        await self.publish("rule_matched", incident.id, {"pattern": pattern, "tools": [a["tool"] for a in actions],
+                                                         "runbooks": [rb["id"] for rb in matched],
+                                                         "similar_before": len(past)})
 
-        result = await self.diagnoser.diagnose(bundle, pattern, rule_action)
+        result = await self.diagnoser.diagnose(bundle, pattern, rule_action,
+                                               {"runbooks": [runbooks.brief(rb) for rb in matched[:3]],
+                                                "past_incidents": past})
         for ev in result.events:
             await self.publish(ev["type"], ev.get("incident_id"), ev.get("payload", {}))
         action = result.action
@@ -233,7 +251,8 @@ class Brain:
         with self.lock:
             self.conn.execute("UPDATE incidents SET state='escalated' WHERE id=?", (incident.id,))
             self.conn.commit()
-        await self.publish("escalated", incident.id, {"card": card.model_dump(mode="json"), "briefing": briefing})
+        await self.publish("escalated", incident.id, {"card": card.model_dump(mode="json"), "briefing": briefing,
+                                                      **self.guides.get(incident.id, {})})
         return decision.model_dump(mode="json")
 
 
@@ -255,6 +274,7 @@ def build_from_env() -> Brain:
                   lambda svc, now: collect_k8s(core, custom, "shop", svc, now),
                   connect(DEFAULT_PATH, shared=True), services, config.load("policy"))
     brain.flag_map = services_cfg.get("flags") or {}
+    brain.runbooks = runbooks.load()
     return brain
 
 
@@ -263,6 +283,7 @@ def create_app(brain: Brain | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        auth.token()  # fail at start, not on the first incident
         app.state.brain = brain or build_from_env()
         yield
         for t in tasks:
@@ -271,6 +292,7 @@ def create_app(brain: Brain | None = None) -> FastAPI:
             await app.state.brain.http.aclose()
 
     app = FastAPI(title="oncall brain", lifespan=lifespan)
+    app.add_middleware(auth.TokenGuard)
 
     def _finished(task: asyncio.Task) -> None:
         tasks.discard(task)

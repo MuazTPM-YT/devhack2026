@@ -1103,3 +1103,13 @@ Seeded from reading the plan. Reply under each one.
   escalated (the bug above). Trust ledger was empty, so every fix asked
   approval; 30+30 rehearsal trust runs started 16:05 (gateway in
   `ONCALL_REHEARSAL=1`; turn it off before the demo).
+- [M] 2026-11-13 for A,T: Branch `muaz/agent-polish` (Muaz OK'd edits to your files).
+  **Action needed:** set the same `ONCALL_API_TOKEN` (16+ chars) in every `.env`
+  (gateway, brain, observer, notifier, bench). Gateway, brain and observer now return 401
+  on any non-GET without header `X-Oncall-Token` (decide, clear, `/events/publish`, `/mcp`,
+  `/incidents`, `/ledger/rehearsal`). GETs (UI, SSE) unchanged. Manual curl approvals need
+  the header (README). Other changes: `config/runbooks.yaml` (gateway enforces
+  `require_approval` / `forbid_tools`); notifier methods take optional `details=`; T's embeds gain a
+  `For:` audience line, runbook, seen-before, approvers, page count and a who/when outcome
+  on decide/ack (custom_ids unchanged); escalated/approval/terminal payloads may carry `runbook`
+  and `seen_before`; `rule_matched` adds `runbooks`, `similar_before`; prompt version 6.
