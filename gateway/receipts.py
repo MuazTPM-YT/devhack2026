@@ -174,6 +174,10 @@ REASONS = [
     (r"harm check failed", "After the fix, another service got worse, so the agent undid it."),
     (r"UNDO FAILED", "The agent could not undo its own change. The system may be half changed."),
     (r"watchdog", "The agent lost track of its fix while checking it, so it undid it to be safe."),
+    (r"write outcome unknown", "Kubernetes stopped answering during the change, so it may or may not have "
+                               "happened. The agent will not guess or undo. A person must check the cluster."),
+    (r"Kubernetes API unreachable|API error \d+", "Kubernetes did not answer, so the agent changed nothing. "
+                                                  "A person must check."),
     (r"(\S+) changed by (\S+)", "A person ({1}) changed {0} during the incident, so the agent stepped back."),
 ]
 

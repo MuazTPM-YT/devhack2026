@@ -24,6 +24,7 @@ def classify(status: int, body: str) -> WriteRefused:
 
 
 def _call(fn: Any, name: str, body: Any, dry_run: bool, content_type: str) -> dict:
+    import urllib3
     from kubernetes.client.rest import ApiException
 
     try:
@@ -31,6 +32,12 @@ def _call(fn: Any, name: str, body: Any, dry_run: bool, content_type: str) -> di
                   _content_type=content_type, _preload_content=False)
     except ApiException as e:
         raise classify(e.status, str(e.body or e.reason)) from None
+    except (urllib3.exceptions.HTTPError, OSError) as e:
+        if dry_run:
+            raise WriteRefused("escalated", f"Kubernetes API unreachable ({type(e).__name__})") from None
+        # no answer to a real write: it may have landed. No receipt, no auto-undo: a human checks (Muaz chose)
+        raise WriteRefused("escalated", f"write outcome unknown ({type(e).__name__}): the change may or may not "
+                                        f"be live; check the cluster by hand") from None
     return json.loads(resp.data)
 
 

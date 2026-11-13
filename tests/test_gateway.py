@@ -437,3 +437,17 @@ async def test_api_error_on_approved_rerun_escalates(tmp_path):
     assert d.decision == "escalated" and d.failed_step == "dry_run" and "503" in d.reason
     assert w.types()[-1] == "escalated"
     assert w.conn.execute("SELECT state FROM incidents").fetchone()[0] == "escalated"
+
+
+# the connection drops during the real write: it may or may not have landed. Page a human, never guess
+async def test_network_error_on_real_write_pages_check_by_hand(tmp_path):
+    import urllib3
+    w = World(tmp_path)
+    d = await w.gw.submit(action())
+    w.apps.fail_real = urllib3.exceptions.ProtocolError("Connection aborted.")
+    d = await w.gw.decide(d.approval_id, "approved", "u1")
+    assert d.decision == "escalated" and d.failed_step == "execute"
+    assert "check the cluster by hand" in d.reason
+    assert w.conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0] == 0
+    card = next(e for e in w.events if e["type"] == "escalated")["payload"]["card"]
+    assert "may or may not" in json.dumps(card)
