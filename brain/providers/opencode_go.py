@@ -59,9 +59,12 @@ class OpenCodeGoAdapter:
             body = response.json()
             choice = body["choices"][0]
             content = choice["message"]["content"]
-            if not isinstance(content, str) or choice.get("finish_reason") == "length":
+            if not isinstance(content, str):
                 raise ValueError
-            return InferenceResponse(content, self.name, self.model, body.get("usage", {}),
-                                     response.headers.get("x-request-id"), choice.get("finish_reason"))
         except (ValueError, KeyError, IndexError, TypeError):
             raise ProviderError("invalid_response", retryable=True) from None
+        # reasoning tokens count against max_tokens; a cut-off answer is not a malformed one
+        if choice.get("finish_reason") == "length":
+            raise ProviderError("truncated", retryable=True)
+        return InferenceResponse(content, self.name, self.model, body.get("usage", {}),
+                                 response.headers.get("x-request-id"), choice.get("finish_reason"))

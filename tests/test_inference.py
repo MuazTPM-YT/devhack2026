@@ -152,3 +152,20 @@ async def test_deadline_is_90s_and_http_timeout_matches(tmp_path):
         await OpenCodeGoAdapter(client, "fake-key", "m").generate(InferenceRequest("i", [], {}))
     assert DiagnosisService(FakeProvider([]), tmp_path).timeout_s == 90
     assert seen["read"] >= 90
+
+
+# live smoke 5: two attempts failed as "invalid_response"; a cut-off answer must say so, and get room to reason
+async def test_cut_off_answer_reports_truncated_and_budget_fits_reasoning():
+    from brain.providers.base import InferenceRequest
+    sent = {}
+
+    def handle(request):
+        sent.update(json.loads(request.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": "{\"cau"},
+                                                     "finish_reason": "length"}], "usage": {}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        with pytest.raises(ProviderError) as error:
+            await OpenCodeGoAdapter(client, "fake-key", "m").generate(InferenceRequest("i", [], {}))
+    assert str(error.value) == "truncated"
+    assert sent["max_tokens"] >= 4000

@@ -10,7 +10,7 @@ class InferenceRequest:
     incident_id: str
     messages: list[dict[str, str]]
     schema: dict[str, Any]
-    max_tokens: int = 1500
+    max_tokens: int = 4000  # reasoning counts here; live answers used ~900-1100
 
 
 @dataclass(frozen=True)
