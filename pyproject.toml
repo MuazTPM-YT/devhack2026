@@ -11,6 +11,7 @@ dependencies = [
   "kubernetes~=36.0.3",
   "pyyaml~=6.0.3",
   "mcp~=1.30.0",
+  "pydantic-ai-slim[openai]~=2.63.0",
 ]
 
 [dependency-groups]
