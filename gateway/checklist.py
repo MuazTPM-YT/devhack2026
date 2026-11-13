@@ -322,6 +322,12 @@ class Gateway:
         if patch["kind"] == "scale":
             diff = spec_diff({"replicas": live["spec"].get("replicas")}, {"replicas": dry["spec"].get("replicas")})
             inverse = {"op": "scale", "target": target, "replicas": live["spec"].get("replicas")}
+            bounds = self.policy["tools"]["scale"]
+            # scale 0 -> 1 brings a store back; its undo (back to 0) would re-break it and admission refuses it
+            if not bounds["min"] <= (inverse["replicas"] or 0) <= bounds["max"]:
+                inverse = {"op": "none", "target": target,
+                           "why": f"undo would scale {target} to {inverse['replicas'] or 0} replicas, "
+                                  f"outside the allowed {bounds['min']}-{bounds['max']}"}
         else:
             diff = spec_diff(live["spec"], dry["spec"])
             # undo = put the pre-action template back (JSON Patch, agent identity), whatever the tool changed
@@ -397,9 +403,11 @@ class Gateway:
         victims = json.loads(row.get("victims_json") or "[]")
         cfg = self.policy["verify"]
         extra = cfg["flag_extra_seconds"] if plan["patch"]["kind"] == "configmap" else 0  # flagd reload ~60 s
+        # aborting means undoing; with no safe undo, give the fix its whole window instead
+        can_undo = plan["inverse"]["op"] != "none"
         v = Verification(self.clock(), plan["health"], action.target, victims,
                          action.prediction.model_dump() if action.prediction else None,
-                         cfg["window_seconds"] + extra, cfg["early_abort"],
+                         cfg["window_seconds"] + extra, cfg["early_abort"] and can_undo,
                          grace_s=cfg["early_abort_grace_seconds"] + extra, prediction_delay_s=extra)
         health, human, result = plan["health"], [], None
         while result is None:
@@ -442,6 +450,8 @@ class Gateway:
     async def undo_and_close(self, receipt_id: int, action: ActionRequest, row: dict, receipt: Receipt,
                              v: Verification, pause: bool, harm: dict | None, reason: str,
                              hash_after: str | None = None, plan: dict | None = None) -> str:
+        if receipt.inverse.get("op") == "none":
+            return await self.keep_and_page(receipt_id, action, row, receipt, reason)
         try:
             await asyncio.to_thread(self.undo, action.target, receipt.inverse, pause)
         except WriteRefused as e:
@@ -463,6 +473,23 @@ class Gateway:
         await self.publish({"type": "action_undone", "incident_id": action.incident_id,
                             "payload": {"receipt_id": receipt_id, "reason": reason}})
         return await self.close(receipt_id, action, row, receipt, v, "undone", harm, reason, hash_after, plan=plan)
+
+    # fix did not prove itself but undoing it is unsafe: leave it in place, hand the incident to a person
+    async def keep_and_page(self, receipt_id: int, action: ActionRequest, row: dict, receipt: Receipt,
+                            reason: str) -> str:
+        with self.lock:
+            self.conn.execute("UPDATE receipts SET outcome='handed_off' WHERE id=?", (receipt_id,))
+            self.conn.commit()
+        kept = receipt.model_copy(update={"outcome": "handed_off"})
+        self.receipts.update(receipt_id, kept)
+        self.heartbeats.pop(receipt_id, None)
+        self.verifying.pop(receipt_id, None)
+        card = self.card(row, action.target, receipt=kept, receipt_id=receipt_id, reason="no safe undo")
+        await self.publish({"type": "escalated", "incident_id": action.incident_id, "payload": {
+            "card": card.model_dump(mode="json"),
+            "briefing": f"no safe undo ({receipt.inverse.get('why')}); fix kept after: {reason}"}})
+        self.set_state(action.incident_id, "escalated")
+        return "handed_off"
 
     # pause an in-progress rollout first so the inverse lands on a still object (§6.4.9 Undo);
     # always unpause, a failed undo must not leave the Deployment paused

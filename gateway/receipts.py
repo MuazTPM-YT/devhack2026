@@ -116,6 +116,8 @@ def _undo(receipt: Receipt, receipt_id: int) -> str:
     if receipt.outcome in ("undone", "undo_failed"):
         return f"already undone by the agent; receipt #{receipt_id}" if receipt.outcome == "undone" \
             else f"the agent's undo FAILED; restore from receipt #{receipt_id} by hand"
+    if op == "none":
+        return "none is safe: the agent kept its fix, because undoing it would break things again"
     if not re.fullmatch(r"[a-z0-9-]+", target):
         return f"restore from receipt #{receipt_id} by hand"
     if op == "restore_template":
@@ -148,6 +150,8 @@ REASONS = [
     (r"problem no longer present", "The problem went away before the agent acted."),
     (r"no health readings", "Health data stopped arriving, so the agent cannot tell if the problem is still "
                             "there. A person must check."),
+    (r"no safe undo", "The fix has not proven itself yet, but undoing it would break things again, so the agent "
+                      "kept it. A person must check."),
     (r"rule result changed", "The situation changed while the agent was deciding, so a person should check."),
     (r"journal entry \d+ (?:no longer matches|not found)", "The change the agent wanted to undo has changed again "
                                                            "since. A person should check."),

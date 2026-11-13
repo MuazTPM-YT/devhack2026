@@ -181,6 +181,8 @@ def test_model_text_loses_epochs_ids_and_markdown():
     "valkey-cart is protected; a human must act", "valkey-cart is a protected data store; a human must approve",
     "another action is still being verified", "problem no longer present",
     "no health readings for payment; cannot tell if the problem is still there",
+    "no safe undo (undo would scale valkey-cart to 0 replicas, outside the allowed 1-3); fix kept after: "
+    "did not recover",
     "rule result changed: ('recent_change', 3) -> ('recent_change', 4)",
     "journal entry 41 no longer matches the live object", "journal entry 41 not found",
     "observer unreachable: ConnectError", "action refused: target not allowed", "tool scale not allowed",
@@ -307,3 +309,10 @@ async def test_old_card_without_fields_still_sends_text():
     bot = Sent()
     await bot.wake(Card(incident_id="i", status="WOKE YOU BECAUSE", text="old card", evidence_ids=[]), "b")
     assert bot.sent == [("old card\nb", None, True)]
+
+
+# live inc-1794564403607: the store came back but the page read "UNDO FAILED ... half changed"
+def test_no_safe_undo_says_the_fix_was_kept():
+    said = explain("no safe undo (undo would scale valkey-cart to 0 replicas, outside the allowed 1-3); "
+                   "fix kept after: did not recover")
+    assert "kept" in said and "undid" not in said
