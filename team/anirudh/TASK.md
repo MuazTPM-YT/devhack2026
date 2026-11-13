@@ -40,8 +40,8 @@ Exit: scenarios 1 to 6 in §7 can be injected and reset.
 
 ## Phase 4: more UI
 
-- [ ] P1 `POST /chaos/shared-outage` (scale `kafka` to 0), if Q6 is agreed
-- [ ] P1 `/trust`, `/receipts` (with "verify audit log" button), `/benchmark` pages (§6.8)
+- [x] P1 `POST /chaos/shared-outage` (scale `kafka` to 0), if Q6 is agreed. Proof: `tests/test_chaos.py` 32 pass; live inject -> kafka replicas 0, checkout err 0.068 after 90 s, reset restored `["kafka"]`.
+- [x] P1 `/trust`, `/receipts` (with "verify audit log" button), `/benchmark` pages (§6.8). Proof: `npm test` 13 pass, `tsc` clean, `next build` OK; screenshots at 1440 px and 390 px with live gateway data. Waiting on `GET /trust` (M), `GET /receipts` + `GET /audit/verify` (T); pages fall back until then.
 
 ## Phase 5: freeze
 

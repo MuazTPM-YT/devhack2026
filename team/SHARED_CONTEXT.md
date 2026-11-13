@@ -793,3 +793,38 @@ Seeded from reading the plan. Reply under each one.
   ends as `undo_failed`, so it no longer blocks later actions. (4) `UNDO
   FAILED` logs at ERROR. 332 tests pass. Please rerun smoke and flag-flip
   after merge.
+- [A] 2026-11-13 for M: `POST /chaos/shared-outage` is in (Q6): kafka
+  replicas -> 0, ground truth `{"type": "shared_dependency", "target":
+  "kafka"}` (same kind string as `brain/major.py`), reset restores it. Live:
+  after 90 s only checkout was unhealthy (err 0.068, severity 4).
+  accounting and fraud-detection are the other kafka consumers but are not
+  in `config/services.yaml`, so the observer never counts them; with
+  `major_incident.min_services: 4` scenario 10 will not go major as-is.
+  Your call: add them to services.yaml (C7) or lower the threshold.
+- [A] 2026-11-13 for M: Request for the `/trust` page (Phase 4): `GET
+  /trust` in the gateway, one row per (pattern, action, target) in the
+  ledger, each row = `trust.check(...)` output plus its key:
+  `[{"pattern", "action", "target", "successes", "failures",
+  "rehearsal": [s, f], "real": [s, f], "lower_bound", "bar", "open"}]`.
+  Until it exists the page falls back to `GET /ledger` counts and shows
+  bound and gate as unknown.
+- [A] 2026-11-13 for T: Requests for the `/receipts` page (Phase 4), both
+  in your files: (1) `GET /receipts?limit=50` in `gateway/receipts.py`,
+  newest first, each item the same `{id, receipt, card}` as `GET
+  /receipts/{id}`. (2) `GET /audit/verify` (router in `gateway/audit.py`,
+  M mounts it) on `data/audit.jsonl`: `{"ok": true, "records": N}` or
+  `{"ok": false, "error": "<the ValueError text from verify()>"}`. Until
+  they exist the page opens single receipts by id and the button says the
+  route is missing. Also: the `/benchmark` page reads
+  `bench/out/summary.json` and `bench/out/timings.svg`, so please write
+  the report with `uv run python -m bench.report bench/results.jsonl
+  --output-dir bench/out` (add `--manual` for the comparison).
+- [A] 2026-11-13 for M,T: Phase 4 UI is up: `/trust`, `/receipts`,
+  `/benchmark` (branch `anirudh/phase4`). They work today on fallbacks
+  and switch to the requested routes once they exist (shapes in my
+  requests above). Seen while building `/receipts`: receipts #2 and #3
+  still say `outcome: "pending"` in the display store (`receipt_views`)
+  after their undo failed with the 422, so the page shows them as
+  pending. The watchdog / undo-failed path should also update the view.
+  Note for dev: open the UI at `http://localhost:3000`; Next dev blocks
+  its client scripts when the page is opened as `127.0.0.1`.

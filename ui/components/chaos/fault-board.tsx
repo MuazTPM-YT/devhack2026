@@ -14,6 +14,7 @@ const FAULTS = [
   { path: "flag-flip", scenario: 3, name: "Flag flip", target: "payment", what: "Sets paymentFailure to 50%." },
   { path: "memory-leak", scenario: 4, name: "Memory leak", target: "recommendation", what: "Cache leak flag on, OOMKilled in about 2 min." },
   { path: "datastore-down", scenario: 5, name: "Datastore down", target: "valkey-cart", what: "Scales the cart store to 0, cart stops." },
+  { path: "shared-outage", scenario: 10, name: "Shared outage", target: "kafka", what: "Scales kafka to 0; checkout errors within 90 s." },
 ];
 
 export function FaultBoard({ onChange }: { onChange: () => void }) {
