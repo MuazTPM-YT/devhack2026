@@ -15,7 +15,7 @@ def test_is_major_by_count_and_spread():
     fb = {"checkout": 100, "accounting": 110, "fraud-detection": 120, "frontend": 130}
     assert is_major(list(fb), fb, 20, POLICY)
     assert not is_major(["checkout", "accounting"], fb, 20, POLICY)
-    spread = {**fb, "frontend": 400}  # outside 120 s of the first
+    spread = {**fb, "fraud-detection": 300, "frontend": 400}  # outside 120 s of the first: only 2 close
     assert not is_major(list(spread), spread, 20, POLICY)
     assert is_major(["a", "b", "c"], {"a": 1, "b": 2, "c": 3}, 9, POLICY)  # 3/9 >= 30%
 
@@ -112,3 +112,13 @@ async def test_brain_kafka_outage_is_major_and_protected(tmp_path):
     assert major_ev["payload"]["ranked"][0]["kind"] == "shared_change"
     assert brain.conn.execute("SELECT major FROM incidents").fetchone()[0] == 1
     assert json.loads(brain.conn.execute("SELECT victims_json FROM incidents").fetchone()[0])[0] == "accounting"
+
+
+# scenario 10: kafka down sickens its three measured consumers; that must be major (Muaz: min_services 3)
+def test_kafka_consumers_together_are_major():
+    from brain.major import is_major
+    from schemas import config
+    policy, services = config.load("policy"), config.load("services")["services"]
+    sick = ["checkout", "accounting", "fraud-detection"]
+    assert is_major(sick, {"checkout": 0, "accounting": 20, "fraud-detection": 40}, len(services), policy)
+    assert not is_major(sick[:2], {"checkout": 0, "accounting": 20}, len(services), policy)

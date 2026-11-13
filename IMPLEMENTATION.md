@@ -246,7 +246,7 @@ verify:
   window_seconds: 120
   early_abort: true
 major_incident:
-  min_services: 4
+  min_services: 3                  # was 4; kafka has only 3 measured consumers
   min_fraction: 0.30
   within_seconds: 120
 approval:
