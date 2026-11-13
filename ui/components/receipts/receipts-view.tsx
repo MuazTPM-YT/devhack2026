@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import sheet from "@/components/live/sheet.module.css";
 import page from "@/components/page.module.css";
+import { TrustLedger } from "@/components/trust/trust-view";
 import { Kpis } from "@/components/ui/kpis";
 import { PageHead } from "@/components/ui/page-head";
 import { Tag, type Tone } from "@/components/ui/tag";
@@ -124,7 +125,7 @@ export function ReceiptsView() {
 
   return (
     <div className={page.page}>
-      <PageHead eyebrow="Receipts · every action, its diff and its undo" title="What Akira changed" aside={<AuditCheck />} />
+      <PageHead eyebrow="every action, its diff, its undo, and the trust it earned" title="Receipts" aside={<AuditCheck />} />
       <Kpis label="Receipt figures" items={[
         { label: "Actions", value: data ? items.length : "–" },
         { label: "Fix verified", value: data ? items.filter((i) => i.receipt.outcome === "success").length : "–", tone: "ok" },
@@ -174,6 +175,8 @@ export function ReceiptsView() {
           )}
         </div>
       </div>
+
+      <TrustLedger />
     </div>
   );
 }

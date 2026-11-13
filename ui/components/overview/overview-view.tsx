@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 
+import { ServiceMap } from "@/components/map/service-map";
 import { Kpis } from "@/components/ui/kpis";
 import { PageHead } from "@/components/ui/page-head";
 import { Tag, type Tone } from "@/components/ui/tag";
@@ -92,6 +94,7 @@ function ServiceCard({ name, health, info, policy, culprit, incidentId, blind }:
 export function OverviewView({ services }: { services: Record<string, ServiceInfo> }) {
   const { state, observer, policy } = useLiveContext();
   const now = useNow(true, 5000);
+  const [view, setView] = useState<"cards" | "map">("cards");
   const health = observer.health;
   const tele = telemetry(health, observer.error, now);
   // old numbers behind a fresh response: every card is unknown, none is healthy
@@ -110,8 +113,8 @@ export function OverviewView({ services }: { services: Record<string, ServiceInf
   return (
     <div className={styles.page}>
       <PageHead
-        eyebrow={`Overview · namespace shop${health ? ` · numbers from ${clock(health.last_ok_ts ?? health.ts)}` : ""}`}
-        title="Shop at a glance"
+        eyebrow={`namespace shop${health ? ` · numbers from ${clock(health.last_ok_ts ?? health.ts)}` : ""}`}
+        title="Overview"
         aside={openInc && <Link className="btn btn-dark" href={`/live?incident=${encodeURIComponent(openInc.id)}`}>Open live incident →</Link>}
       />
 
@@ -140,19 +143,29 @@ export function OverviewView({ services }: { services: Record<string, ServiceInf
                 : `All ${names.length} services are inside their baselines.`}{" "}
             {stats.total > 0 && `Akira has handled ${plural(stats.total, "incident")}: ${stats.verified} verified fixed, ${stats.resolved - stats.verified} recovered unproven, woke a human for ${stats.escalated + stats.handedOff}.`}</p>
         )}
-        <p className={styles.legend}>
+        {view === "cards" && <p className={styles.legend}>
           Each card is one service. Top bar: error ratio, the tick is the {((policy.errThreshold ?? 0.05) * 100).toFixed(0)}% line.
           Bottom bar: p95 latency, the tick is its limit ({policy.latencyMultiplier ?? 2}× baseline and at least
           {" "}{policy.latencyFloorMs ?? 100} ms above it). A bar past its tick is a breach; held for 30 s it opens an incident.
-        </p>
+        </p>}
       </div>
 
-      <div className={styles.grid}>
-        {names.map((n) => (
-          <ServiceCard key={n} name={n} health={health?.services[n]} info={services[n]} policy={policy}
-            blind={blind} culprit={openInc?.culprit === n} incidentId={openInc?.id ?? null} />
+      <div className={styles.switch} role="group" aria-label="Show services as">
+        {(["cards", "map"] as const).map((v) => (
+          <button key={v} type="button" aria-pressed={view === v} className={styles.switchBtn} onClick={() => setView(v)}>
+            {v === "cards" ? "Cards" : "Map"}
+          </button>
         ))}
       </div>
+
+      {view === "map" ? <ServiceMap services={services} /> : (
+        <div className={styles.grid}>
+          {names.map((n) => (
+            <ServiceCard key={n} name={n} health={health?.services[n]} info={services[n]} policy={policy}
+              blind={blind} culprit={openInc?.culprit === n} incidentId={openInc?.id ?? null} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

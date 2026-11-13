@@ -1,0 +1,68 @@
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-mute); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 11px; height: 8px; border: 1.5px solid; display: inline-block; }
+.kBad { border-color: var(--bad) !important; background: var(--bad-tint); }
+.kRisk { border-color: var(--warn-fill) !important; border-style: dashed !important; background: var(--warn-tint); }
+.kHot { border: 0 !important; border-top: 2px solid var(--bad) !important; height: 0 !important; }
+
+/* narrow screens scroll the map sideways rather than shrink its text */
+.scroll { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+.map { display: block; width: 100%; height: auto; margin: 0 auto; }
+
+.edge, .edgeHot, .edgeLit { fill: none; transition: opacity 150ms var(--ease-out); }
+.edge { stroke: var(--line-strong); }
+.edgeHot { stroke: var(--bad); }
+.edgeLit { stroke: var(--ink); }
+.head { fill: var(--line-strong); }
+.headHot { fill: var(--bad); }
+.headLit { fill: var(--ink); }
+
+.node { cursor: pointer; outline: none; transition: opacity 150ms var(--ease-out); }
+.box { fill: var(--card); stroke: var(--ink-soft); stroke-width: 1; }
+.name { font: 500 12px var(--mono); fill: var(--ink); pointer-events: none; }
+.culprit { font: 600 9.5px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; fill: var(--bad); }
+
+.bad .box { fill: var(--bad-tint); stroke: var(--bad); stroke-width: 2; }
+.bad .name { fill: var(--bad); font-weight: 600; }
+.risk .box { fill: var(--warn-tint); stroke: var(--warn-fill); stroke-width: 1.6; stroke-dasharray: 4 3; }
+.warn .box { stroke: var(--warn-fill); stroke-width: 1.6; }
+.picked .box { stroke: var(--ink); stroke-width: 2.4; }
+.node:focus-visible .box { stroke: var(--ox); stroke-width: 2.4; }
+
+.map [data-dim="true"] { opacity: 0.22; }
+
+@media (hover: hover) and (pointer: fine) {
+  .node:hover .box { stroke: var(--ink); }
+}
+
+.foot { margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-mute); }
+
+.meta { margin: 0 0 8px; font-size: 12.5px; color: var(--ink-mute); }
+.sub {
+  margin: 14px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.names { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.nameBtn {
+  font: 12px var(--mono);
+  padding: 3px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+}
+.nameBtn:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) {
+  .nameBtn:hover { border-color: var(--ink); }
+}
+
+.clear { margin-top: 16px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .edge, .edgeHot, .edgeLit, .node { transition: none; }
+}

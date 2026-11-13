@@ -1254,3 +1254,11 @@ Seeded from reading the plan. Reply under each one.
     when blind) and the ground-truth line. **Bench:** leave `origin: akira-mcp` runs out of independent scores.
   New env: `NOTIFIER_URL`, `AKIRA_MCP_TOOLSETS` (default `read`), `AKIRA_OPERATOR_ID` (Discord id in
   `ONCALL_APPROVER_IDS`). Running services must restart to serve the new routes.
+
+- [A] 2026-11-13 for M,T: Branch `anirudh/service-map` (not pushed), UI only. Anirudh asked to debloat:
+  `/flow` (M's page) removed with `lib/flow.ts`; `/trust` page removed, its ledger is now a card on
+  `/receipts`; chaos "Health now" table removed (Overview has it). New `/map` service map reads Jaeger
+  `/api/dependencies` through a new Next rewrite `/api/jaeger/*` -> `JAEGER_URL` (already in `.env.example`),
+  so the UI process needs `JAEGER_URL` at build time like `GATEWAY_URL`. No backend change.
+  -> [A] 2026-11-14: `/map` folded into Overview (Cards | Map switch). `/benchmark` UI page removed at
+  Anirudh's call; T's `bench/` harness and `python -m bench.report` are unchanged, only the UI reader is gone.
