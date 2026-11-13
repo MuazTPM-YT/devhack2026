@@ -175,6 +175,10 @@ class Brain:
                                                                         for c in cands]})
 
         guide = {"runbooks": [runbooks.brief(rb) for rb in matched[:3]], "past_incidents": past}
+        if self.coordinator is not None and self.orch.mode == "coordinated":
+            with self.lock:
+                if lessons := memory.experience(self.conn, pattern, culprit):
+                    guide["experience"] = lessons
         if self.agent is not None:  # agent mode: the model reads telemetry through tools, not the bundle
             box = ToolBox(incident, now, self.http, self.observer_url, self.prom_url, self.jaeger_url, self.graph,
                           self.kube, self.conn, self.lock, list(self.services), self.queries, self.publish,

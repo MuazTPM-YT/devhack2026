@@ -347,6 +347,10 @@ class Coordinator:
         task = self.commanders.pop(iid, None)
         if task is not None and not task.done() and task is not asyncio.current_task():
             task.cancel()
+        try:  # learning is a side effect; it never blocks closing
+            self.ws.record_experience(iid)
+        except Exception as e:
+            log.warning("incident %s: experience not recorded: %r", iid, e)
 
     async def follow_terminal_events(self) -> None:
         after, down_since = 0, None

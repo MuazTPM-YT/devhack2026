@@ -213,6 +213,7 @@ class AgentDiagnosisService:
             "known_services": box.services,
             "company_runbooks": (guide or {}).get("runbooks", []),
             "past_incidents": (guide or {}).get("past_incidents", []),
+            **({"experience": guide["experience"]} if guide and guide.get("experience") else {}),
             **(box.orch.brief() if box.orch is not None else {})})
         settings = ModelSettings(max_tokens=InferenceRequest.max_tokens, timeout=DEADLINE_S, extra_headers={
             "User-Agent": "devhack-oncall-agent/0.1",

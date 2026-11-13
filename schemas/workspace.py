@@ -392,6 +392,30 @@ class Workspace:
                             (self.clock() + ttl_s, name, owner, epoch))
             return cur.rowcount == 1
 
+    # ---- experience (migration v3): what a fix actually did, by code, never the model's prose
+
+    # one row per receipt; a contradicting outcome for the same fix on the same service retires older rows
+    def record_experience(self, incident_id: str) -> str | None:
+        good = ("success", "right_by_accident")
+        with self.tx() as c:
+            r = c.execute("SELECT r.id, r.tool, r.target, r.outcome, r.diff_json, r.ts, i.pattern FROM receipts r "
+                          "JOIN incidents i ON i.id = r.incident_id WHERE r.incident_id=? ORDER BY r.id DESC LIMIT 1",
+                          (incident_id,)).fetchone()
+            if r is None or r["outcome"] in (None, "pending", "watchdog_failed"):
+                return None
+            experience_id = f"exp-{incident_id}-{r['id']}"
+            if c.execute("SELECT 1 FROM experience_records WHERE experience_id=?", (experience_id,)).fetchone():
+                return experience_id
+            paths = sorted(json.loads(r["diff_json"] or "{}"))
+            c.execute("UPDATE experience_records SET status='superseded' WHERE tool=? AND service=? AND "
+                      "pattern IS ? AND status='active' AND (outcome IN ('success', 'right_by_accident')) != ?",
+                      (r["tool"], r["target"], r["pattern"], r["outcome"] in good))
+            c.execute("INSERT INTO experience_records (experience_id, source_incident_id, receipt_id, pattern, tool, "
+                      "service, applicability_json, outcome, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                      (experience_id, incident_id, r["id"], r["pattern"], r["tool"], r["target"],
+                       json.dumps({"service": r["target"], "diff_paths": paths}), r["outcome"], self.clock()))
+            return experience_id
+
     # ---- delegation decisions and the read projection
 
     def record_delegation(self, c: sqlite3.Connection, incident_id: str, d: DelegationRecord) -> None:

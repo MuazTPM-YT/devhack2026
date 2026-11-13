@@ -149,7 +149,23 @@ CREATE INDEX intents_by_status ON action_intents(status, created_at);
 ALTER TABLE approvals ADD COLUMN intent_id TEXT
 """
 
-MIGRATIONS: list[tuple[int, str]] = [(1, V1), (2, V2)]
+# v3: outcome experience per fix, kept apart from root-cause claims (handoff §6.3); never grants permission
+V3 = """
+CREATE TABLE experience_records (
+  experience_id TEXT PRIMARY KEY,
+  source_incident_id TEXT NOT NULL REFERENCES incidents(id),
+  receipt_id INTEGER,
+  pattern TEXT, tool TEXT NOT NULL, service TEXT NOT NULL,
+  applicability_json TEXT NOT NULL,
+  outcome TEXT NOT NULL,
+  evidence_json TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at REAL NOT NULL
+);
+CREATE INDEX experience_by_fix ON experience_records(pattern, tool, status)
+"""
+
+MIGRATIONS: list[tuple[int, str]] = [(1, V1), (2, V2), (3, V3)]
 LATEST = MIGRATIONS[-1][0]
 
 
