@@ -23,7 +23,7 @@ from gateway.mcp_server import build_mcp
 from gateway.receipts import ReceiptStore, build_card, create_receipts_router
 from schemas import auth, config, migrations
 from schemas.db import DEFAULT_PATH, connect
-from schemas.orchestration import IntentEnvelope, load_policy
+from schemas.orchestration import IntentEnvelope, OrchestrationPolicy, load_policy
 from schemas.workspace import Workspace
 from schemas import logs
 
@@ -87,7 +87,7 @@ def build_from_env() -> Gateway:
                  events.publish, ReceiptStore(Path(DEFAULT_PATH)), approvers_from_env(),
                  graph=DependencyGraph(http, jaeger), flag_map=config.load("services").get("flags") or {},
                  rehearsal=os.environ.get("ONCALL_REHEARSAL") == "1", books=runbooks.load())
-    orch = load_policy()
+    orch = gw.orchestration = load_policy()
     if orch.mode != "disabled":  # orchestration: durable intents + read views (migration v2 required)
         migrations.require(gw.conn)
         gw.intents = IntentStore(gw.conn, gw.lock, gw.clock)
@@ -132,6 +132,23 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
     @app.get("/health")
     def health() -> dict:
         return {"ok": True}
+
+    # what the UI shows as the run mode: orchestration on or off, specialists on or off, what is in flight
+    @app.get("/orchestration/status")
+    def orchestration_status() -> dict:
+        gw = holder["gw"]
+        p = gw.orchestration or OrchestrationPolicy()
+        out: dict = {"mode": p.mode, "delegation_enabled": p.delegation_enabled,
+                     "max_active_commanders": p.max_active_commanders, "max_model_requests": p.max_model_requests,
+                     "phases": {}, "specialists_running": 0, "unknown_writes": 0}
+        if gw.workspace is not None:
+            out["phases"] = {r[0]: r[1] for r in gw.workspace.rows(
+                "SELECT phase, COUNT(*) FROM orchestration_workspaces WHERE phase != 'terminal' GROUP BY phase")}
+            out["specialists_running"] = gw.workspace.rows(
+                "SELECT COUNT(*) FROM investigation_tasks WHERE state IN ('pending', 'running')")[0][0]
+            out["unknown_writes"] = gw.workspace.rows(
+                "SELECT COUNT(*) FROM action_intents WHERE status='execution_unknown'")[0][0]
+        return out
 
     # caller must hold ONCALL_API_TOKEN (TokenGuard); decided_by is then checked against the allowlist
     @app.post("/approvals/{approval_id}/decide")

@@ -52,3 +52,21 @@ def test_shell_describes_orchestration_events():
     assert tone == "bad" and "execution_unknown" in text and "check the cluster" in text
     assert describe("investigation_task_changed", {"task_id": "t1", "state": "failed"})[0] == "bad"
     assert "cart" in describe("incident_scope_changed", {"scope_revision": 1, "services": ["cart"]})[1]
+
+
+def test_status_says_disabled_on_a_legacy_gateway(tmp_path):
+    with TestClient(create_app(World(tmp_path).gw)) as client:
+        s = client.get("/orchestration/status").json()
+    assert (s["mode"], s["delegation_enabled"], s["phases"]) == ("disabled", False, {})
+
+
+async def test_status_counts_open_phases_and_unknown_writes(tmp_path):
+    w = orch_world(tmp_path)
+    policy = OrchestrationPolicy(mode="coordinated")
+    w.gw.orchestration, w.gw.workspace = policy, Workspace(w.conn, policy, w.gw.clock, lock=w.gw.lock)
+    sub = await w.gw.submit_intent(envelope())
+    w.gw.intents.move(sub.intent_id, "executing")
+    w.gw.intents.move(sub.intent_id, "execution_unknown")
+    with TestClient(create_app(w.gw)) as client:
+        s = client.get("/orchestration/status").json()
+    assert s["mode"] == "coordinated" and s["phases"] == {"awaiting_gateway": 1} and s["unknown_writes"] == 1

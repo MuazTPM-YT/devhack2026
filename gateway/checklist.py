@@ -83,6 +83,7 @@ class Gateway:
         self.health: dict[str, dict] = {}  # incident id -> last health read, for the card's numbers; same ponytail
         self.intents: IntentStore | None = None  # orchestration on (migration v2): durable action intents
         self.workspace: Any = None  # schemas.workspace.Workspace on the same connection: read views only
+        self.orchestration: Any = None  # schemas.orchestration.OrchestrationPolicy this gateway started with
 
     # ---- helpers -------------------------------------------------------------------------------
     def incident(self, incident_id: str) -> dict | None:
