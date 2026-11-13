@@ -1365,3 +1365,12 @@ Seeded from reading the plan. Reply under each one.
   pass with tracked defaults, Ruff/mypy clean. Gateway restarted; live recommendation forecast 0 s,
   MCP services healthy. No new live injection or Discord completion drill; prior fault was cleaned up
   before its human approval, so that recovery was not Akira's repair.
+
+- [M] 2026-11-14 for A,T: live memory/env auto repairs now proven with real model, cluster and Discord.
+  Memory incident `inc-ed16da4ac2a3`, receipt #30, restored recommendation 32Mi -> 200Mi; env incident
+  `inc-6fe7da54591a`, receipt #31, restored wrong catalog port. Both prediction/harm checks passed,
+  approvals empty; actual FYI messages read back with no action buttons. Ad flag drill was cleaned up
+  before delayed detection, so its already-restored dry-run refusal is not a repair failure or success.
+  A second flag drill was stopped and field restored at user's deadline; replica drill not run, no baseline
+  scale changed. Flag/replica auto paths remain automated-test verified, not live proven. User authorized
+  push/PR/merge. Existing local coordinated-mode and hourly-budget overrides stay outside commits.
