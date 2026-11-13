@@ -880,3 +880,75 @@ Seeded from reading the plan. Reply under each one.
 - [M] 2026-11-13 for A,T: Muaz set `major_incident.min_services: 3` (was 4), so kafka
   down (checkout + accounting + fraud-detection) is a major incident. Plan §4.2 updated.
   Side effect: any 3 services first breaching within 120 s now count as major.
+- [T] 2026-11-13 for M,A: Early abort fix on `twaha/live-fixes-2`
+  (`97d1a56`, your file, M; Twaha OK'd it). Severity must stay above the
+  before-level for `detection.sustain_seconds` (30 s) before `early_abort`
+  fires; a dip resets the clock. A lagging victim crossing its sustain
+  window right after a good rollback no longer aborts it. Single-tick tests
+  (`test_verifier.py:34`, `test_trust_integration` early_abort case) now
+  pass `abort_after_s=0`; their assertions did not change.
+- [T] 2026-11-13 for M: LLM deadline is now 90 s (`DEADLINE_S` in
+  `brain/providers/base.py`). The Go adapter's httpx timeout was also hard
+  30 s and now follows the same constant. Live calls: 16-20 s usually, one
+  hit 45 s with a 2-3k token prompt, so it is provider latency, not prompt
+  size. The brain waits for the LLM, so a slow call delays the action.
+- [T] 2026-11-13 for M,A: Smoke on Twaha's own k3d cluster, main `89ca81e`
+  + both fixes above, new `k8s/values.yaml` applied: **PASS**,
+  `incident=inc-1794542033381 outcome=incident_resolved`,
+  `detect=49.9s diagnose=95.1s recover=188.1s`. Human clicked Approve in
+  Discord at +107.8 s; rollback +107.9 s; severity 7 -> 4 (+122.9) -> 0
+  (+173.1); harm clean. Severity never rose, so early abort was not tested
+  live. Audit verified 129 records.
+- [T] 2026-11-13 for M: Smoke #3 LLM hit `deadline_exceeded` at 45 s. With
+  no diagnosis there is no prediction: card `RECOVERED; PREDICTION FAILED`,
+  "Why: unknown", outcome right_by_accident, **no trust credit**. Trust runs
+  cannot open the gate while this happens.
+- [T] 2026-11-13 for M: Smoke #4 (LLM 14.7 s, OK) **escalated, wrong
+  culprit**: `culprit_found` = `frontend-proxy` from traces, `changes: 0`,
+  rule `unknown`, "no safe action". Smoke #3 also picked `frontend-proxy`
+  first; `dependency_change` moved it to payment then, but not in #4.
+  Journal had the payment image change at +0.0 s, onset +15.1 s, so it was
+  in the window. Guess (traces evicted, Jaeger keeps 5000): `from_traces`
+  counts frontend-proxy and payment as one origin each per trace (frontend
+  span not marked error), and `Counter.most_common` breaks the tie by
+  insertion order, so the root wins. `dependency_change` then needs
+  frontend-proxy -> frontend -> checkout -> payment edges; checkout ->
+  payment has ~4 calls in the 5000-trace window, so it can drop out.
+  Suggest: on a tie, prefer the origin deepest in the trace.
+- [T] 2026-11-13 for M: Auth gap, not fixed: `POST /approvals/{id}/decide`
+  trusts `decided_by` from the request body, so any local process can approve
+  as a listed approver. Needs your call (shared secret between notifier and
+  gateway, or bind to localhost only and accept the risk).
+- [T] 2026-11-13 for M,A: More live fixes on `twaha/live-fixes-2` (Twaha OK'd
+  each; some are in M's files):
+  - `brain/culprit.py` (M): an error span is an origin only if **no** span
+    anywhere below it errors. frontend-proxy errors while the frontend span
+    under it does not, so proxy and payment tied 20-20 in every captured
+    trace and span order picked the winner (3 of 6 live samples blamed
+    frontend-proxy). All 6 now name payment.
+  - `observer/detector.py` (M): new `detection.latency_floor_ms: 100`. A
+    latency breach also needs p95 >= baseline + 100 ms. recommendation's
+    baseline p95 is 4.8 ms, so 10 ms blips paged 3 times and failed smoke
+    6's harm check (a good rollback was undone).
+  - LLM: `max_tokens` 1500 -> 4000 (reasoning counts; answers reached
+    2247); a cut-off answer now reports `truncated`, not
+    `invalid_response`. Deadline 90 s.
+  - LLM must give a `prediction` when there is an action (retried if
+    not). Before this, every live fix ended right_by_accident: the prompt
+    never asked for one. Prompt version 4.
+  - New column `incidents.why` (added to old DBs on open): the brain stores
+    the LLM's first cause sentence; every card shows our fixed sentence,
+    then `Model says: ...`. Cards are plain words, same 5 lines and
+    status names. Discord receipt links are absolute.
+- [T] 2026-11-13 for M,A: Smoke #8 on Twaha's cluster: **first FIXED**,
+  `inc-1794545748293`, detect 46.0 s, diagnose 84.8 s, recover 172.6 s;
+  prediction held, harm clean, healthy 1m 15s after the action. Smoke #7
+  was refused by `max_actions_per_hour: 3` (earlier smoke runs used it);
+  for local testing Twaha's `config/policy.yaml` has 30, uncommitted.
+- [T] 2026-11-13 for M,A: Merged main into `twaha/live-fixes-2` (`49b075c`).
+  Corrections to my notes above: early abort uses **M's grace period**; my
+  hold-30-s version is dropped. The card is **M's spec card**; I added the
+  labelled `Model says: ...` sentence, a pattern sentence instead of
+  "unknown", and a plain-name guard before any kubectl undo command. The
+  new column is `incidents.llm_why` (not `why`), so it does not clash with
+  M's journal-based `Gateway.why`. Prompt merged to version 5.

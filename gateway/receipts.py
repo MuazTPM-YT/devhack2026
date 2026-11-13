@@ -1,10 +1,12 @@
 import json
+import re
 import sqlite3
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
 from brain.redact import redact_value
+from gateway.executor import NAMESPACE
 from schemas.models import Card, Diagnosis, GatewayDecision, Incident, Receipt
 
 
@@ -107,24 +109,42 @@ def _checked(receipt: Receipt) -> str:
     return "; ".join(parts)
 
 
-# a command a tired human can paste to take the agent's action back
+# a command a tired human can paste to take the agent's action back; only plain k8s names go into one
 def _undo(receipt: Receipt, receipt_id: int) -> str:
     op, target = receipt.inverse.get("op"), receipt.target
     if receipt.outcome in ("undone", "undo_failed"):
         return f"already undone by the agent; receipt #{receipt_id}" if receipt.outcome == "undone" \
             else f"the agent's undo FAILED; restore from receipt #{receipt_id} by hand"
+    if not re.fullmatch(r"[a-z0-9-]+", target):
+        return f"restore from receipt #{receipt_id} by hand"
     if op == "restore_template":
-        return f"kubectl rollout undo deploy/{target} -n shop"
-    if op == "scale":
-        return f"kubectl scale deploy/{target} -n shop --replicas={receipt.inverse.get('replicas')}"
+        return f"kubectl rollout undo deploy/{target} -n {NAMESPACE}"
+    if op == "scale" and isinstance(receipt.inverse.get("replicas"), int):
+        return f"kubectl scale deploy/{target} -n {NAMESPACE} --replicas={receipt.inverse['replicas']}"
     return f"put configmap/{receipt.inverse.get('name')} back from receipt #{receipt_id}"
+
+
+# plain fallback when no journal fact explains it (keys: Pattern and Cause.cause_class)
+WHY = {
+    "recent_change": "a change to {svc} landed just before it started failing",
+    "resource": "{svc} ran out of memory or CPU",
+    "resource_exhaustion": "{svc} ran out of memory or CPU",
+    "failing_dependency": "something {svc} depends on is failing",
+    "protected": "{svc} is a protected datastore, so the agent may not touch it",
+    "unknown": "no clear cause found yet",
+}
+
+
+def shorten(text: str, limit: int = 220) -> str:
+    return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + "..."
 
 
 # the 5-line card (plan §6.7.1), built by code from incident, diagnosis, decision and receipt
 def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
                         decision: GatewayDecision | None = None, receipt: Receipt | None = None,
                         receipt_id: int | None = None, mitigated: bool = False, why: str | None = None,
-                        took_s: float | None = None, metric: str | None = None, did: str | None = None) -> Card:
+                        took_s: float | None = None, metric: str | None = None, did: str | None = None,
+                        pattern: str | None = None, model_says: str | None = None) -> Card:
     if receipt and receipt_id is not None:
         card = build_card(receipt, receipt_id)
     else:
@@ -142,7 +162,12 @@ def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
     def clean(text):
         return " ".join(redact_value(str(text)).split())
 
-    reason = why or (causes[0].explanation if causes else None) or (causes[0].cause_class if causes else "unknown")
+    # our fact first; the model read untrusted evidence, so its sentence is labelled, never alone
+    kind = causes[0].cause_class if causes else (pattern or "unknown")
+    reason = why or WHY.get(kind, WHY["unknown"]).format(svc=clean(incident.culprit or "the service"))
+    said = clean(model_says or (causes[0].explanation if causes else ""))
+    if said:
+        reason = f"{clean(reason)[:300]}. Model says: {shorten(said)}"
     refs = " ".join(f"[{clean(value)}]" for value in ids) or "none supplied"
     head = f"{card.status}" + (f" in {_took(took_s)}" if took_s is not None and receipt else "")
     subject = clean(incident.culprit or "cause unknown") + (f"; {clean(metric)}" if metric else "")
@@ -157,7 +182,7 @@ def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
         action += f" ({clean(decision.reason)[:200]})"
     card.text = "\n".join([
         f"{head}: {subject}",
-        f"Why: {clean(reason)[:300]} {refs}",
+        f"Why: {clean(reason)} {refs}",
         f"Did: {action}", f"Checked: {check}", f"Undo: {clean(undo)}",
     ])
     card.evidence_ids = ids

@@ -5,7 +5,7 @@ from email.utils import parsedate_to_datetime
 
 import httpx
 
-from brain.providers.base import InferenceRequest, InferenceResponse, ProviderError
+from brain.providers.base import DEADLINE_S, InferenceRequest, InferenceResponse, ProviderError
 
 ENDPOINT = "https://opencode.ai/inference/go/openai/v1/chat/completions"
 
@@ -38,7 +38,7 @@ class OpenCodeGoAdapter:
                 ENDPOINT, headers=headers,
                 json={"model": self.model, "messages": request.messages,
                       "max_tokens": request.max_tokens, "stream": False},
-                timeout=30, follow_redirects=False,
+                timeout=DEADLINE_S, follow_redirects=False,
             )
         except httpx.RequestError:
             raise ProviderError("transport_failure", retryable=True) from None
@@ -59,9 +59,12 @@ class OpenCodeGoAdapter:
             body = response.json()
             choice = body["choices"][0]
             content = choice["message"]["content"]
-            if not isinstance(content, str) or choice.get("finish_reason") == "length":
+            if not isinstance(content, str):
                 raise ValueError
-            return InferenceResponse(content, self.name, self.model, body.get("usage", {}),
-                                     response.headers.get("x-request-id"), choice.get("finish_reason"))
         except (ValueError, KeyError, IndexError, TypeError):
             raise ProviderError("invalid_response", retryable=True) from None
+        # reasoning tokens count against max_tokens; a cut-off answer is not a malformed one
+        if choice.get("finish_reason") == "length":
+            raise ProviderError("truncated", retryable=True)
+        return InferenceResponse(content, self.name, self.model, body.get("usage", {}),
+                                 response.headers.get("x-request-id"), choice.get("finish_reason"))

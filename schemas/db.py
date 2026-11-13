@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS incidents (
   id TEXT PRIMARY KEY, opened_at REAL, onset_at REAL,
   culprit TEXT, victims_json TEXT, pattern TEXT,
   major INTEGER DEFAULT 0, tier TEXT, state TEXT,
-  resolved_at REAL, severity_at_open REAL
+  resolved_at REAL, severity_at_open REAL, llm_why TEXT
 );
 CREATE TABLE IF NOT EXISTS ledger (
   pattern TEXT, action TEXT, target TEXT, source TEXT,
@@ -52,4 +52,7 @@ def connect(path: str = DEFAULT_PATH, shared: bool = False) -> sqlite3.Connectio
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
+    # DBs from before the LLM "why" column: CREATE IF NOT EXISTS never adds columns
+    if "llm_why" not in {r[1] for r in conn.execute("PRAGMA table_info(incidents)")}:
+        conn.execute("ALTER TABLE incidents ADD COLUMN llm_why TEXT")
     return conn

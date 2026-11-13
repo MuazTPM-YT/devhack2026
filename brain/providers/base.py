@@ -1,13 +1,16 @@
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+# live bundles: calls took 16-20 s, then hit 30 s and 45 s; rules still act if this runs out
+DEADLINE_S = 90
+
 
 @dataclass(frozen=True)
 class InferenceRequest:
     incident_id: str
     messages: list[dict[str, str]]
     schema: dict[str, Any]
-    max_tokens: int = 1500
+    max_tokens: int = 4000  # reasoning counts here; live answers used ~900-1100
 
 
 @dataclass(frozen=True)

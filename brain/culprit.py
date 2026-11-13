@@ -28,17 +28,36 @@ def is_error(span: dict) -> bool:
                or (t["key"] == "otel.status_code" and t.get("value") == "ERROR") for t in span.get("tags", []))
 
 
-# error span with no erroring child failed on its own: its service is the origin
+# any erroring span anywhere under span_id (a clean span in between does not hide it)
+def error_below(span_id: str, children: dict[str, list[str]], erroring: set[str]) -> bool:
+    todo, seen = list(children.get(span_id, [])), set()
+    while todo:
+        cur = todo.pop()
+        if cur in erroring:
+            return True
+        if cur not in seen:
+            seen.add(cur)
+            todo.extend(children.get(cur, []))
+    return False
+
+
+# error span with no erroring descendant failed on its own: its service is the origin
 def from_traces(traces: list[dict]) -> tuple[str | None, list[str]]:
     origin: Counter[str] = Counter()
     failed: set[str] = set()
     for trace in traces:
         service = {pid: p["serviceName"] for pid, p in trace.get("processes", {}).items()}
-        errors = [s for s in trace.get("spans", []) if is_error(s)]
-        error_parents = {r["spanID"] for s in errors for r in s.get("references", []) if r.get("refType") == "CHILD_OF"}
+        spans = trace.get("spans", [])
+        children: dict[str, list[str]] = {}
+        for s in spans:
+            for r in s.get("references", []):
+                if r.get("refType") == "CHILD_OF":
+                    children.setdefault(r["spanID"], []).append(s["spanID"])
+        errors = [s for s in spans if is_error(s)]
+        erroring = {s["spanID"] for s in errors}
         for s in errors:
             failed.add(service[s["processID"]])
-            if s["spanID"] not in error_parents:
+            if not error_below(s["spanID"], children, erroring):
                 origin[service[s["processID"]]] += 1
     culprit = origin.most_common(1)[0][0] if origin else None
     return culprit, sorted(failed - {culprit})

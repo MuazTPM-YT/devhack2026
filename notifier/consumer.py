@@ -40,13 +40,13 @@ class NotificationConsumer:
                 if card.status == "MITIGATED, NOT FIXED":
                     await self.notifier.ticket(card)
                 else:
-                    await self.notifier.fyi(card, payload.get("receipt_url", ""))
+                    await self.notifier.fyi(card, self.link(payload.get("receipt_url", "")))
             elif kind == "escalated":
                 message_id = await self.notifier.wake(card, payload.get("briefing", ""))
                 pending[incident_id] = {"card": card.model_dump(), "briefing": payload.get("briefing", ""),
                                         "last_page": time.time(), "message_id": message_id}
             else:
-                await self.notifier.fyi(card, payload.get("receipt_url", ""))
+                await self.notifier.fyi(card, self.link(payload.get("receipt_url", "")))
         if kind == "approval_decided":
             approval_id = payload["approval_id"]
             row = self.state.get(f"approval:{approval_id}")
@@ -61,6 +61,10 @@ class NotificationConsumer:
             pending.pop(incident_id, None)
         self.state.set("wakes", pending)
         self.state.set("cursor", seq)
+
+    # gateway sends "/receipts/2"; discord needs a full link to make it clickable
+    def link(self, url: str) -> str:
+        return f"{self.gateway_url.rstrip('/')}{url}" if url.startswith("/") else url
 
     async def repage_once(self):
         pending = self.state.get("wakes", {})
