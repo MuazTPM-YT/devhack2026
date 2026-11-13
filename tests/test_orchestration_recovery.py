@@ -101,7 +101,7 @@ async def test_shared_cause_gets_one_commander(tmp_path):
     assert len(brain.submitted) == 1
 
 
-async def test_later_victim_joins_and_bumps_scope(tmp_path):
+async def test_later_victim_of_same_cause_joins_without_new_scope(tmp_path):
     world, clock = World(), Clock()
     brain = coordinated(world, tmp_path, clock, max_active_commanders=1)
     coord = brain.coordinator
@@ -110,7 +110,7 @@ async def test_later_victim_joins_and_bumps_scope(tmp_path):
     [iid] = coord.ws.unfinished()
     await settle(coord)
     await coord.on_signals(batch(ep("checkout", breach=965.0), delivery="delivery-2"))
-    assert coord.ws.unfinished() == [iid] and coord.ws.workspace(iid)["scope_revision"] == 1
+    assert coord.ws.unfinished() == [iid] and coord.ws.workspace(iid)["scope_revision"] == 0
     assert [e["payload"]["unhealthy"] for e in published(world, "alerts_grouped")] == [["checkout", "payment"]]
 
 
@@ -340,3 +340,26 @@ async def test_gateway_progress_moves_the_phase(tmp_path):
     coord.on_terminal(iid)
     coord.on_intent(iid, "awaiting_approval")  # late event after the end changes nothing
     assert coord.ws.workspace(iid)["phase"] == "terminal"
+
+
+# live (phase D): checkout joined as a victim of the same cause mid-diagnosis, the right answer was thrown
+# away and the out-of-budget rerun fell back to the decoy fix. Same cause = nothing to replan
+async def test_victim_of_same_cause_joining_mid_diagnosis_does_not_replan(tmp_path):
+    world, clock = World(), Clock()
+    brain = coordinated(world, tmp_path, clock)
+    coord = brain.coordinator
+    await coord.start()
+    real, calls = brain.handle, []
+
+    async def joined_meanwhile(incident, **kw):
+        calls.append(incident.unhealthy)
+        if len(calls) == 1:
+            await coord.on_signals(batch(ep("checkout", breach=965.0), delivery="delivery-2"))
+        return await real(incident, **kw)
+
+    brain.handle = joined_meanwhile
+    await coord.on_signals(batch(ep("payment")))
+    [iid] = coord.ws.unfinished()
+    await settle(coord)
+    assert len(calls) == 1 and len(brain.submitted) == 1
+    assert [m.service for m in coord.ws.memberships(iid)] == ["checkout", "payment"]

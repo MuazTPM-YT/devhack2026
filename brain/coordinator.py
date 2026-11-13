@@ -246,7 +246,10 @@ class Coordinator:
                 events.append(("incident_scope_changed", iid, {"scope_revision": 0, "services": g.services,
                                                                "reasons": [g.reason, *([g.cause] if g.cause else [])]}))
             for episode_id, iid, reason, cause in decision.joins:
-                revision = self.ws.bump(c, iid, "scope")
+                w = c.execute("SELECT scope_revision, cause_key FROM orchestration_workspaces WHERE incident_id=?",
+                              (iid,)).fetchone()
+                # a victim of the cause already under investigation changes nothing it assumed: no replan
+                revision = int(w["scope_revision"]) if cause == w["cause_key"] else self.ws.bump(c, iid, "scope")
                 self.ws.add_membership(c, Membership(incident_id=iid, episode_id=episode_id,
                                                      service=by_id[episode_id].service, reason=reason,
                                                      added_revision=revision))
