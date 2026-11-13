@@ -546,6 +546,24 @@ class Gateway:
             self.conn.commit()
         return {"credited": True, "success": success}
 
+    # a failed watchdog undo blocks every action until a human has looked at the cluster; this is how
+    # they say so (approver only, rehearsal identity excluded). Recorded on the audit log.
+    async def clear_receipt(self, receipt_id: int, decided_by: str) -> dict:
+        if decided_by not in self.approvers or decided_by == approvals.REHEARSAL_APPROVER:
+            return {"cleared": False, "reason": "not an approver"}
+        with self.lock:
+            r = self.conn.execute("SELECT incident_id, outcome FROM receipts WHERE id=?", (receipt_id,)).fetchone()
+            if r is None:
+                return {"cleared": False, "reason": "unknown receipt"}
+            if r["outcome"] != "watchdog_failed":
+                return {"cleared": False, "reason": f"receipt is {r['outcome']}, nothing to clear"}
+            self.conn.execute("UPDATE receipts SET outcome='undo_failed' WHERE id=?", (receipt_id,))
+            self.conn.commit()
+        await self.publish({"type": "checklist_step", "incident_id": r["incident_id"], "payload": {
+            "name": "human_clear", "passed": True,
+            "reason": f"receipt #{receipt_id} cleared by {decided_by} after a failed undo"}})
+        return {"cleared": True}
+
     # ---- background upkeep (§6.4.8 expiry, §6.4.10 watchdog) ------------------------------------
     async def expire_approvals(self) -> int:
         now = self.clock()

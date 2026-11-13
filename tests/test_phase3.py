@@ -124,6 +124,26 @@ async def test_failed_watchdog_undo_keeps_blocking(tmp_path):
     assert (again.decision, again.failed_step) == ("refused", "policy")
 
 
+# the block had no way out but editing the database by hand (live, twice); an approver can now clear it
+async def test_approver_clears_failed_watchdog_receipt(tmp_path):
+    from kubernetes.client.rest import ApiException
+    w, d = await executed_and_parked(tmp_path)
+    w.apps.fail_real = ApiException(status=403, reason="forbidden")
+    w.now[0] += 200
+    assert await w.gw.watchdog() == 1
+    w.apps.fail_real = None
+    assert await w.gw.clear_receipt(d.receipt_id, "stranger") == {"cleared": False, "reason": "not an approver"}
+    assert await w.gw.clear_receipt(999, "u1") == {"cleared": False, "reason": "unknown receipt"}
+    assert await w.gw.clear_receipt(d.receipt_id, "u1") == {"cleared": True}
+    assert w.events[-1]["payload"]["name"] == "human_clear"
+    assert w.conn.execute("SELECT outcome FROM receipts").fetchone()[0] == "undo_failed"
+    assert (await w.gw.clear_receipt(d.receipt_id, "u1"))["cleared"] is False  # only once
+    again = await w.gw.submit(action())
+    assert again.failed_step != "policy"
+    for t in w.gw.tasks:
+        t.cancel()
+
+
 async def test_expired_approvals_are_swept(tmp_path):
     w = World(tmp_path)
     d = await w.gw.submit(action())

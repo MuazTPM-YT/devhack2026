@@ -26,6 +26,10 @@ class Decide(BaseModel):
     decided_by: str
 
 
+class Clear(BaseModel):
+    decided_by: str
+
+
 class RehearsalCredit(BaseModel):
     receipt_id: int
     diagnosis_matched: bool
@@ -94,6 +98,11 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
     async def decide(approval_id: str, body: Decide) -> dict:
         d = await holder["gw"].decide(approval_id, body.decision, body.decided_by)
         return d.model_dump(mode="json")
+
+    # after a failed watchdog undo: an approver confirms the cluster was checked, actions may run again
+    @app.post("/receipts/{receipt_id}/clear")
+    async def clear_receipt(receipt_id: int, body: Clear) -> dict:
+        return await holder["gw"].clear_receipt(receipt_id, body.decided_by)
 
     # Q2: bench-only; 404 unless the gateway started with ONCALL_REHEARSAL=1
     @app.post("/ledger/rehearsal")
