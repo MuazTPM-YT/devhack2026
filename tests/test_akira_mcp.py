@@ -118,6 +118,14 @@ async def test_default_server_has_no_write_tools(env):
     assert all(t.annotations.readOnlyHint for t in tools.values())
 
 
+async def test_handshake_carries_the_akira_logo(env):
+    async with create_connected_server_and_client_session(server(Backend())) as client:
+        info = await client.initialize()
+    [icon] = info.serverInfo.icons
+    assert icon.mimeType == "image/png" and icon.sizes == ["64x64"]
+    assert icon.src.startswith("data:image/png;base64,iVBORw0KGgo")  # base64 of the PNG signature
+
+
 async def test_journal_tool_needs_the_api_token(env):
     env.delenv(auth.ENV)
     assert "get_recent_changes" not in {t.name for t in await server(Backend()).list_tools()}
