@@ -5,10 +5,28 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** plan audit done on `muaz/plan-audit` (not pushed); live shop rerun pending (A)
-**Branches:** all merged up to PR #33. Now `muaz/plan-audit` (not pushed)
+**Current phase:** agent polish on `muaz/agent-polish` (from `muaz/flow-ui`, not pushed); live shop rerun pending (A)
+**Branches:** all merged up to PR #38. Now `muaz/agent-polish` (not pushed)
 
 ## Done (with proof)
+
+- Agent polish (branch `muaz/agent-polish`), Muaz chose 1a 2a 3 samples 4a 5a 6a:
+  - Shared token `ONCALL_API_TOKEN` (`schemas/auth.py`, header `X-Oncall-Token`): gateway,
+    brain and observer refuse every non-GET without it (decide, clear, publish, MCP).
+    Closes T's auth gap. Reads stay open for the UI.
+  - Company runbooks `config/runbooks.yaml` (samples RB-01..07, RB-99), `brain/runbooks.py`:
+    code matches; the LLM reads them (prompt v6); the gateway enforces `require_approval`
+    (step 7, even with an open trust gate) and `forbid_tools` (step 3).
+  - Experience memory `brain/memory.py`: similar finished incidents + verified outcome go
+    into the prompt and Discord ("seen before"). No training; RL/GRPO rejected (rented
+    model, 4 GB GPU, tens of runs). Injected model text is dropped.
+  - Discord embeds (`notifier/embeds.py`): audience line, color per status, runbook, seen
+    before, approvers, expiry, page count; decisions/acks edit the embed (who, when).
+  - Detector: a new fault after the open incident went quiet opens its own incident
+    (A's open item 2).
+  Proof: `uv run pytest` -> `414 passed`; `ruff check .` -> `All checks passed!`; `mypy ...
+  chaos` -> `no issues found in 67 source files`; new hard-rule and detector tests fail on
+  old code; live Discord: 5 test embeds accepted in the FYI channel. Cluster not run.
 
 - Plan audit (branch `muaz/plan-audit`), Muaz chose: edit teammates' files,
   human-approved data-store scale, rehearsal lifts hour budget, build UI pages.
