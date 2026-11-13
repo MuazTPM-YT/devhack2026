@@ -297,6 +297,34 @@ async def test_crash_in_handle_still_escalates(tmp_path):
     assert brain.conn.execute("SELECT state FROM incidents").fetchone()[0] == "escalated"
 
 
+# the brain used to ignore re-POSTs, so an incident that grew to 3+ sick services never went major
+async def test_regroup_turns_grown_incident_major_without_a_second_action(tmp_path):
+    class Spread(World):
+        def __call__(self, request):
+            if request.url.path == "/health/now":
+                sick = {"err_ratio": 0.3, "p95_ms": 100.0, "unhealthy": True}
+                return httpx.Response(200, json={"ts": NOW, "services": {
+                    "checkout": {**sick, "first_breach_ts": 960.0}, "accounting": {**sick, "first_breach_ts": 965.0},
+                    "fraud-detection": {**sick, "first_breach_ts": 970.0}}})
+            if request.url.path == "/journal":
+                return httpx.Response(200, json=[{"id": 7, "object": "deployment/kafka", "kind": "replicas",
+                                                  "ts": 950.0, "field_manager": "chaos-panel", "by_agent": False,
+                                                  "diff": {"replicas": {"old": 1, "new": 0}}}])
+            return super().__call__(request)
+
+    world = Spread()
+    brain = make(world, [], tmp_path)
+    small = INC.model_copy(update={"unhealthy": ["checkout"]})
+    assert await brain.regroup(small) is None  # one service is not major
+    grown = INC.model_copy(update={"unhealthy": ["accounting", "checkout", "fraud-detection"]})
+    ranked = await brain.regroup(grown)
+    assert ranked and ranked[0]["target"] == "kafka" and ranked[0]["kind"] == "shared_change"
+    assert world.published[-1]["type"] == "major_incident"
+    assert tuple(brain.conn.execute("SELECT major, culprit FROM incidents").fetchone()) == (1, "kafka")
+    assert brain.submitted == []
+    assert await brain.regroup(grown) is None  # once per incident
+
+
 # MCP/schema refused it before the checklist ran: no one else would end the incident (it stayed open forever)
 async def test_schema_refusal_escalates_with_why(tmp_path):
     world = World()
