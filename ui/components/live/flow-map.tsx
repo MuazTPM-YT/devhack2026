@@ -9,16 +9,16 @@ import type { Incident } from "@/lib/live";
 
 import styles from "./flow-map.module.css";
 
-// sized for the centre pane (~560-900 px wide), so 1 viewBox unit stays close to 1 css px
-const W = 660;
+// sized for the centre pane (~600-900 px wide), so 1 viewBox unit stays close to 1 css px
+const W = 692;
 const H = 318;
-const NW = 116;
+const NW = 124;
 const NH = 58;
 
-// component centres; the main row is the incident's path left to right
+// component centres; the main row is the incident's path left to right, 140 apart (16 between boxes)
 const POS: Record<NodeId, [number, number]> = {
-  shop: [62, 160], observer: [194, 160], brain: [326, 160], gateway: [458, 160], k8s: [598, 160],
-  llm: [326, 40], notifier: [458, 40], verifier: [528, 278], specialist: [194, 40],
+  shop: [66, 160], observer: [206, 160], brain: [346, 160], gateway: [486, 160], k8s: [626, 160],
+  llm: [346, 40], notifier: [486, 40], verifier: [556, 278], specialist: [206, 40],
 };
 
 type Pt = [number, number];
@@ -72,10 +72,6 @@ function Pulse({ pts }: { pts: Pt[] }) {
   );
 }
 
-function cut(text: string, n: number) {
-  return text.length > n ? `${text.slice(0, n - 1)}…` : text;
-}
-
 // live map of the services one incident passes through; `upto` picks the event in focus
 export function FlowMap({ incident, upto }: { incident: Incident | null; upto: number | null }) {
   const events = incident?.events ?? [];
@@ -127,9 +123,14 @@ export function FlowMap({ incident, upto }: { incident: Incident | null; upto: n
               <g key={id} className={`${styles.node} ${styles[n.state] ?? ""} ${id === "specialist" ? styles.appear : ""}`} transform={`translate(${cx - NW / 2},${cy - NH / 2})`}>
                 <title>{`${NODES[id].title} (${NODES[id].sub})${n.last ? `\n${n.last.title}${n.last.detail ? `\n${n.last.detail}` : ""}` : ""}`}</title>
                 <rect width={NW} height={NH} rx="3" className={styles.box} />
-                <text x="9" y="18" className={styles.title}>{NODES[id].title}</text>
-                <text x="9" y="31" className={styles.sub}>{NODES[id].sub}</text>
-                <text x="9" y="48" className={styles.last}>{n.last ? cut(n.last.title, 19) : "idle"}</text>
+                {/* the browser lays the words out inside the box and cuts what does not fit: nothing can bleed */}
+                <foreignObject x="8" y="5" width={NW - 16} height={NH - 8}>
+                  <div className={styles.words}>
+                    <span className={styles.title} data-counted={n.count > 0}>{NODES[id].title}</span>
+                    <span className={styles.sub}>{NODES[id].sub}</span>
+                    <span className={styles.last}>{n.last ? n.last.title : "idle"}</span>
+                  </div>
+                </foreignObject>
                 {n.count > 0 && (
                   <g transform={`translate(${NW - 7},12)`}>
                     <rect x="-20" y="-8" width="20" height="14" rx="2" className={styles.countBox} />
