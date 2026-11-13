@@ -17,7 +17,12 @@ section. Only my own work here; cross-team facts go in
   2); two gateways after a restart broke the audit chain (`dc3fcc8`: audit writer lock, demo.sh
   `--timeout-graceful-shutdown 5`; live: 2nd gateway refused, stop took 6 s). The 3 stray audit lines are kept in
   `data/audit.zombie-2026-11-14.jsonl`; `/audit/verify` -> ok, 124 records. Merged main (`978f0b5`), 714 passed.
-  Live: agent picked the right fix past a decoy twice; one fix executed (flag revert). Retries NOT yet seen live.
+  Live: agent picked the right fix past a decoy twice; one fix executed (flag revert).
+  Retry live 2026-11-14 00:24-00:37 (flag 50% + payment:v2-bad, both needed): fix 1 rollback approved, did not
+  recover, undone -> `retry_started` -> agent read the failed fix, chose flag revert -> approved, did not recover,
+  undone -> page "tried 2 fixes; each failed", `no retry: action budget used up` (1 fix earlier that hour).
+  Fixed after: retry push line (`d57c0cd`); test gateway apps wrote live data/audit.jsonl (`4aff979`).
+  715 passed. First model call hit the 150 s deadline (rule pick used): T's open item.
 
 - Retries + Discord origin (branch `muaz/agent-polish`, not pushed). Muaz chose: 3 fixes per incident, retries
   run alone (trust gate kept), only fixes run and cleanly undone retry, agent mode only, all three origin parts.
