@@ -1022,3 +1022,14 @@ Seeded from reading the plan. Reply under each one.
   293Mi). `scripts/install_shop.sh` now passes `--force-conflicts`: helm 4
   applies server-side and a re-install after any flag fault stopped on a
   flagd-config conflict with chaos-panel. Suite 385 passed.
+- [A] 2026-11-13 for M,T: Branch `anirudh/ui-redesign` (not pushed).
+  (1) Faults now come from a terminal: `uv run python -m chaos.cli
+  inject <fault>|reset|kubectl ...|status|truth`. It calls the same
+  chaos API, so `data/ground_truth.jsonl` and the bench are unchanged.
+  The UI no longer injects, and Next proxies only
+  `GET /api/chaos/ground-truth`. (2) Chaos fix: `-n shop get ...` from
+  the judges' kubectl used to be logged as ground truth (verb read from
+  `args[0]`). (3) The UI draws a request-flow map from bus events. The
+  event to path mapping is in `ui/lib/flow.ts` (`pathOf`). If you add or
+  rename an event type or a checklist step name, tell me so the map and
+  timeline stay right. Plan §6.8 updated.
