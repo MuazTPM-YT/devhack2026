@@ -27,6 +27,9 @@
 .count { font: 600 9.5px var(--mono); fill: var(--ink-soft); }
 
 .node { cursor: default; }
+/* the specialist box shows up mid-incident: fade, never pop */
+.appear { transition: opacity 200ms var(--ease-out); }
+@starting-style { .appear { opacity: 0; } }
 .idle .last { font-style: italic; }
 .done .box { stroke: var(--ink); }
 .done .last { fill: var(--ink-soft); }

@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef } from "react";
 
 import { since } from "@/lib/format";
 import { useMoreRight } from "@/lib/use-more-right";
-import { EDGE_LABEL, flowAt, NODES, type NodeId } from "@/lib/request-flow";
+import { EDGE_LABEL, flowAt, NODES, type NodeId, nodesFor } from "@/lib/request-flow";
 import type { Incident } from "@/lib/live";
 
 import styles from "./flow-map.module.css";
@@ -82,6 +82,7 @@ export function FlowMap({ incident, upto }: { incident: Incident | null; upto: n
   const at = upto ?? events.length - 1;
   const open = incident != null && incident.outcome == null && upto == null;
   const view = flowAt(events, at, open);
+  const shown = nodesFor(events);
   const hop = route(view.path);
   const routeKeys = new Set(view.path.slice(1).map((id, i) => `${view.path[i]}>${id}`));
   const caption = view.path.length > 1
@@ -105,24 +106,25 @@ export function FlowMap({ incident, upto }: { incident: Incident | null; upto: n
         <svg viewBox={`0 0 ${W} ${H}`} className={styles.map} role="img"
           aria-label={view.focus && focusLine ? `${focusLine.title}. ${caption}` : "No incident yet; every service idle"}>
           {Object.entries(EDGES).map(([key, pts]) => {
-            const [a, b] = key.split(">");
+            const [a, b] = key.split(">") as [NodeId, NodeId];
+            if (!shown.includes(a) || !shown.includes(b)) return null;
             const used = (view.edges[key] ?? 0) + (view.edges[`${b}>${a}`] ?? 0);
             const now = routeKeys.has(key) || routeKeys.has(`${b}>${a}`);
             const cls = now ? styles.edgeNow : used ? styles.edgeUsed : styles.edge;
             return (
               <g key={key}>
                 <path d={d(pts)} className={cls}>
-                  <title>{`${NODES[a as NodeId].title} ↔ ${NODES[b as NodeId].title}: ${EDGE_LABEL[key] ?? ""}${used ? ` · ${used}×` : ""}`}</title>
+                  <title>{`${NODES[a].title} ↔ ${NODES[b].title}: ${EDGE_LABEL[key] ?? ""}${used ? ` · ${used}×` : ""}`}</title>
                 </path>
               </g>
             );
           })}
 
-          {(Object.keys(NODES) as NodeId[]).map((id) => {
+          {shown.map((id) => {
             const n = view.nodes[id];
             const [cx, cy] = POS[id];
             return (
-              <g key={id} className={`${styles.node} ${styles[n.state] ?? ""}`} transform={`translate(${cx - NW / 2},${cy - NH / 2})`}>
+              <g key={id} className={`${styles.node} ${styles[n.state] ?? ""} ${id === "specialist" ? styles.appear : ""}`} transform={`translate(${cx - NW / 2},${cy - NH / 2})`}>
                 <title>{`${NODES[id].title} (${NODES[id].sub})${n.last ? `\n${n.last.title}${n.last.detail ? `\n${n.last.detail}` : ""}` : ""}`}</title>
                 <rect width={NW} height={NH} rx="3" className={styles.box} />
                 <text x="9" y="18" className={styles.title}>{NODES[id].title}</text>
