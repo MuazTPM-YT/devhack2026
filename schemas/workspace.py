@@ -12,7 +12,7 @@ from schemas.orchestration import (BudgetUse, DelegationRecord, FindingResult, F
                                    Membership, OrchestrationPolicy, SignalAck, SignalEpisode, TaskSummary,
                                    WorkspaceSnapshot, fingerprint)
 
-CAS_COLUMNS = {"phase", "deadline_at", "owner", "lease_epoch", "last_error", "tool_calls_used",
+CAS_COLUMNS = {"phase", "cause_key", "deadline_at", "owner", "lease_epoch", "last_error", "tool_calls_used",
                "specialists_started"}
 CALL_COUNTED = ("reserved", "ok", "error", "unknown")  # every started call costs, even a failed one
 
@@ -50,19 +50,21 @@ class Workspace:
     # False when this revision (or a newer one) is already stored: redelivery or out-of-order update
     def upsert_episode(self, ep: SignalEpisode) -> bool:
         with self.tx() as c:
-            old = c.execute("SELECT source_revision FROM signal_episodes WHERE episode_id=?",
-                            (ep.episode_id,)).fetchone()
-            if old and old[0] >= ep.source_revision:
-                return False
-            c.execute("INSERT INTO signal_episodes (episode_id, cluster, namespace, service, symptom, "
-                      "first_breach_at, sustained_at, last_observed_at, recovered_at, source_revision, evidence_json) "
-                      "VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(episode_id) DO UPDATE SET symptom=excluded.symptom, "
-                      "last_observed_at=excluded.last_observed_at, recovered_at=excluded.recovered_at, "
-                      "source_revision=excluded.source_revision, evidence_json=excluded.evidence_json",
-                      (ep.episode_id, ep.cluster, ep.namespace, ep.service, ep.symptom, ep.first_breach_at,
-                       ep.sustained_at, ep.last_observed_at, ep.recovered_at, ep.source_revision,
-                       json.dumps(ep.evidence_ids)))
-            return True
+            return self.upsert(c, ep)
+
+    def upsert(self, c: sqlite3.Connection, ep: SignalEpisode) -> bool:
+        old = c.execute("SELECT source_revision FROM signal_episodes WHERE episode_id=?", (ep.episode_id,)).fetchone()
+        if old and old[0] >= ep.source_revision:
+            return False
+        c.execute("INSERT INTO signal_episodes (episode_id, cluster, namespace, service, symptom, "
+                  "first_breach_at, sustained_at, last_observed_at, recovered_at, source_revision, evidence_json) "
+                  "VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(episode_id) DO UPDATE SET symptom=excluded.symptom, "
+                  "last_observed_at=excluded.last_observed_at, recovered_at=excluded.recovered_at, "
+                  "source_revision=excluded.source_revision, evidence_json=excluded.evidence_json",
+                  (ep.episode_id, ep.cluster, ep.namespace, ep.service, ep.symptom, ep.first_breach_at,
+                   ep.sustained_at, ep.last_observed_at, ep.recovered_at, ep.source_revision,
+                   json.dumps(ep.evidence_ids)))
+        return True
 
     def episode(self, episode_id: str) -> SignalEpisode | None:
         r = self.row("SELECT * FROM signal_episodes WHERE episode_id=?", (episode_id,))

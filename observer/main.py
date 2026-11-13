@@ -7,6 +7,7 @@ import os
 import sqlite3
 import threading
 import time
+import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 
@@ -16,10 +17,13 @@ from fastapi import FastAPI, HTTPException
 from gateway.client import read_events
 from observer import baselines, journal
 from observer.detector import Detector, fetch_readings
+from observer.episodes import EpisodeTracker
 from observer.kube_watch import Tracker, run_watch
-from schemas import auth, config
+from schemas import auth, config, migrations
 from schemas.db import DEFAULT_PATH, connect
 from schemas.models import Card, Incident
+from schemas.orchestration import OrchestrationPolicy, SignalBatch, load_policy
+from schemas.workspace import Workspace
 from schemas import logs
 
 logs.setup()
@@ -38,7 +42,8 @@ def require_env(*names: str) -> list[str]:
 class Observer:
     def __init__(self, conn: sqlite3.Connection, tracker: Tracker, http: httpx.AsyncClient, prom_url: str,
                  brain_url: str, gateway_url: str, policy: dict, queries: dict, services: list[str],
-                 clock: Callable[[], float] = time.time):
+                 clock: Callable[[], float] = time.time, orch: OrchestrationPolicy | None = None,
+                 workspace: Workspace | None = None):
         d = policy["detection"]
         self.detector = Detector(d["error_ratio_threshold"], d["latency_multiplier"], d["sustain_seconds"],
                                  policy["major_incident"]["within_seconds"], d["latency_floor_ms"])
@@ -51,7 +56,17 @@ class Observer:
             self.baselines = baselines.load(conn)
         self.health: dict | None = None
         self.undelivered: set[str] = set()
-        self.detector.incident = self.open_incident(clock())
+        # orchestration: shadow = legacy path + episodes to the brain; coordinated = episodes only, the
+        # brain's coordinator opens, groups and closes incidents
+        self.mode = orch.mode if orch else "disabled"
+        self.workspace = workspace
+        self.episodes: EpisodeTracker | None = None
+        if self.mode != "disabled":
+            if workspace is None:
+                raise RuntimeError(f"orchestration mode {self.mode} needs the workspace database")
+            self.episodes = EpisodeTracker(d["error_ratio_threshold"], workspace.max_source_revision())
+            self.episodes.restore(workspace.open_episodes())
+        self.detector.incident = self.open_incident(clock()) if self.mode != "coordinated" else None
 
     # a restart forgot the open incident and opened a second one for the same fault (e2e: two approval pages).
     # Take back the newest unfinished one younger than the max age; the event replay from seq 0 still closes it.
@@ -86,6 +101,11 @@ class Observer:
             log.warning("prometheus has no span metrics for any service; keeping last health")
             self.health = {**(self.health or {"severity": 0, "services": {}}), "ts": now, "prometheus_ok": False}
             return None
+        if self.mode == "coordinated":
+            health = self.detector.assess(now, readings, self.baselines, self.tracker.bad_pods(now))
+            self.health = {**health, "prometheus_ok": True, "last_ok_ts": now}
+            await self.signal(health)
+            return None
         await self.expire_stuck_incident(now)
         health, event = self.detector.tick(now, readings, self.baselines, self.tracker.bad_pods(now))
         self.health = {**health, "prometheus_ok": True, "last_ok_ts": now}
@@ -93,7 +113,40 @@ class Observer:
             await self.announce(*event)
         elif self.undelivered and self.detector.incident:
             await self.announce("incident_opened", self.detector.incident, retry=True)
+        if self.mode == "shadow":
+            try:  # shadow must never disturb the legacy path
+                await self.signal(health)
+            except Exception as e:
+                log.error("shadow signals failed: %r", e)
         return event
+
+    # episode changes + their delivery, in one transaction; then send whatever is due, oldest first
+    async def signal(self, health: dict) -> None:
+        assert self.episodes is not None and self.workspace is not None
+        changes = self.episodes.update(health)
+        if changes:
+            batch = SignalBatch(delivery_id=f"sig-{uuid.uuid4().hex[:16]}", source_revision=self.episodes.revision,
+                                observed_at=health["ts"], shadow=self.mode == "shadow", episodes=changes)
+            with self.workspace.tx() as c:
+                for ep in changes:
+                    self.workspace.upsert(c, ep)
+                self.workspace.enqueue(c, batch.delivery_id, "brain", "signals", None, batch.model_dump(mode="json"))
+        await self.deliver_signals()
+
+    async def deliver_signals(self) -> None:
+        assert self.workspace is not None
+        for row in self.workspace.due("brain"):
+            try:
+                r = await self.http.post(f"{self.brain_url}/signals", content=row["body_json"], timeout=5,
+                                         headers={**auth.headers(), "content-type": "application/json"})
+                if r.status_code == 409:
+                    log.error("brain refused signals (%s): observer and brain orchestration modes differ",
+                              r.text[:200])
+                r.raise_for_status()
+            except httpx.HTTPError as e:
+                self.workspace.mark_failed(row["event_id"], type(e).__name__)
+                return  # keep order: later batches wait for this one
+            self.workspace.mark_delivered(row["event_id"])
 
     # record + tell the bus and the brain; neither being down stops detection, and an incident the brain
     # never got is re-sent every poll (else it stays open and blocks every later incident)
@@ -192,6 +245,11 @@ def build_from_env() -> tuple[Observer, list[threading.Thread], threading.Event]
     auth.agent_start()  # brain and gateway refuse our POSTs without it; fail at start
     policy, queries, services = config.load("policy"), config.load("queries"), config.load("services")
     conn = connect(DEFAULT_PATH, shared=True)
+    orch, workspace = load_policy(), None
+    if orch.mode != "disabled":
+        wconn = connect(DEFAULT_PATH, shared=True)  # own connection: the workspace runs its own transactions
+        migrations.require(wconn)
+        workspace = Workspace(wconn, orch)
     tracker = Tracker(conn, services["flag_config"]["configmap"])
     api = kube_config.new_client_from_config(config_file=kubeconfig)
     apps, core = client.AppsV1Api(api), client.CoreV1Api(api)
@@ -201,7 +259,7 @@ def build_from_env() -> tuple[Observer, list[threading.Thread], threading.Event]
                                 (core.list_namespaced_config_map, "configmap"),
                                 (core.list_namespaced_pod, "pod"))]
     observer = Observer(conn, tracker, httpx.AsyncClient(), prom, brain, gateway, policy, queries,
-                        list(services["services"]))
+                        list(services["services"]), orch=orch, workspace=workspace)
     return observer, threads, stop
 
 
@@ -216,7 +274,9 @@ def create_app(observer: Observer | None = None) -> FastAPI:
         app.state.observer = obs
         for t in threads:
             t.start()
-        tasks = [asyncio.create_task(obs.run()), asyncio.create_task(obs.follow_terminal_events())]
+        tasks = [asyncio.create_task(obs.run())]
+        if obs.mode != "coordinated":  # coordinated: the brain's coordinator follows terminal events
+            tasks.append(asyncio.create_task(obs.follow_terminal_events()))
         if not obs.baselines:
             tasks.append(asyncio.create_task(obs.refresh_baselines()))
         yield

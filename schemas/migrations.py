@@ -15,6 +15,7 @@ CREATE TABLE orchestration_workspaces (
   revision INTEGER NOT NULL DEFAULT 0,
   scope_revision INTEGER NOT NULL DEFAULT 0,
   plan_revision INTEGER NOT NULL DEFAULT 0,
+  cause_key TEXT,
   created_at REAL NOT NULL,
   deadline_at REAL,
   owner TEXT,
