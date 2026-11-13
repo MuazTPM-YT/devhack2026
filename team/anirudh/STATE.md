@@ -10,6 +10,18 @@ section. Only my own work here; cross-team facts go in
 
 ## Done (with proof)
 
+- UI revamp + emil-design-eng audit, 2026-11-13 (df70108). Skill pack
+  `emilkowalski/skills` installed project-scoped in `.claude/skills/` +
+  `skills-lock.json` (untracked, not committed). Decisions by Anirudh:
+  neutral paper/ink + oxblood accent, Geist only, slim light sidebar,
+  Overview as `/`, live page at `/live`. Audit fixes applied (loops on
+  persistent elements removed, row entrance motion removed, strong
+  easing tokens, `:active` press, gated hover, gentler reduced motion,
+  Escape closes drawer instantly, 100dvh, 16px select, "1m 60s" and
+  "1 events" bugs). Checks: UI 30 pass, tsc clean, build OK, pytest 400,
+  ruff clean. Screenshots 1440/1680/900/390 px from a prod build on
+  :3001 (scratchpad `rv/`), no console errors.
+
 - End-to-end bad-deploy through the CLI, UI and Discord, 2026-11-13:
   run 3 `incident_resolved`, card `FIXED in 2m 42s: payment; payment
   errors 43.0% -> 0.0%`, receipt #13, prediction held, harm clean,
@@ -176,6 +188,10 @@ section. Only my own work here; cross-team facts go in
 
 ## Next
 
+- Restart the Next dev server on :3000: it serves a stale `/live`
+  (hydration error); the auto-mode permission check blocked me from
+  killing it. A prod build of the new UI runs on :3001 from my session.
+- Break-ui dev toggle (Demo / Worst case) not wired; offered.
 0. **REMINDER for Anirudh: remove the `?demo=1` replay before submission**
    (`ui/lib/demo.ts`, the demo branch in `ui/lib/use-live.ts` and
    `ui/lib/use-receipt.ts`, the Replay button in
