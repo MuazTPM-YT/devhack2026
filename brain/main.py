@@ -25,6 +25,9 @@ from brain.llm import DiagnosisService
 from schemas import config
 from schemas.db import DEFAULT_PATH, connect
 from schemas.models import ActionRequest, GatewayDecision, Incident
+from schemas import logs
+
+logs.setup()
 
 log = logging.getLogger("brain")
 

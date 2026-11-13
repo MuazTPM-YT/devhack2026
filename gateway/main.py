@@ -19,6 +19,9 @@ from gateway.mcp_server import build_mcp
 from gateway.receipts import ReceiptStore, create_receipts_router
 from schemas import config
 from schemas.db import DEFAULT_PATH, connect
+from schemas import logs
+
+logs.setup()
 
 
 class Decide(BaseModel):

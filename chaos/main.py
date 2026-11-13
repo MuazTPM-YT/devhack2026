@@ -15,6 +15,9 @@ from pydantic import BaseModel, Field
 from chaos import faults, ground_truth
 from chaos.faults import KubectlError, Kubectl
 from chaos.reset import ensure_snapshot, reset
+from schemas import logs
+
+logs.setup()
 
 # URL path -> fault; every bench/harness.py SCENARIOS name has a route here
 FAULTS: dict[str, Callable[[Kubectl], dict[str, str]]] = {

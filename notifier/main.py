@@ -9,6 +9,9 @@ from fastapi import FastAPI
 from notifier.consumer import NotificationConsumer
 from notifier.discord_bot import ApprovalController, DiscordNotifier
 from notifier.state import NotifierState
+from schemas import logs
+
+logs.setup()
 
 
 def required(name: str) -> str:

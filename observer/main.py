@@ -19,6 +19,9 @@ from observer.kube_watch import Tracker, run_watch
 from schemas import config
 from schemas.db import DEFAULT_PATH, connect
 from schemas.models import Card, Incident
+from schemas import logs
+
+logs.setup()
 
 log = logging.getLogger("observer")
 TERMINAL = {"incident_resolved", "escalated", "handed_off"}
