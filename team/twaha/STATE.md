@@ -1,11 +1,41 @@
 # Twaha [T]: state
 
-**Last updated:** 2026-11-13
-**Current phase:** Orchestration P0-P8 coded on `twaha/orchestration`, offline checks only, off by default
-**Branch:** `twaha/orchestration` off `origin/main` `7c6d808`, 14 commits, not pushed
+**Last updated:** 2026-11-14
+**Current phase:** UI shows the orchestrator (Agents band) on `twaha/ui-agents`, checked in the browser
+**Branch:** `twaha/ui-agents` off `origin/main` `5fa827d`, 8 commits, not pushed
 **Implementation:** PRs #8, #12, #15, #43 merged
 
 ## Done (with proof)
+
+- Agents band (`twaha/ui-agents`, 2026-11-14). Plan: `~/.claude/plans/ok-everything-works-well-velvet-snowflake.md`.
+  UI only, no backend change, no new dependency.
+  - `/live` centre column: `ui/components/live/agent-lanes.tsx`, one lane per agent on one time axis (Commander
+    or the single Agent, each specialist with a real task id, the Fix), hand-off and finding connectors plus the
+    same as text, model requests against `max_model_requests` (coordinated incidents only). Shows for
+    single-agent incidents too. Pure derivation `agentLanes()` / `nowLine()` in `ui/lib/orchestration.ts`.
+  - Sheet "Investigation" is now "Scope" (grouping only). Flow map draws the Specialist box only when one ran.
+    Overview head shows the run mode and what the open incident is doing.
+  - Bug fixed with a test that failed first: `action_intent_changed terminal` arrives after `incident_resolved`
+    and re-lit the Act tile (`ui/lib/live.ts`).
+  - `/live?demo=1` opens on a scripted coordinated incident (`DEMO_COORDINATED`); "Replay demo" alternates with
+    the single-agent script.
+  - impeccable 4.8.0 from git tag `skill-v4.8.0` copied to `.claude/skills/impeccable/` (untracked; its hooks and
+    agents not installed). `npx impeccable@4.8.0` is only a shim, its installer pulls unpinned files from
+    impeccable.style, so that route was not used. Detector: static scan 2 -> 0 findings; page scan 17 -> 2, the
+    2 left are Anirudh's choices (Geist, warm paper background).
+  - Proof: UI `tsc --noEmit` clean; 81 `node:test` pass (was 69) through a compile step
+    (`tsc lib/*.test.ts --ignoreConfig --target es2023 ... --rewriteRelativeImportExtensions` into a folder two
+    levels under a dir with a `config` symlink, then `node --test`); `next build` OK. Browser (headless Chrome over
+    DevTools, dev server on :3000): demo coordinated and single-agent runs at 1680, 1200, 375 px, no console
+    errors, no sideways scroll; real incidents `inc-a79795ff0631` (specialist failed), `inc-59f5f970337b`
+    (specialist with no calls), `inc-1794599627824` (single agent, 8 requests, 19 reads) render. Repo:
+    `uv run pytest` 897 passed, 1 failed = local budget 30 (`test_policy`); Ruff clean; mypy clean 99 files.
+  - Seen, not diagnosed: in `inc-a79795ff0631` the specialist was asked at +1m19s, about 50 s after the fix was
+    applied (+26 s).
+  - NOT done: reduced-motion checked in CSS only, not in a browser; no live coordinated run with a finding
+    (0 `finding_recorded` in the audit log so far), that path is covered by the demo and unit tests only.
+  - ASSUMED: lane names "Commander" / "Agent" / "Specialist" / "Fix"; reads within 0.5 s share one tick; side
+    stripes on selected rows kept (only the outcome quote was flagged).
 
 - Orchestration (`twaha/orchestration`), from `reports/akira-orchestration-implementation-handoff.md`.
   Plan: `~/.claude/plans/read-reports-akira-orchestration-impleme-cheeky-sparrow.md`. Twaha OK'd edits in
