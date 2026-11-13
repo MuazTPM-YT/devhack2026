@@ -1,4 +1,4 @@
-import { TrustView } from "@/components/pages/trust-view";
+import { TrustView } from "@/components/trust/trust-view";
 
 export const metadata = { title: "Trust · On-call" };
 

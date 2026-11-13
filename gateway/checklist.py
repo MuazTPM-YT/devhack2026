@@ -589,8 +589,9 @@ class Gateway:
                 if outcome == "undone" and gate.get("approved_by") != approvals.REHEARSAL_APPROVER:
                     trust.record(self.conn, gate.get("pattern"), r["tool"], r["target"], "real", False, now)
                 self.conn.commit()
-            if (view := self.receipts.get(r["id"])) is not None and outcome == "undone":
-                self.receipts.update(r["id"], view.model_copy(update={"outcome": "undone"}))
+            if (view := self.receipts.get(r["id"])) is not None:  # the /receipts page reads the view
+                self.receipts.update(r["id"], view.model_copy(
+                    update={"outcome": "undone" if outcome == "undone" else "undo_failed"}))
             self.heartbeats.pop(r["id"], None)
             if outcome == "undone":
                 await self.publish({"type": "action_undone", "incident_id": r["incident_id"],

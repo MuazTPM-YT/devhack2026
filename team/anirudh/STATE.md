@@ -5,10 +5,24 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** live run on branch `anirudh/live-run` (not pushed).
-Phases 0-3 merged. Real smoke ran: escalated, cause in M's verifier (below).
+**Current phase:** 4 done on branch `anirudh/phase4` (not pushed).
+Phases 0-3 and the live-run reports merged.
 
 ## Done (with proof)
+
+- Phase 4: `POST /chaos/shared-outage` (kafka -> 0, ground truth
+  `shared_dependency`; live inject + reset OK) and its button on `/chaos`.
+  UI pages `/trust` (ledger table, bound meter vs bar, gate),
+  `/receipts` (list, detail with card, checklist, pods, diff and inverse;
+  "Verify audit log" button), `/benchmark` (server page reading
+  `bench/out/summary.json`; bars median/worst, agent vs manual, results
+  table). Fallbacks: `/trust` uses `GET /ledger` counts until `GET /trust`
+  exists; `/receipts` walks ids from 1 until `GET /receipts` exists
+  (`shortcut:` comment, cap 40); the audit button says the route is
+  missing until `GET /audit/verify` exists. Checks: `npm test` 13 pass,
+  `tsc --noEmit` clean, `next build` OK; Python 331 passed, ruff and mypy
+  clean. Screenshots at 1440 and 390 px. Incident card text now keeps
+  its line breaks (live page too).
 
 - Live run 2026-11-13 (full report in `team/SHARED_CONTEXT.md`, steps 1-6):
   security_check 19 PASS / 0 fails; payment 5.6 spans/s at 250 users;

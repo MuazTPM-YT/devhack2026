@@ -1,4 +1,4 @@
-import { ReceiptsView } from "@/components/pages/receipts-view";
+import { ReceiptsView } from "@/components/receipts/receipts-view";
 
 export const metadata = { title: "Receipts · On-call" };
 

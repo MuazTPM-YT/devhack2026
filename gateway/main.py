@@ -102,9 +102,9 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
             raise HTTPException(404, "rehearsal mode is off")
         return holder["gw"].rehearsal_credit(body.receipt_id, body.diagnosis_matched)
 
-    # /trust page (plan §6.8): per key, rehearsal and real counts, proven bound, gate state now
+    # /trust page (plan §6.8, A's shape): one row per key = trust.check(...) + the key
     @app.get("/trust")
-    def trust_table() -> dict:
+    def trust_table() -> list[dict]:
         gw = holder["gw"]
         with gw.lock:
             keys = gw.conn.execute("SELECT DISTINCT pattern, action, target FROM ledger "
@@ -113,7 +113,7 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
                                               k["pattern"], k["action"], k["target"],
                                               gw.services.get(k["target"], {}).get("kind", "stateless"))}
                     for k in keys]
-        return {"bar": gw.policy["trust"]["bar"], "confidence": gw.policy["trust"]["confidence"], "rows": rows}
+        return rows
 
     # the "verify audit log" button: walk the hash chain, name the first broken seq
     @app.get("/audit/verify")

@@ -224,6 +224,13 @@ def test_datastore_down_scales_valkey_cart_to_zero():
     assert "--field-manager=chaos-panel" in fake.calls[-1]
 
 
+def test_shared_outage_scales_kafka_to_zero():
+    fake = FakeKubectl()
+    assert shared_outage(fake) == {"type": "shared_dependency", "target": "kafka"}
+    assert fake.replicas("kafka") == 0
+    assert "--field-manager=chaos-panel" in fake.calls[-1]
+
+
 def test_memory_leak_flips_flag_in_configmap_and_live_file_without_restart():
     fake = FakeKubectl()
     assert memory_leak(fake) == {"type": "resource_exhaustion", "target": "recommendation"}
@@ -252,8 +259,8 @@ def test_reset_undoes_every_fault_at_once(tmp_path):
         fault(fake)
     restored = reset(snapshot, fake)
     assert sorted(restored) == ["checkout", f"configmap/{FLAG_CONFIGMAP}", "kafka", "payment", "valkey-cart"]
-    assert fake.image("payment") == GOOD_IMAGE
     assert fake.replicas("kafka") == 1
+    assert fake.image("payment") == GOOD_IMAGE
     assert fake.env("checkout")["PAYMENT_ADDR"] == "payment:8080"
     assert fake.replicas("valkey-cart") == 1
     assert fake.configmaps[FLAG_CONFIGMAP]["data"][FLAG_FILE] == GOOD_FLAGS

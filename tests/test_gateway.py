@@ -390,12 +390,12 @@ def test_trust_receipts_and_audit_routes(tmp_path):
     app = create_app(w.gw)
     app.state.audit_path = str(tmp_path / "audit.jsonl")
     with TestClient(app, base_url="http://127.0.0.1:7003") as client:
-        t = client.get("/trust").json()
-        rows = {(r["pattern"], r["action"]): r for r in t["rows"]}
-        assert t["bar"] == 0.9 and rows[("recent_change", "rollback_deploy")]["open"] is True
+        rows = {(r["pattern"], r["action"]): r for r in client.get("/trust").json()}
+        assert rows[("recent_change", "rollback_deploy")]["bar"] == 0.9
+        assert rows[("recent_change", "rollback_deploy")]["open"] is True
         assert rows[("recent_change", "rollback_deploy")]["rehearsal"] == [30, 0]
         assert rows[("resource", "raise_limit")]["open"] is False  # never auto-eligible
-        listed = client.get("/receipts").json()
+        listed = client.get("/receipts?limit=50").json()
         assert [r["id"] for r in listed] == [1] and listed[0]["receipt"]["tool"] == "scale"
         assert client.get("/audit/verify").json() == {"ok": True, "records": 0}
         client.post("/events/publish", json={"type": "blocked", "payload": {"step": "x"}})

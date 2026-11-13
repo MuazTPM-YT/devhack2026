@@ -117,6 +117,7 @@ async def test_failed_watchdog_undo_keeps_blocking(tmp_path):
     w.now[0] += 200
     assert await w.gw.watchdog() == 1
     assert w.conn.execute("SELECT outcome FROM receipts").fetchone()[0] == "watchdog_failed"
+    assert w.gw.receipts.get(d.receipt_id).outcome == "undo_failed"  # /receipts page; was stuck "pending" (A)
     assert "UNDO FAILED" in w.events[-1]["payload"]["briefing"]
     w.apps.fail_real = None
     again = await w.gw.submit(action())

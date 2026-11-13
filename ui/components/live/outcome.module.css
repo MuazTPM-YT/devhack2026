@@ -6,6 +6,7 @@
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   font-size: 14.5px;
   line-height: 1.5;
+  white-space: pre-line;
 }
 
 .briefing { margin: -6px 0 14px; color: var(--ink-soft); font-size: 13px; }
