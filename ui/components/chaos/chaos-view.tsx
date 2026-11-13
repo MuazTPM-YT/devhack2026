@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import page from "@/components/page.module.css";
 import { PageHead } from "@/components/ui/page-head";
 import { Tag } from "@/components/ui/tag";
-import { experiments, groundTruth, registry as loadRegistry, resetShop, revealExperiment, stopExperiment, type TruthEntry } from "@/lib/chaos-api";
+import { experiments, groundTruth, registry as loadRegistry, resetShop, revealExperiment, stopExperiment, type TruthEntry, unlockLab } from "@/lib/chaos-api";
 import { clock } from "@/lib/format";
 import { type Experiment, OPEN, type Registry, runState, telemetry } from "@/lib/lab";
 import { useLiveContext } from "@/lib/live-context";
@@ -33,6 +33,7 @@ export function ChaosView() {
   const [truth, setTruth] = useState<TruthEntry[] | null>(null);
   const [truthError, setTruthError] = useState<string | null>(null);
   const [history, setHistory] = useState(false);
+  const [passcode, setPasscode] = useState("");
 
   const refresh = useCallback(async (what: "runs" | "all") => {
     try {
@@ -84,6 +85,17 @@ export function ChaosView() {
           {reg ? (
             <Composer registry={reg} locked={labRun ? `Experiment ${labRun.id} is still ${labRun.status.replace("_", " ")}.` : null}
                       onStarted={() => refresh("all")} />
+          ) : error?.startsWith("locked") ? (
+            <article className="card">
+              <div className="card-head"><h2 className="card-title">Lab locked</h2></div>
+              <form className={styles.actions} onSubmit={(e) => { e.preventDefault(); act("unlock", () => unlockLab(passcode)).then(() => setPasscode("")); }}>
+                <label className="sr-only" htmlFor="lab-passcode">Judge passcode</label>
+                <input id="lab-passcode" className={styles.select} type="password" autoComplete="off" placeholder="Judge passcode"
+                       value={passcode} onChange={(e) => setPasscode(e.target.value)} />
+                <button type="submit" className="btn btn-dark" disabled={!passcode || busy === "unlock"}>Unlock</button>
+              </form>
+              <p className={styles.hint}>You are not on the machine that runs Akira, so the lab needs the judge passcode once.</p>
+            </article>
           ) : (
             <article className="card"><p className={`empty ${error ? "bad" : ""}`}>
               {error ? `Chaos lab unavailable: ${error}` : "Loading what can be broken…"}

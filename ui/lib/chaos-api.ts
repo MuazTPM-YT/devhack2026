@@ -59,3 +59,6 @@ export const stopExperiment = (id: string) => call<Experiment>(`/api/chaos/exper
 export const revealExperiment = (id: string) => call<Experiment>(`/api/chaos/experiments/${id}/reveal`, post());
 
 export const resetShop = () => call<TruthEntry>("/api/chaos/reset", post());
+
+// from a tunnel or the LAN the proxy answers "locked" until the judge passcode was typed once
+export const unlockLab = (passcode: string) => call<{ unlocked: boolean }>("/api/chaos/unlock", post({ passcode }));
