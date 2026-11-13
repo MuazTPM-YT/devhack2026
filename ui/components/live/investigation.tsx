@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { Tag, type Tone } from "@/components/ui/tag";
 import { plural, words } from "@/lib/format";
 import type { Incident } from "@/lib/live";
@@ -24,6 +26,18 @@ export function Investigation({ incident }: { incident: Incident }) {
       {o.services.length > 0 && (
         <p className={s.note}>
           {o.services.join(", ")}{o.reasons.length > 0 && <> · {o.reasons.map(words).join(" · ")}</>}
+        </p>
+      )}
+      {o.related.length > 0 && (
+        <p className={s.note}>
+          Possibly related:{" "}
+          {o.related.map((r, i) => (
+            <span key={r.incidentId}>
+              {i > 0 && ", "}
+              <Link href={`/live?incident=${encodeURIComponent(r.incidentId)}`} className="mono">{r.incidentId}</Link>
+              {" "}({words(r.reason)})
+            </span>
+          ))}. Kept apart: no shared cause is proven.
         </p>
       )}
       {decided && <p className={s.note}>{decided.explanation}</p>}

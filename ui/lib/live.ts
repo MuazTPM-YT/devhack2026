@@ -49,6 +49,7 @@ export interface Orchestration {
   scopeRevision: number;
   services: string[];
   reasons: string[];
+  related: { incidentId: string; reason: string }[];
   delegation: { status: string; explanation: string; ts: number }[];
   tasks: Record<string, { questionId: string; state: string; attempt: number }>;
   findings: { verdict: string; summary: string }[];
@@ -169,7 +170,7 @@ function blank(id: string, ts: number): Incident {
 
 function emptyOrch(): Orchestration {
   return {
-    scopeRevision: 0, services: [], reasons: [], delegation: [], tasks: {}, findings: [], reusedReads: 0,
+    scopeRevision: 0, services: [], reasons: [], related: [], delegation: [], tasks: {}, findings: [], reusedReads: 0,
     modelCalls: 0, tokensIn: 0, tokensOut: 0, intents: {},
   };
 }
@@ -293,7 +294,10 @@ function apply(inc: Incident, type: string, p: Record<string, unknown>, ts: numb
       break;
     case "incident_scope_changed":
       next.orch = { ...(next.orch ?? emptyOrch()), scopeRevision: num(p.scope_revision) ?? 0,
-        services: strs(p.services), reasons: strs(p.reasons) };
+        services: strs(p.services), reasons: strs(p.reasons),
+        related: Array.isArray(p.related)
+          ? (p.related as Record<string, unknown>[]).flatMap((r) => str(r.incident_id) ? [{ incidentId: str(r.incident_id)!, reason: str(r.reason) ?? "related" }] : [])
+          : next.orch?.related ?? [] };
       break;
     case "delegation_decided": {
       const o = next.orch ?? emptyOrch();
