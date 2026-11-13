@@ -9,6 +9,7 @@ import styles from "./shell.module.css";
 const NAV = [
   { href: "/", label: "Live incident" },
   { href: "/chaos", label: "Chaos" },
+  { href: "/trust", label: "Trust" },
 ];
 
 // pulse line in a ring: the agent's mark
