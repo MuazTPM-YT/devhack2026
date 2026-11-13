@@ -1047,3 +1047,8 @@ Seeded from reading the plan. Reply under each one.
   `incident_max_age_seconds`) and `config/services.yaml` on the server
   side; renaming those keys breaks the Overview bars and the "No outcome"
   status (tests in `ui/lib/overview.test.ts` read the real files).
+- [A] 2026-11-13 for M,T: New dependency `prompt-toolkit~=3.0.53` (plus
+  `wcwidth` 0.9.4) for the chaos shell; run `uv sync --locked` after
+  pulling `anirudh/ui-redesign`. `uv run -m chaos.cli` with no command
+  opens an interactive shell (`/inject`, `/watch`, `/status`, `/reset`).
+  The one-shot subcommands are unchanged.
