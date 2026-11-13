@@ -3,7 +3,6 @@
 import asyncio
 import json
 import logging
-import os
 import sqlite3
 import threading
 import time
@@ -20,6 +19,7 @@ from observer.detector import Detector, fetch_readings
 from observer.episodes import EpisodeTracker
 from observer.kube_watch import Tracker, run_watch
 from schemas import auth, config, migrations
+from schemas.config import require_env
 from schemas.db import DEFAULT_PATH, connect
 from gateway.receipts import build_incident_card, source, started_by
 from schemas.models import GatewayDecision, Incident
@@ -31,13 +31,6 @@ logs.setup()
 
 log = logging.getLogger("observer")
 TERMINAL = {"incident_resolved", "escalated", "handed_off"}
-
-
-def require_env(*names: str) -> list[str]:
-    missing = [n for n in names if not os.environ.get(n)]
-    if missing:
-        raise RuntimeError(f"missing required env var(s): {', '.join(missing)}")
-    return [os.environ[n] for n in names]
 
 
 class Observer:
