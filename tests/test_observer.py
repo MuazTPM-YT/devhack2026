@@ -123,3 +123,32 @@ def test_require_env_names_missing(monkeypatch):
         assert "PROMETHEUS_URL" in str(e)
     else:
         raise AssertionError("expected RuntimeError")
+
+
+# live run 2026-11-13: brain/gateway down when the incident opened -> it stayed open forever, no new pages
+async def test_undelivered_incident_is_resent_until_brain_takes_it():
+    clock = [1000.0]
+    calls = {"brain_up": False, "incidents": 0}
+
+    def handler(request):
+        if request.url.path == "/api/v1/query":
+            q = request.url.params["query"]
+            return httpx.Response(200, json=prom_result({"payment": 0.4} if "ERROR" in q else {"payment": 1.0}))
+        if request.url.path == "/incidents":
+            calls["incidents"] += 1
+            return httpx.Response(202 if calls["brain_up"] else 503, json={})
+        return httpx.Response(200, json={})
+
+    obs = make(handler, clock)
+    await obs.step()
+    clock[0] = 1030.0
+    assert (await obs.step())[0] == "incident_opened"
+    clock[0] = 1035.0
+    await obs.step()
+    assert calls["incidents"] == 2  # retried while the brain is down
+    calls["brain_up"] = True
+    clock[0] = 1040.0
+    await obs.step()
+    clock[0] = 1045.0
+    await obs.step()
+    assert calls["incidents"] == 3  # delivered once, then no more resends

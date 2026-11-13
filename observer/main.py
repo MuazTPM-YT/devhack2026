@@ -45,6 +45,7 @@ class Observer:
         with tracker.lock:
             self.baselines = baselines.load(conn)
         self.health: dict | None = None
+        self.undelivered: set[str] = set()
 
     async def readings(self) -> dict:
         return await fetch_readings(self.http, self.prom_url, self.queries, self.services)
@@ -62,24 +63,33 @@ class Observer:
         self.health = {**health, "prometheus_ok": True}
         if event:
             await self.announce(*event)
+        elif self.undelivered and self.detector.incident:
+            await self.announce("incident_opened", self.detector.incident, retry=True)
         return event
 
-    # record + tell the bus and the brain; neither being down stops detection
-    async def announce(self, kind: str, incident: dict) -> None:
+    # record + tell the bus and the brain; neither being down stops detection, and an incident the brain
+    # never got is re-sent every poll (else it stays open and blocks every later incident)
+    async def announce(self, kind: str, incident: dict, retry: bool = False) -> None:
         body = Incident.model_validate(incident).model_dump(mode="json")
-        if kind == "incident_opened":
+        if kind == "incident_opened" and not retry:
             with self.tracker.lock:
                 self.conn.execute("INSERT OR IGNORE INTO incidents (id, opened_at, onset_at, state, severity_at_open)"
                                   " VALUES (?, ?, ?, 'open', ?)",
                                   (body["id"], body["opened_at"], body["onset_at"], body["severity"]))
                 self.conn.commit()
-        for url, payload in ((f"{self.gateway_url}/events/publish",
-                              {"type": kind, "incident_id": body["id"], "payload": body}),
-                             (f"{self.brain_url}/incidents", body)):
+        targets = self.undelivered if retry else {"bus", "brain"}
+        urls = {"bus": (f"{self.gateway_url}/events/publish", {"type": kind, "incident_id": body["id"], "payload": body}),
+                "brain": (f"{self.brain_url}/incidents", body)}
+        failed = set()
+        for name in [n for n in ("bus", "brain") if n in targets]:  # bus first, as before
+            url, payload = urls[name]
             try:
                 (await self.http.post(url, json=payload, timeout=5)).raise_for_status()
             except httpx.HTTPError as e:
-                log.warning("POST %s failed: %s", url, type(e).__name__)
+                failed.add(name)
+                if not retry:
+                    log.warning("POST %s failed: %s; will retry each poll", url, type(e).__name__)
+        self.undelivered = failed
 
     async def run(self) -> None:
         while True:
@@ -89,6 +99,7 @@ class Observer:
     # close our open incident when the gateway reports it finished
     async def follow_terminal_events(self) -> None:
         after = 0
+        down_since: float | None = None
         while True:
             try:
                 async for envelope in read_events(self.http, self.gateway_url, after):
@@ -97,8 +108,11 @@ class Observer:
                     inc = self.detector.incident
                     if event["type"] in TERMINAL and inc and event.get("incident_id") == inc["id"]:
                         self.detector.close_incident()
+                down_since = None
             except (httpx.HTTPError, KeyError, ValueError) as e:
-                log.warning("event stream failed: %s", type(e).__name__)
+                if down_since is None:  # once per outage, not every 2 s
+                    log.warning("event stream failed: %s; retrying every 2 s", type(e).__name__)
+                    down_since = self.clock()
             await asyncio.sleep(2)
 
     async def refresh_baselines(self, seconds: float = 600, every: float = 5) -> None:
