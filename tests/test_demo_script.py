@@ -64,3 +64,31 @@ def test_refused_tunnel_is_retried(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert (tmp_path / "tun-x.url").read_text().strip() == GOOD_URL
     assert "RETRY tun-x" in result.stderr
+
+
+def judge(tmp: Path, body: str, env: dict | None = None) -> subprocess.CompletedProcess:
+    script = f'source scripts/demo.sh; RUN={tmp}; {body}'
+    return subprocess.run(["bash", "-c", script], env={**os.environ, **(env or {})}, text=True,
+                          capture_output=True, timeout=30)
+
+
+# live 2026-11-13: a second `shop` run skipped the chaos already serving :7004 but minted a new judge
+# token for the bundle, so every chaos call from the backend got 401. The token chaos runs with is reused
+def test_rerun_hands_out_the_token_chaos_already_has(tmp_path):
+    env = {"CHAOS_JUDGE_TOKEN": ""}
+    first = judge(tmp_path, "serving() { return 1; }; judge_token", env)
+    assert first.returncode == 0 and len(first.stdout) == 48, first.stderr
+    assert oct((tmp_path / "chaos-judge.token").stat().st_mode & 0o777) == "0o600"
+    again = judge(tmp_path, "serving() { return 0; }; judge_token", {"CHAOS_JUDGE_TOKEN": "other-token-0123456789"})
+    assert again.stdout == first.stdout  # chaos is up with the first token: the bundle must carry that one
+
+
+def test_judge_token_from_env_or_new_when_chaos_is_down(tmp_path):
+    (tmp_path / "chaos-judge.token").write_text("stale-token-from-last-session")
+    out = judge(tmp_path, "serving() { return 1; }; judge_token", {"CHAOS_JUDGE_TOKEN": "env-token-0123456789"})
+    assert out.stdout == "env-token-0123456789"
+
+
+def test_chaos_up_with_unknown_token_fails_loud(tmp_path):
+    out = judge(tmp_path, "serving() { return 0; }; judge_token", {"CHAOS_JUDGE_TOKEN": ""})
+    assert out.returncode != 0 and "shop_machine.sh down" in out.stderr

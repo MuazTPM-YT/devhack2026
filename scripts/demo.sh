@@ -21,6 +21,20 @@ serving() { curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$1/"; }
 
 alive() { [ -f "$RUN/$1.pid" ] && kill -0 "$(cat "$RUN/$1.pid")" 2>/dev/null; }
 
+# the judge token chaos runs with. launch skips a chaos already serving :7004, so a rerun must reuse its
+# token (a fresh one in the bundle got 401 on every chaos call, live); kept 0600 in $RUN, gitignored
+judge_token() {
+  local file="$RUN/chaos-judge.token"
+  if serving 7004; then
+    [ -s "$file" ] || { echo "FAIL  chaos already serves :7004 with a token this script did not write;" \
+                             "run scripts/shop_machine.sh down, then up" >&2; return 1; }
+  else
+    mkdir -p "$RUN"
+    (umask 077 && printf '%s' "${CHAOS_JUDGE_TOKEN:-$(openssl rand -hex 24)}" >"$file")
+  fi
+  cat "$file"
+}
+
 # own session per process, so down can kill uv and its uvicorn child together
 launch() {
   local name=$1 port=$2; shift 2
@@ -187,7 +201,8 @@ shop() {
   port_forwards
   # no .env: chaos must not chase a local OBSERVER_URL that does not exist on this machine.
   # The tunnel makes chaos public, so it answers only to the judge token; the backend gets it in the bundle
-  export CHAOS_JUDGE_TOKEN=${CHAOS_JUDGE_TOKEN:-$(openssl rand -hex 24)}
+  CHAOS_JUDGE_TOKEN=$(judge_token) || exit 1
+  export CHAOS_JUDGE_TOKEN
   launch chaos 7004 uv run --locked uvicorn chaos.main:app --host 127.0.0.1 --port 7004
   local api
   api=$(kubectl config view --raw --minify --context "$CONTEXT" -o jsonpath='{.clusters[0].cluster.server}')

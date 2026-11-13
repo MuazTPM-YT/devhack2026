@@ -40,7 +40,14 @@ export function refusal(caller: Caller, token: string): { status: number; detail
 // take() checks and records in one step, nothing awaited between.
 export class Attempts {
   private tries: number[] = [];
-  constructor(private max = 10, private windowMs = 60_000) {}
+  // plain fields, not parameter properties: node --test strips types only and rejects those
+  private max: number;
+  private windowMs: number;
+
+  constructor(max = 10, windowMs = 60_000) {
+    this.max = max;
+    this.windowMs = windowMs;
+  }
 
   // false = over the limit, do not even compare the passcode
   take(now: number): boolean {
