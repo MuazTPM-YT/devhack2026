@@ -1,10 +1,12 @@
 import asyncio
+import logging
 import re
 import time
 from collections.abc import Sequence
 
 import discord
 import httpx
+from discord import app_commands
 
 from brain.redact import redact
 from notifier import embeds
@@ -14,6 +16,7 @@ from pydantic import ValidationError
 from schemas import auth
 from schemas.models import Card, GatewayDecision
 
+log = logging.getLogger("notifier")
 COLOUR = {"page": 0xD83C3E, "ask": 0xE8A317, "ok": 0x2EA043, "info": 0x808890}
 # re-page notes the notifier writes itself; gateway briefings are already explained inside the card
 NOTES = {"Approval pending": "Still waiting for Approve or Reject on the first message.",
@@ -155,6 +158,42 @@ class ApprovalView(discord.ui.View):
         self.add_item(ApprovalButton(approval_id, "rejected", "Reject", controller))
 
 
+# /purge, step 2: only the person who typed it may confirm; replies stay private to them
+class PurgeView(discord.ui.View):
+    def __init__(self, notifier: "DiscordNotifier", user_id: str, channel: discord.TextChannel | discord.Thread):
+        super().__init__(timeout=60)
+        self.notifier, self.user_id, self.channel = notifier, user_id, channel
+
+    @discord.ui.button(label="Delete everything", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self.do_confirm(interaction)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self.do_cancel(interaction)
+
+    async def do_confirm(self, interaction: discord.Interaction):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("only the person who typed /purge can confirm it",
+                                                    ephemeral=True)
+            return
+        await interaction.response.edit_message(content=f"Deleting every message in #{self.channel.name}...",
+                                                view=None)
+        try:
+            deleted = await self.channel.purge(limit=None, reason=f"/purge by discord user {self.user_id}")
+        except discord.Forbidden:
+            await interaction.followup.send("Discord refused: the bot needs Manage Messages and Read Message "
+                                            "History in this channel. Nothing more was deleted.", ephemeral=True)
+            return
+        log.warning("/purge by %s: deleted %s messages in #%s", self.user_id, len(deleted), self.channel.name)
+        await interaction.followup.send(f"Deleted {len(deleted)} messages in #{self.channel.name}.", ephemeral=True)
+        self.stop()
+
+    async def do_cancel(self, interaction: discord.Interaction):
+        await interaction.response.edit_message(content="Cancelled. Nothing was deleted.", view=None)
+        self.stop()
+
+
 class DiscordNotifier(discord.Client):
     def __init__(self, controller: ApprovalController, fyi_channel: int, wake_channel: int,
                  tickets_channel: int, role_id: int):
@@ -162,6 +201,41 @@ class DiscordNotifier(discord.Client):
         self.controller = controller
         self.fyi_channel, self.wake_channel = fyi_channel, wake_channel
         self.tickets_channel, self.role_id = tickets_channel, role_id
+        self.tree = app_commands.CommandTree(self)
+
+        @self.tree.command(name="purge", description="Delete every message in this channel (approvers only)")
+        async def purge(interaction: discord.Interaction):
+            await self.ask_purge(interaction)
+
+    # slash commands per server: a global sync takes up to an hour to show, a server sync is instant
+    async def on_ready(self):
+        for guild in self.guilds:
+            self.tree.copy_global_to(guild=guild)
+            try:
+                await self.tree.sync(guild=guild)
+            except discord.HTTPException as e:  # invited without the applications.commands scope
+                log.warning("could not register /purge in %s: %s", guild.name, e)
+
+    # /purge, step 1: approvers only (Muaz chose), then a private Confirm. Live approvals go too: say so
+    async def ask_purge(self, interaction: discord.Interaction):
+        user = str(interaction.user.id)
+        if user not in self.controller.approvers:
+            await interaction.response.send_message("not authorised", ephemeral=True)
+            return
+        channel = interaction.channel
+        if not isinstance(channel, (discord.TextChannel, discord.Thread)):
+            await interaction.response.send_message("/purge works only in a server text channel", ephemeral=True)
+            return
+        now = time.time()
+        live = sum(1 for row in self.controller.state.approvals().values()
+                   if row.get("channel_id") == channel.id and not row.get("decision") and row["expires_at"] > now)
+        warn = (f" {live} approval still waits for Approve; its buttons go too, so it can only expire or be "
+                "decided outside Discord." if live == 1 else
+                f" {live} approvals still wait for Approve; their buttons go too, so they can only expire or be "
+                "decided outside Discord." if live else "")
+        await interaction.response.send_message(
+            f"Delete every message in #{channel.name}?{warn} This cannot be undone.",
+            view=PurgeView(self, user, channel), ephemeral=True)
 
     async def setup_hook(self):
         for approval_id, row in self.controller.state.approvals().items():

@@ -131,6 +131,8 @@ class NotificationConsumer:
             if decision and not row.get("view_closed"):
                 try:
                     await self.notifier.close_approval(approval_id, row, decision)
+                except discord.NotFound:
+                    pass  # message deleted (/purge): nothing left to close, stop retrying
                 except discord.HTTPException:
                     continue
                 row["view_closed"] = True
