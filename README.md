@@ -1,14 +1,12 @@
-# On-call agent: Twaha components
+# Akira: on-call agent
 
 DevHack 2026 incident response agent. The model proposes a diagnosis and an
 action. Deterministic rules and the safety gateway decide whether that action
 may run. The executor checks that the service recovered and stays responsible
 for undo.
 
-This repository holds Twaha's components, the OpenCode Go adapter, the observer,
-the brain service, and the first cluster and chaos tooling. The gateway runtime,
-remediation executor, policy checklist and UI still need integration.
-`IMPLEMENTATION.md` is the current plan. `docs/PLAN.md` has older contracts that
+This repository holds the OpenCode Go adapter, the observer, the brain service,
+the gateway, the notifier and the chaos tooling. `IMPLEMENTATION.md` is the current plan. `docs/PLAN.md` has older contracts that
 conflict with it. Team contracts stay proposed until the owners they affect agree.
 
 ## Setup and checks
