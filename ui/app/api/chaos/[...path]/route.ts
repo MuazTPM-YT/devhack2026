@@ -17,12 +17,11 @@ const attempts = new Attempts();
 // the passcode is the judge token; a right answer sets an HttpOnly session cookie for this address
 async function unlock(req: NextRequest, token: string): Promise<Response> {
   const now = Date.now();
-  const client = req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "direct";
   // the try is taken before the body is read, so parallel requests cannot all slip under the limit
-  if (!attempts.take(client, now)) return deny(429, "too many passcode tries; wait a minute");
+  if (!attempts.take(now)) return deny(429, "too many passcode tries; wait a minute");
   const body = await req.json().catch(() => null);
   if (typeof body?.passcode !== "string" || !same(body.passcode.trim(), token)) return deny(401, "wrong passcode");
-  attempts.forgive(client, now);
+  attempts.forgive(now);
   const secure = req.nextUrl.protocol === "https:" || req.headers.get("x-forwarded-proto") === "https";
   return new Response(JSON.stringify({ unlocked: true }), {
     headers: {

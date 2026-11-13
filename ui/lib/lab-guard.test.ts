@@ -34,18 +34,16 @@ test("the cookie is not the passcode", () => {
   assert.ok(same(cookie, sessionValue(TOKEN)) && !same(cookie, cookie.slice(1)));
 });
 
-test("wrong passcodes lock out the guesser, not the judge", () => {
-  const tries = new Attempts(3, 100, 60_000);
-  for (const t of [0, 1000, 2000]) assert.equal(tries.take("guesser", t), true);
-  assert.equal(tries.take("guesser", 3000), false);
-  assert.equal(tries.take("judge", 3000), true);
-  assert.equal(tries.take("guesser", 59_999), false);
-  assert.equal(tries.take("guesser", 62_001), true);  // the oldest tries aged out
+test("wrong passcodes are limited, however the caller names itself", () => {
+  const tries = new Attempts(3, 60_000);
+  for (const t of [0, 1000, 2000]) assert.equal(tries.take(t), true);
+  assert.equal(tries.take(3000), false);
+  assert.equal(tries.take(59_999), false);
+  assert.equal(tries.take(62_001), true);  // the oldest tries aged out
 });
 
-test("a right passcode does not use up a try, and many addresses share a cap", () => {
-  const tries = new Attempts(2, 4, 60_000);
-  for (let i = 0; i < 5; i++) { assert.equal(tries.take("judge", i), true); tries.forgive("judge", i); }
-  for (const [i, who] of ["a", "b", "c", "d"].entries()) assert.equal(tries.take(who, 100 + i), true);
-  assert.equal(tries.take("e", 200), false);
+test("a right passcode does not use up a try", () => {
+  const tries = new Attempts(2, 60_000);
+  for (let i = 0; i < 5; i++) { assert.equal(tries.take(i), true); tries.forgive(i); }
+  assert.equal(tries.take(10), true);
 });

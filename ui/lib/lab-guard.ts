@@ -34,32 +34,25 @@ export function refusal(caller: Caller, token: string): { status: number; detail
   return { status: 401, detail: "locked: enter the judge passcode to use the lab from this address" };
 }
 
-// passcode tries. Per client, so one guesser cannot lock the judge out; a looser cap for everyone together,
-// so many addresses cannot guess in parallel. take() checks and records in one step (nothing awaited between).
+// passcode tries, one bucket for everyone: the proxy cannot tell callers apart (forwarding headers are the
+// caller's to write), so a per-client limit would be a limit the guesser sets. The cost: a flood from a
+// public address can block remote unlock while it lasts. The machine that runs Akira never needs to unlock.
+// take() checks and records in one step, nothing awaited between.
 export class Attempts {
-  private tries = new Map<string, number[]>();
-  constructor(private max = 5, private globalMax = 60, private windowMs = 60_000) {}
-
-  private recent(key: string, now: number): number[] {
-    const kept = (this.tries.get(key) ?? []).filter((t) => now - t < this.windowMs);
-    if (kept.length) this.tries.set(key, kept); else this.tries.delete(key);
-    return kept;
-  }
+  private tries: number[] = [];
+  constructor(private max = 10, private windowMs = 60_000) {}
 
   // false = over the limit, do not even compare the passcode
-  take(client: string, now: number): boolean {
-    if (this.recent(client, now).length >= this.max || this.recent("*", now).length >= this.globalMax) return false;
-    for (const key of [client, "*"]) this.tries.set(key, [...this.recent(key, now), now]);
+  take(now: number): boolean {
+    this.tries = this.tries.filter((t) => now - t < this.windowMs);
+    if (this.tries.length >= this.max) return false;
+    this.tries.push(now);
     return true;
   }
 
   // the passcode was right: that try does not count
-  forgive(client: string, now: number): void {
-    for (const key of [client, "*"]) {
-      const kept = this.recent(key, now);
-      const i = kept.lastIndexOf(now);
-      if (i >= 0) kept.splice(i, 1);
-      if (kept.length) this.tries.set(key, kept); else this.tries.delete(key);
-    }
+  forgive(now: number): void {
+    const i = this.tries.lastIndexOf(now);
+    if (i >= 0) this.tries.splice(i, 1);
   }
 }
