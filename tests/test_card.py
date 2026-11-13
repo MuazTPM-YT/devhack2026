@@ -337,3 +337,11 @@ def test_schema_refusal_never_gets_a_paste_ready_command():
 def test_reason_names_with_markdown_never_reach_the_page(reason):
     said = explain(reason)
     assert not any(c in said for c in "[]()*`") and "evil.example" not in said
+
+
+# security review: stripping after link removal rebuilt a link ("ht`tp" -> "http"); scheme case varied
+@pytest.mark.parametrize("reason", ["odd ht`tp://evil.example/x", "odd HTTPS://evil.example", "odd <https://evil.example>",
+                                    "odd h*t*t*p*s://evil.example"])
+def test_fallback_reason_never_carries_a_link(reason):
+    said = explain(reason)
+    assert "evil.example" not in said and "://" not in said

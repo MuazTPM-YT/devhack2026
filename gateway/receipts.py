@@ -197,8 +197,11 @@ def explain(reason: str, failed_step: str | None = None) -> str:
         if m := re.search(pattern, reason):
             return sentence.format(*(plain(g) for g in m.groups()))
     # unknown reason, printed raw: no links (discord makes bare URLs clickable) and no markdown
-    raw = re.sub(r"\S*(?:https?://|www\.)\S*", "link removed", plain(reason))
-    return f"The agent stopped: {_tidy(raw).replace('(', '').replace(')', '')}."
+    # strip first, then drop links, so stripping can't rebuild one ("ht`tp" -> "http")
+    text = re.sub(r"[()<>]", "", _tidy(plain(reason)))
+    while (cleaner := re.sub(r"\S*(?:[a-z][a-z0-9+.-]*://|www\.)\S*", "link removed", text, flags=re.I)) != text:
+        text = cleaner
+    return f"The agent stopped: {text}."
 
 
 def shorten(text: str, limit: int = 220) -> str:
