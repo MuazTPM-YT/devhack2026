@@ -10,12 +10,13 @@ from typing import Any
 
 import httpx
 import pydantic_ai
-from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai import Agent, ModelRetry, RunContext, Tool
 from pydantic_ai.exceptions import AgentRunError, ModelHTTPError, UnexpectedModelBehavior, UsageLimitExceeded
 from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
+from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.usage import UsageLimits
 
 from brain.llm import DiagnosisResult, check
@@ -73,6 +74,33 @@ TAIL = (
 )
 SYSTEM = HEAD + ADVISE + TAIL
 SYSTEM_CHOOSE = HEAD + CHOOSE + TAIL
+# orchestration with delegation on: only then does the brief carry eligible_questions
+DELEGATE = (
+    " eligible_questions lists questions code found that a read-only specialist can check, for example which of "
+    "two recorded changes caused this. Most incidents need none. Read the changes yourself first; call "
+    "request_investigation with a question_id and the brief's plan_revision only when the choice still turns on "
+    "it. A finding is evidence like any other; its ids become citable. findings lists answers already known."
+)
+
+
+# commander -> specialist, through the code gate in brain/delegation.py; hidden when nothing is eligible
+async def request_investigation(ctx: RunContext[ToolBox], question_id: str, expected_plan_revision: int) -> str:
+    ctx.deps.calls += 1  # a denied request still costs a tool call: asking again never resets anything
+    orch = ctx.deps.orch
+    if orch is None:
+        return json.dumps({"status": "denied", "reason": "no_eligible_question"})
+    result = await orch.request(ctx.deps, question_id, expected_plan_revision, ctx.usage, ctx.usage_limits)
+    return json.dumps(result.model_dump(mode="json", exclude_none=True))
+
+
+def delegation_tool(max_rounds: int) -> Tool[ToolBox]:
+    async def offered(ctx: RunContext[ToolBox], tool_def: ToolDefinition) -> ToolDefinition | None:
+        orch = ctx.deps.orch
+        return tool_def if orch is not None and orch.questions and ctx.run_step <= max_rounds else None
+
+    return Tool(request_investigation, prepare=offered, max_retries=1,
+                description="Ask a read-only specialist one listed question by question_id; returns its finding "
+                            "or why not.")
 
 
 def _same(a: ActionRequest, b: ActionRequest) -> bool:
@@ -120,19 +148,28 @@ def select(diagnosis: Diagnosis, pattern: Pattern, rule_action: ActionRequest | 
     return action.model_copy(update={"origin": "rule" if mine else "model"})
 
 
-# same OpenCode Go account and env checks as the bundle adapter; reuses the brain's http client
-def model_from_env(http: httpx.AsyncClient) -> OpenAIChatModel:
+# same OpenCode Go account and env checks as the bundle adapter; reuses the brain's http client.
+# max_retries: orchestration sets 0 so every provider attempt passes the budget (the SDK retries twice by default)
+def model_from_env(http: httpx.AsyncClient, max_retries: int | None = None) -> OpenAIChatModel:
     adapter = OpenCodeGoAdapter.from_env(http)
-    return OpenAIChatModel(adapter.model, provider=OpenAIProvider(base_url=BASE_URL, api_key=adapter.api_key,
-                                                                  http_client=http))
+    if max_retries is None:
+        return OpenAIChatModel(adapter.model, provider=OpenAIProvider(base_url=BASE_URL, api_key=adapter.api_key,
+                                                                      http_client=http))
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(base_url=BASE_URL, api_key=adapter.api_key, max_retries=max_retries,
+                         http_client=http)  # type: ignore[arg-type]  # legacy httpx client, accepted at runtime
+    return OpenAIChatModel(adapter.model, provider=OpenAIProvider(openai_client=client))
 
 
 class AgentDiagnosisService:
     def __init__(self, model: Model, timeout_s: float = AGENT_DEADLINE_S, max_rounds: int = MAX_ROUNDS,
-                 choose: bool = False):
+                 choose: bool = False, delegation: bool = False):
         self.model, self.timeout_s, self.max_rounds, self.choose = model, timeout_s, max_rounds, choose
-        self.agent = Agent(model, output_type=Diagnosis, instructions=SYSTEM_CHOOSE if choose else SYSTEM,
-                           deps_type=ToolBox, tools=toolset(max_rounds), retries=2)
+        tools = toolset(max_rounds) + ([delegation_tool(max_rounds)] if delegation else [])
+        system = (SYSTEM_CHOOSE if choose else SYSTEM) + (DELEGATE if delegation else "")
+        self.agent = Agent(model, output_type=Diagnosis, instructions=system, deps_type=ToolBox, tools=tools,
+                           retries=2)
 
         # a made-up id, a missing prediction or an unusable choice goes back to the model, not to the gateway
         @self.agent.output_validator
@@ -155,7 +192,8 @@ class AgentDiagnosisService:
     # candidates, capabilities: brain/rules.py candidates() and brain/capabilities.py; only read when choose
     async def diagnose(self, box: ToolBox, pattern: Pattern, rule_action: ActionRequest | None,
                        guide: dict[str, Any] | None = None, candidates: list[dict] | None = None,
-                       capabilities: list[dict] | None = None, timeout_s: float | None = None) -> DiagnosisResult:
+                       capabilities: list[dict] | None = None, timeout_s: float | None = None,
+                       model: Model | None = None) -> DiagnosisResult:
         incident = box.incident
         box.choose, box.candidates = self.choose, (candidates or []) if self.choose else []
         box.tools_ok = {c["tool"] for c in capabilities or []}
@@ -174,7 +212,8 @@ class AgentDiagnosisService:
             "culprit_guess": incident.culprit, "victims": incident.victims, "pattern": pattern, **offer,
             "known_services": box.services,
             "company_runbooks": (guide or {}).get("runbooks", []),
-            "past_incidents": (guide or {}).get("past_incidents", [])})
+            "past_incidents": (guide or {}).get("past_incidents", []),
+            **(box.orch.brief() if box.orch is not None else {})})
         settings = ModelSettings(max_tokens=InferenceRequest.max_tokens, timeout=DEADLINE_S, extra_headers={
             "User-Agent": "devhack-oncall-agent/0.1",
             "x-opencode-session": hashlib.sha256(incident.id.encode()).hexdigest()})
@@ -182,12 +221,15 @@ class AgentDiagnosisService:
         try:
             async with asyncio.timeout(self.timeout_s if timeout_s is None else min(self.timeout_s, timeout_s)):
                 run = await self.agent.run(json.dumps(brief, sort_keys=True), deps=box, model_settings=settings,
-                                           usage_limits=UsageLimits(request_limit=self.max_rounds + 3))
+                                           usage_limits=UsageLimits(request_limit=self.max_rounds + 3), model=model)
             usage = run.usage
-            events.append({"type": "llm_called", "incident_id": incident.id, "payload": {
+            summary: dict[str, Any] = {
                 "provider": "opencode_go", "model": self.model.model_name, "attempt": usage.requests,
                 "usage": {"prompt_tokens": usage.input_tokens, "completion_tokens": usage.output_tokens,
-                          "requests": usage.requests, "tool_calls": usage.tool_calls}}})
+                          "requests": usage.requests, "tool_calls": usage.tool_calls}}
+            if model is not None:  # per-call events were sent already; this one only sums them up
+                summary["kind"] = "summary"
+            events.append({"type": "llm_called", "incident_id": incident.id, "payload": summary})
             diagnosis = Diagnosis.model_validate(redact_value(run.output.model_dump(mode="json")))
             if diagnosis.proposed:
                 diagnosis.proposed.pattern = pattern

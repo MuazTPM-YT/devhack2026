@@ -21,6 +21,7 @@ from schemas.orchestration import (IncidentLink, IntentEnvelope, IntentSubmissio
 from schemas.workspace import Workspace
 
 if TYPE_CHECKING:
+    from brain.delegation import Delegation
     from brain.main import Brain
 
 log = logging.getLogger("brain.coordinator")
@@ -68,6 +69,7 @@ class Coordinator:
         self.shadow_groups: dict[str, dict[str, Any]] = {}
         self.shadow_seq = 0
         self.parents: dict[tuple[str, int], str] = {}  # (incident, plan) -> first intent, parent of follow-ups
+        self.delegation: "Delegation | None" = None  # set when delegation_enabled; None = commander alone
 
     # ---- lifecycle
 

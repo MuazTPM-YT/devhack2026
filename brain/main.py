@@ -19,7 +19,9 @@ from brain import capabilities, rules
 from brain.bundle import build_bundle, collect_k8s, why_text
 from brain import major, memory, runbooks
 from brain.agent import AgentDiagnosisService, model_from_env
+from brain.budget import BudgetedModel
 from brain.coordinator import Coordinator, ModeMismatch
+from brain.delegation import Delegation
 from brain.evidence import EvidenceCache
 from brain.culprit import dependency_change, fetch_error_traces, find_culprit
 from brain.gateway_client import call_tool
@@ -178,8 +180,16 @@ class Brain:
                           self.kube, self.conn, self.lock, list(self.services), self.queries, self.publish,
                           edges=list(edges), cache=self.evidence_cache,
                           workspace=self.coordinator.ws if self.coordinator else None, run_id=run_id)
+            model = None
+            if self.coordinator is not None and self.evidence_cache is not None:  # coordinated: durable budget
+                model = BudgetedModel(self.agent.model, self.coordinator.ws, incident.id, run_id or incident.id,
+                                      "commander", publish=self.publish, clock=self.clock)
+                if self.coordinator.delegation is not None:
+                    scope = sorted({*incident.unhealthy, *([culprit] if culprit else [])})
+                    box.orch = await self.coordinator.delegation.context(incident.id, cands, scope)
             result = await self.agent.diagnose(box, cast(Pattern, pattern), rule_action, guide, cands,
-                                               capabilities.available(self.policy, self.services), timeout_s=timeout_s)
+                                               capabilities.available(self.policy, self.services), timeout_s=timeout_s,
+                                               model=model)
         else:
             result = await self.diagnoser.diagnose(bundle, pattern, rule_action, guide)
         for ev in result.events:
@@ -341,18 +351,25 @@ def build_from_env() -> Brain:
                   connect(DEFAULT_PATH, shared=True), services, config.load("policy"))
     brain.flag_map = services_cfg.get("flags") or {}
     brain.runbooks = runbooks.load()
-    if mode != "bundle":
-        brain.agent = AgentDiagnosisService(model_from_env(http), choose=mode == "agent")
-        brain.prom_url, brain.queries, brain.kube = prom, config.load("queries"), KubeReader(core, custom, "shop")
     brain.orch = load_policy()
+    coordinated = brain.orch.mode == "coordinated"
+    if mode != "bundle":
+        brain.agent = AgentDiagnosisService(model_from_env(http, max_retries=0 if coordinated else None),
+                                            choose=mode == "agent",
+                                            delegation=brain.orch.delegation_enabled and mode == "agent")
+        brain.prom_url, brain.queries, brain.kube = prom, config.load("queries"), KubeReader(core, custom, "shop")
     if brain.orch.mode != "disabled":
         wconn = connect(DEFAULT_PATH, shared=True)  # own connection: the workspace runs its own transactions
         migrations.require(wconn)
         workspace = Workspace(wconn, brain.orch)
         brain.coordinator = Coordinator(brain, workspace, brain.orch)
-        if brain.orch.mode == "coordinated":
+        if coordinated:
             brain.evidence_cache = EvidenceCache(workspace)
             brain.submit = brain.coordinator.submit  # fixes go as durable intents, not legacy MCP calls
+            # specialists only for the tool-using agent that chooses the fix (handoff §7.3)
+            if brain.orch.delegation_enabled and brain.agent is not None and brain.agent.choose:
+                brain.coordinator.delegation = Delegation(workspace, brain.orch, brain.agent.model, brain.publish,
+                                                          owner=brain.coordinator.owner)
     return brain
 
 

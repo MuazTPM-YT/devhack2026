@@ -85,6 +85,8 @@ class ToolBox:
     cache: EvidenceCache | None = None
     workspace: Any = None  # schemas.workspace.Workspace
     run_id: str | None = None
+    orch: Any = None  # brain.delegation.DelegationContext: what the commander may ask a specialist
+    question: Any = None  # schemas.orchestration.EligibleQuestion: the one a specialist works on
 
     # what the model was shown, in the shape llm.check validates against
     def bundle(self) -> EvidenceBundle:
