@@ -1,11 +1,26 @@
 # Twaha [T]: state
 
 **Last updated:** 2026-11-13
-**Current phase:** all 4 PS failure types run live, 5 bugs fixed; 30+30 rehearsal trust runs going
-**Branch:** `twaha/card-embeds`, rebased on `origin/main` `3a01e96` (PR #38), not pushed
+**Current phase:** brain as tool-using agent (read tools), offline + live model check done
+**Branch:** `twaha/agent-tools` off `twaha/card-embeds` + merged `origin/main` `116c993`, not pushed
 **Implementation:** PRs #8, #12, #15 merged
 
 ## Done (with proof)
+
+- Agent tools (`twaha/agent-tools`): brain diagnoses as a pydantic-ai agent
+  (`brain/agent.py`) with 9 read tools (`brain/tools.py`). Thin brief, max 6
+  rounds, 150 s, cited ids must come from tool output, rule fix still wins.
+  `BRAIN_MODE=agent|bundle`. Deps: pydantic 2.11 -> 2.14.1, pydantic-ai-slim
+  2.63.0 (+14 transitive incl. openai 3.41, httpx2). Suite 508 passed (1 fail =
+  local budget 30), Ruff + mypy clean.
+  Probe: OpenCode Go passes native `tools`/`tool_calls` for deepseek-v4.1-flash
+  (1.4 s + 1.2 s two turns); `x-opencode-session` header required (400 without).
+  Live model on fake upstreams: 64.1 s, 6 requests, 19 tool calls, 26.3k prompt
+  + 4.1k completion tokens, right cause (journal:41), prediction err_ratio
+  < 0.05 within 120 s. Not yet run on the cluster.
+  Open: `.env.example` needs `BRAIN_MODE=` and `PROMETHEUS_URL=` (deny rule
+  blocks my edit); main.py wiring commit waits for it. pydantic-ai warns
+  `httpx.AsyncClient` support goes in its v3 (we pin 2.63).
 
 - 2026-11-13 live runs, all 4 PS failure types, 1 run each: bad deploy FIXED
   191 s, broken config FIXED 204 s (prediction held, harm clean), memory leak
