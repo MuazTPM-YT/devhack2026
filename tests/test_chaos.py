@@ -361,6 +361,17 @@ def test_judge_kubectl_read_only_not_recorded(tmp_path):
         assert client.get("/chaos/ground-truth").json() == []
 
 
+# global flags before the verb (kubectl -n shop get ...) must not turn a read into ground truth
+@pytest.mark.parametrize("command, recorded", [
+    ("-n shop get deploy cart", False), ("--namespace=shop describe pod x", False),
+    ("--context k3d-oncall -n shop logs deploy/cart", False), ("-n shop scale deploy/cart --replicas=0", True),
+])
+def test_judge_kubectl_verb_found_after_global_flags(tmp_path, command, recorded):
+    raw = FakeRaw((True, "ok"))
+    with TestClient(create_app(tmp_path, FakeKubectl(), raw)) as client:
+        assert client.post("/chaos/kubectl", json={"command": command}).json()["recorded"] is recorded
+
+
 def test_judge_kubectl_failure_returns_output_not_500(tmp_path):
     raw = FakeRaw((False, 'Error from server (NotFound): deployments.apps "nope" not found'))
     with TestClient(create_app(tmp_path, FakeKubectl(), raw)) as client:

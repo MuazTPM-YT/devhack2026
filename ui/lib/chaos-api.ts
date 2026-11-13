@@ -1,4 +1,4 @@
-// chaos panel (:7004) and observer (:7001) through the Next rewrites
+// chaos panel (:7004, read only: faults come from chaos/cli.py) and observer (:7001) via the Next rewrites
 
 export interface TruthEntry { ts: number; type: string; target?: string; [k: string]: unknown }
 
@@ -20,15 +20,6 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-export const inject = (path: string) => call<TruthEntry>(`/api/chaos/${path}`, { method: "POST" });
-
 export const groundTruth = () => call<TruthEntry[]>("/api/chaos/ground-truth");
 
 export const healthNow = () => call<HealthNow>("/api/observer/health/now");
-
-export const runKubectl = (command: string) =>
-  call<{ ok: boolean; output: string; recorded: boolean }>("/api/chaos/kubectl", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ command }),
-  });

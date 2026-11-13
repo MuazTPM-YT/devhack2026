@@ -24,6 +24,8 @@ export interface BusRecord {
 export interface Step { name: string; passed: boolean; reason: string | null; ts: number }
 export interface Tick { ts: number; severity: number | null; recovered: boolean }
 export interface Card { status: string; text: string; evidence_ids: string[] }
+// one bus record kept per incident, in arrival order: the timeline and flow map read these
+export interface IncidentEvent { seq: number; ts: number; type: string; payload: Record<string, unknown> }
 
 export interface Incident {
   id: string;
@@ -51,6 +53,7 @@ export interface Incident {
   quarantined: number;
   blocked: number;
   stages: Record<Stage, StageState>;
+  events: IncidentEvent[];
 }
 
 export interface LiveState {
@@ -64,9 +67,11 @@ export interface LiveState {
 export const initialState: LiveState = { lastSeq: 0, current: null, incidents: {}, order: [], feed: [] };
 
 const FEED_SIZE = 40;
+// shortcut: caps memory on a stuck incident (verify ticks every few s); raise if a window ever needs more
+const EVENTS_PER_INCIDENT = 400;
 
 // which stage each event type lights up
-const STAGE_OF: Record<string, Stage> = {
+export const STAGE_OF: Record<string, Stage> = {
   incident_opened: "detect",
   alerts_grouped: "group",
   major_incident: "group",
@@ -98,6 +103,7 @@ function blank(id: string, ts: number): Incident {
     checklist: [], approval: null, action: null, ticks: [], harmClean: null, outcome: null,
     closedAt: null, card: null, briefing: "", quarantined: 0, blocked: 0,
     stages: { detect: "idle", group: "idle", diagnose: "idle", check: "idle", act: "idle", verify: "idle" },
+    events: [],
   };
 }
 
@@ -169,6 +175,8 @@ function apply(inc: Incident, type: string, p: Record<string, unknown>, ts: numb
       break;
     }
     case "approval_requested":
+      // the gate that failed only handed the fix to a human; checks themselves did not stop it
+      if (next.stages.check === "failed") next.stages = { ...next.stages, check: "done" };
       next.approval = {
         id: str(p.approval_id) ?? "", forecast: str(p.forecast) ?? "", diff: str(p.diff) ?? "",
         expiresAt: num(p.expires_at) ?? 0, decision: null,
@@ -212,7 +220,9 @@ export function reduce(state: LiveState, record: BusRecord): LiveState {
   const feed = [{ seq: record.seq, ts: record.ts, type, incidentId: id }, ...state.feed].slice(0, FEED_SIZE);
   if (!id) return { ...state, lastSeq: record.seq, feed };
   const known = state.incidents[id];
-  const inc = apply(known ?? blank(id, record.ts), type, payload ?? {}, record.ts);
+  const applied = apply(known ?? blank(id, record.ts), type, payload ?? {}, record.ts);
+  const entry = { seq: record.seq, ts: record.ts, type, payload: payload ?? {} };
+  const inc = { ...applied, events: [...applied.events, entry].slice(-EVENTS_PER_INCIDENT) };
   return {
     lastSeq: record.seq,
     current: type === "incident_opened" || !state.current ? id : state.current,

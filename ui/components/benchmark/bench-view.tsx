@@ -1,4 +1,6 @@
 import page from "@/components/page.module.css";
+import { Kpis } from "@/components/ui/kpis";
+import { PageHead } from "@/components/ui/page-head";
 import { type BenchRow, scaleMax, type ScenarioSummary, type Stat } from "@/lib/bench";
 
 import styles from "./bench-view.module.css";
@@ -43,16 +45,12 @@ export function BenchView({ rows, error }: { rows: BenchRow[] | null; error: str
 
   return (
     <div className={page.page}>
-      <div className={page.head}>
-        <div>
-          <p className="label">Fault, wait, measure: the agent against a person with kubectl</p>
-          <h1 className={page.title}>Benchmark</h1>
-        </div>
-        <div className={page.figures}>
-          <div><span className="figure">{list.length || "–"}</span><span className="label">scenarios</span></div>
-          <div><span className="figure">{runs || "–"}</span><span className="label">runs</span></div>
-        </div>
-      </div>
+      <PageHead eyebrow="Benchmark · fault, wait, measure" title="Akira against a person with kubectl" />
+      <Kpis label="Benchmark figures" items={[
+        { label: "Scenarios", value: list.length || "–" },
+        { label: "Runs", value: runs || "–" },
+        { label: "Compared with manual", value: compare ? "yes" : "no" },
+      ]} />
 
       {error ? (
         <article className="card"><p className="empty bad">{error}</p></article>
@@ -69,7 +67,7 @@ export function BenchView({ rows, error }: { rows: BenchRow[] | null; error: str
           <article className="card">
             <div className="card-head">
               <h2 className="card-title">Time from fault</h2>
-              <span className="label">filled = median · outline = worst · seconds{compare ? " · rose = manual" : ""}</span>
+              <span className="label">filled = median · outline = worst · seconds{compare ? " · grey = manual" : ""}</span>
             </div>
             <div className={styles.scenarios}>
               {list.map((r) => (

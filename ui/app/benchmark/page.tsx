@@ -6,7 +6,7 @@ import { connection } from "next/server";
 import { BenchView } from "@/components/benchmark/bench-view";
 import { benchRows } from "@/lib/bench";
 
-export const metadata = { title: "Benchmark · On-call" };
+export const metadata = { title: "Benchmark" };
 
 // written by: uv run python -m bench.report bench/results.jsonl --output-dir bench/out
 const SUMMARY = path.join(process.cwd(), "..", "bench", "out", "summary.json");
