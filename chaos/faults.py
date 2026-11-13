@@ -66,6 +66,13 @@ def datastore_down(run: Kubectl = kubectl) -> dict[str, str]:
     return {"type": "failing_dependency", "target": "valkey-cart"}
 
 
+# §7 scenario 10: kafka is a shared dependency; a wide outage should trip major-incident mode
+def shared_outage(run: Kubectl = kubectl) -> dict[str, str]:
+    run("patch", "deployment", "kafka", "--type=merge", "-p", '{"spec":{"replicas":0}}',
+        f"--field-manager={FIELD_MANAGER}")
+    return {"type": "shared_dependency", "target": "kafka"}
+
+
 def read_flags(run: Kubectl = kubectl) -> str:
     return json.loads(run("get", "configmap", FLAG_CONFIGMAP, "-o", "json"))["data"][FLAG_FILE]
 

@@ -16,7 +16,9 @@ def _state(deployment: dict[str, Any]) -> dict[str, Any]:
     spec = deployment["spec"]
     return {
         "replicas": spec.get("replicas", 1),
-        "containers": [{"name": c["name"], "image": c["image"], "env": c.get("env", [])}
+        "paused": spec.get("paused", False),
+        "containers": [{"name": c["name"], "image": c["image"], "env": c.get("env", []),
+                        "resources": c.get("resources", {})}
                        for c in spec["template"]["spec"]["containers"]],
     }
 
@@ -48,14 +50,18 @@ def diff_ops(healthy: dict[str, Any], current: dict[str, Any]) -> list[dict[str,
     ops: list[dict[str, Any]] = []
     if current["replicas"] != healthy["replicas"]:
         ops.append({"op": "add", "path": "/spec/replicas", "value": healthy["replicas"]})
+    # a failed undo once left payment paused; a paused Deployment never rolls the next fault out
+    if current.get("paused") and not healthy.get("paused"):
+        ops.append({"op": "add", "path": "/spec/paused", "value": False})
     now = {c["name"]: (i, c) for i, c in enumerate(current["containers"])}
     for want in healthy["containers"]:
         if want["name"] not in now:
             raise RuntimeError(f"container {want['name']} gone, cannot restore")
         i, have = now[want["name"]]
         base = f"/spec/template/spec/containers/{i}"
-        for field in ("image", "env"):
-            if have[field] != want[field]:
+        # snapshots taken before resources were recorded skip them (no key)
+        for field in [f for f in ("image", "env", "resources") if f in want]:
+            if have.get(field) != want[field]:
                 ops.append({"op": "add", "path": f"{base}/{field}", "value": want[field]})
     return ops
 
