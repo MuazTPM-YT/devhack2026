@@ -2,6 +2,7 @@
 detection:
   error_ratio_threshold: 0.05
   latency_multiplier: 2.0
+  latency_floor_ms: 100            # and p95 at least this far above baseline (recommendation: 4.8 ms base)
   sustain_seconds: 30
   poll_seconds: 5
 change_window_minutes: 10          # "recent change" window before onset

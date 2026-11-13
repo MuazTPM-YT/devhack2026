@@ -24,9 +24,11 @@ async def fetch_readings(client: httpx.AsyncClient, prom_url: str, queries: dict
 
 
 class Detector:
-    def __init__(self, err_threshold: float, latency_multiplier: float, sustain_s: float, group_within_s: float):
+    def __init__(self, err_threshold: float, latency_multiplier: float, sustain_s: float, group_within_s: float,
+                 latency_floor_ms: float = 0):
         self.err_threshold = err_threshold
         self.latency_multiplier = latency_multiplier
+        self.latency_floor_ms = latency_floor_ms
         self.sustain_s = sustain_s
         self.group_within_s = group_within_s
         self.first_breach: dict[str, float] = {}
@@ -40,7 +42,9 @@ class Detector:
             r = readings.get(svc, {})
             err, p95, base = r.get("err_ratio"), r.get("p95_ms"), baselines.get(svc)
             breaching = (err is not None and err > self.err_threshold) or (
-                p95 is not None and base is not None and p95 > self.latency_multiplier * base)
+                # a few-ms baseline doubles on noise; also need a real absolute jump
+                p95 is not None and base is not None and p95 > self.latency_multiplier * base
+                and p95 - base >= self.latency_floor_ms)
             if breaching:
                 self.first_breach.setdefault(svc, now)
             else:
