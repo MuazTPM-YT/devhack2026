@@ -38,22 +38,81 @@ class ReceiptStore:
         return Receipt.model_validate_json(row[0]) if row else None
 
 
-def build_card(receipt: Receipt, receipt_id: int) -> Card:
+# plain words for the human reading the card; keys are Pattern and Cause.cause_class values
+WHY = {
+    "recent_change": "a change to {svc} landed just before it started failing",
+    "resource": "{svc} ran out of memory or CPU",
+    "resource_exhaustion": "{svc} ran out of memory or CPU",
+    "failing_dependency": "something {svc} depends on is failing",
+    "protected": "{svc} is a protected datastore, so the agent may not touch it",
+    "unknown": "no clear cause found yet",
+}
+DID = {
+    "rollback_deploy": "rolled {svc} back to its previous version",
+    "revert_config": "set the changed feature flag for {svc} back",
+    "restart_service": "restarted {svc}",
+    "scale": "changed how many copies of {svc} run",
+    "raise_limit": "raised the memory limit of {svc}",
+    "enable_degraded_mode": "switched {svc} to degraded mode",
+}
+HEADLINE = {
+    "FIXED": "{svc} is healthy again",
+    "RECOVERED; PREDICTION FAILED": "{svc} is healthy again, but not proven, so the agent earns no trust",
+    "WOKE YOU BECAUSE": "{svc} is failing and the agent did not fix it",
+    "HANDED OFF": "someone else changed {svc}, so the agent stepped back",
+    "VERIFICATION PENDING": "the agent acted on {svc} and is checking the result",
+    "NEEDS APPROVAL": "{svc} is failing; the agent wants your OK before it acts",
+    "NO ACTION": "{svc} is failing; policy refused the agent's action",
+    "MITIGATED, NOT FIXED": "{svc} is up again after a restart, but the cause is still there",
+}
+
+
+def one_line(text: object) -> str:
+    return " ".join(redact_value(str(text)).split())
+
+
+def duration(seconds: float) -> str:
+    m, s = divmod(int(seconds), 60)
+    return f"{m}m {s}s" if m else f"{s}s"
+
+
+def status_of(receipt: Receipt) -> str:
     proven = receipt.outcome == "success" and receipt.prediction_held is True and receipt.harm_clean is True
-    status = "FIXED" if proven else {
+    return "FIXED" if proven else {
         "undone": "WOKE YOU BECAUSE", "handed_off": "HANDED OFF",
         "right_by_accident": "RECOVERED; PREDICTION FAILED",
     }.get(receipt.outcome, "VERIFICATION PENDING")
-    refs = " ".join(f"[{' '.join(value.split())}]" for value in receipt.evidence_ids)
-    text = "\n".join([
-        f"{status}: {' '.join(receipt.target.split())}",
-        f"Evidence: {refs or 'not supplied'}",
-        f"Did: {receipt.tool}; receipt #{receipt_id}",
-        f"Checked: prediction={receipt.prediction_held}; harm clean={receipt.harm_clean}",
-        f"Undo: inspect receipt #{receipt_id} and request gateway approval",
-    ])
-    return Card(incident_id=receipt.incident_id, status=status,
-                text=redact_value(text), evidence_ids=receipt.evidence_ids)
+
+
+def checked(receipt: Receipt) -> str:
+    held, harm = receipt.prediction_held, receipt.harm_clean
+    parts = ["no prediction was made" if held is None else
+             "its prediction held" if held else "its prediction did not hold",
+             "side effects not checked yet" if harm is None else
+             "nothing else changed or got worse" if harm else "something else changed or got worse"]
+    if receipt.outcome == "undone":
+        parts.append("the agent undid its change")
+    elif receipt.elapsed_s is not None and receipt.outcome in ("success", "right_by_accident"):
+        parts.append(f"healthy {duration(receipt.elapsed_s)} after the action")
+    return "; ".join(parts)
+
+
+# a command the human can run, or why there is nothing to run
+def undo(receipt: Receipt, svc: str) -> str:
+    if receipt.outcome == "undone":
+        return "nothing to do, the agent already undid it"
+    if receipt.tool in ("rollback_deploy", "raise_limit"):
+        return f"kubectl rollout undo deploy/{svc} -n shop"
+    if receipt.tool == "scale" and receipt.inverse.get("replicas") is not None:
+        return f"kubectl scale deploy/{svc} -n shop --replicas={receipt.inverse['replicas']}"
+    if receipt.tool == "restart_service":
+        return "nothing to undo, a restart changes no settings"
+    return "see the receipt for the saved previous state"
+
+
+def build_card(receipt: Receipt, receipt_id: int) -> Card:
+    return build_incident_card(Incident(id=receipt.incident_id, opened_at=0, onset_at=0, unhealthy=[receipt.target],
+                                        culprit=receipt.target, severity=0), receipt=receipt, receipt_id=receipt_id)
 
 
 def create_receipts_router(store: ReceiptStore) -> APIRouter:
@@ -71,32 +130,34 @@ def create_receipts_router(store: ReceiptStore) -> APIRouter:
 
 def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
                         decision: GatewayDecision | None = None, receipt: Receipt | None = None,
-                        receipt_id: int | None = None, mitigated: bool = False) -> Card:
-    if receipt and receipt_id is not None:
-        card = build_card(receipt, receipt_id)
-    else:
-        card = Card(incident_id=incident.id, status="WOKE YOU BECAUSE", text="", evidence_ids=[])
+                        receipt_id: int | None = None, mitigated: bool = False,
+                        pattern: str | None = None) -> Card:
+    status = status_of(receipt) if receipt else "WOKE YOU BECAUSE"
     if decision:
-        card.status = {"awaiting_approval": "NEEDS APPROVAL", "handed_off": "HANDED OFF",
-                       "escalated": "WOKE YOU BECAUSE", "refused": "NO ACTION"}.get(decision.decision, card.status)
+        status = {"awaiting_approval": "NEEDS APPROVAL", "handed_off": "HANDED OFF",
+                  "escalated": "WOKE YOU BECAUSE", "refused": "NO ACTION"}.get(decision.decision, status)
     if mitigated:
-        card.status = "MITIGATED, NOT FIXED"
-    if incident.major:
-        card.status = f"MAJOR INCIDENT: {card.status}"
+        status = "MITIGATED, NOT FIXED"
+    svc = one_line(incident.culprit or (receipt.target if receipt else "") or "an unknown service")
     causes = diagnosis.causes if diagnosis else []
-    ids = list(dict.fromkeys(card.evidence_ids + [value for cause in causes for value in cause.evidence_ids]))
-    cause_class = causes[0].cause_class if causes else "unknown"
-    def clean(text):
-        return " ".join(redact_value(str(text)).split())
-    refs = " ".join(f"[{clean(value)}]" for value in ids) or "none supplied"
-    action = f"{receipt.tool} on {clean(receipt.target)}; receipt #{receipt_id}" if receipt else "nothing"
-    check = (f"prediction={receipt.prediction_held}; harm clean={receipt.harm_clean}"
-             if receipt else "verification not run")
-    undo = f"inspect receipt #{receipt_id}; request gateway approval" if receipt else "inspect evidence before approving"
-    card.text = "\n".join([
-        f"{card.status}: {clean(incident.culprit or 'cause unknown')}",
-        f"Why: {cause_class}; evidence {refs}",
-        f"Did: {action}", f"Checked: {check}", f"Undo / ask: {undo}",
-    ])
-    card.evidence_ids = ids
-    return card
+    ids = list(dict.fromkeys((receipt.evidence_ids if receipt else []) + [v for c in causes for v in c.evidence_ids]))
+    refs = " ".join(f"[{one_line(v)}]" for v in ids)
+    reason = causes[0].cause_class if causes else (pattern or "unknown")
+    why = WHY.get(reason, WHY["unknown"]).format(svc=svc)
+    if causes and causes[0].explanation.strip():
+        why += f"; {one_line(causes[0].explanation)[:200]}"
+    if receipt and receipt_id is not None:
+        did = f"{DID.get(receipt.tool, receipt.tool).format(svc=svc)} (receipt #{receipt_id})"
+        last = f"Undo: {undo(receipt, svc)}"
+        check = checked(receipt)
+    else:
+        did = "nothing yet"
+        last = "Next: " + ("press Approve or Reject" if status == "NEEDS APPROVAL"
+                           else "read the evidence and take over")
+        check = "verification not run, no action taken"
+    headline = f"{status}: {HEADLINE.get(status, '{svc}').format(svc=svc)}"
+    if incident.major:
+        status = f"MAJOR INCIDENT: {status}"
+        headline = f"MAJOR INCIDENT: {headline}"
+    text = "\n".join([headline, f"Why: {why} {refs}".rstrip(), f"Did: {did}", f"Checked: {check}", last])
+    return Card(incident_id=incident.id, status=status, text=text, evidence_ids=ids)

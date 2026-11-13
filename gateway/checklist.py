@@ -22,7 +22,7 @@ from gateway.executor import (WriteRefused, list_json, patch_configmap, patch_de
 from gateway.receipts import ReceiptStore, build_incident_card
 from observer import journal
 from observer.kube_watch import service_of
-from schemas.models import ActionRequest, GatewayDecision, Incident, Receipt
+from schemas.models import ActionRequest, Card, GatewayDecision, Incident, Receipt
 
 log = logging.getLogger("gateway")
 
@@ -63,6 +63,10 @@ class Gateway:
                         unhealthy=[s for s in [culprit, *victims] if s], culprit=culprit, victims=victims,
                         major=bool(row.get("major")), severity=row.get("severity_at_open") or 0)
 
+    # card with the incident's pattern, so "Why" has words even without the LLM diagnosis
+    def card(self, row: dict, target: str | None, pattern: str | None = None, **kw: Any) -> Card:
+        return build_incident_card(self.card_incident(row, target), pattern=pattern or row.get("pattern"), **kw)
+
     async def step(self, incident_id: str, steps: list[dict], name: str, passed: bool, reason: str | None = None):
         steps.append({"name": name, "passed": passed, "reason": reason})
         await self.publish({"type": "checklist_step", "incident_id": incident_id,
@@ -91,7 +95,7 @@ class Gateway:
         if row is not None:
             gone = name == "freshness" and outcome == "refused"
             event = "incident_resolved" if gone else ("handed_off" if outcome == "handed_off" else "escalated")
-            card = build_incident_card(self.card_incident(row, target), decision=decision)
+            card = self.card(row, target, decision=decision)
             self.set_state(incident_id, {"incident_resolved": "resolved"}.get(event, event))
             await self.publish({"type": event, "incident_id": incident_id,
                                 "payload": {"card": card.model_dump(mode="json"), "briefing": reason or ""}})
@@ -250,7 +254,7 @@ class Gateway:
                                     self.policy["approval"]["expiry_seconds"])
         decision = GatewayDecision(decision="awaiting_approval", failed_step=step_name, reason=reason,
                                    approval_id=appr["id"])
-        card = build_incident_card(self.card_incident(row, action.target), decision=decision)
+        card = self.card(row, action.target, action.pattern, decision=decision)
         changed = ", ".join(sorted(plan["diff"]))[:500]
         await self.publish({"type": "approval_requested", "incident_id": action.incident_id, "payload": {
             "card": card.model_dump(mode="json"), "approval_id": appr["id"], "expires_at": appr["expires_at"],
@@ -401,7 +405,7 @@ class Gateway:
             await asyncio.to_thread(self.undo, action.target, receipt.inverse, pause)
         except WriteRefused as e:
             await self.publish({"type": "escalated", "incident_id": action.incident_id, "payload": {
-                "card": build_incident_card(self.card_incident(row, action.target)).model_dump(mode="json"),
+                "card": self.card(row, action.target, action.pattern).model_dump(mode="json"),
                 "briefing": f"UNDO FAILED ({e.reason}); receipt #{receipt_id} needs a human now"}})
             self.set_state(action.incident_id, "escalated")
             return "undo_failed"
@@ -459,8 +463,8 @@ class Gateway:
         self.heartbeats.pop(receipt_id, None)
         self.verifying.pop(receipt_id, None)
         mitigated = action.tool == "restart_service" and outcome in ("success", "right_by_accident")
-        card = build_incident_card(self.card_incident(row, action.target), receipt=final, receipt_id=receipt_id,
-                                   mitigated=mitigated)
+        card = self.card(row, action.target, action.pattern, receipt=final, receipt_id=receipt_id,
+                         mitigated=mitigated)
         await self.publish({"type": event, "incident_id": action.incident_id, "payload": {
             "card": card.model_dump(mode="json"), "receipt_url": f"/receipts/{receipt_id}",
             "briefing": reason or ""}})
@@ -535,7 +539,7 @@ class Gateway:
                 await self.publish({"type": "action_undone", "incident_id": r["incident_id"],
                                     "payload": {"receipt_id": r["id"], "reason": "watchdog"}})
             self.set_state(r["incident_id"], "escalated")
-            card = build_incident_card(self.card_incident(row, r["target"]))
+            card = self.card(row, r["target"])
             await self.publish({"type": "escalated", "incident_id": r["incident_id"],
                                 "payload": {"card": card.model_dump(mode="json"), "briefing": reason}})
             done += 1
