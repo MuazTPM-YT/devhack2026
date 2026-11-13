@@ -97,9 +97,9 @@ class Brain:
         moved_from = None
         if not is_major and culprit:
             dep = dependency_change(journal_rows, culprit, edges, self.services, incident.onset_at, window_s,
-                                    self.flag_map)
+                                    self.flag_map, incident.unhealthy)
             if dep:
-                moved_from, culprit = culprit, dep["object"].split("/", 1)[1]
+                moved_from, culprit = culprit, dep[1]
                 victims = sorted((set(victims) | {moved_from}) - {culprit})
         incident = incident.model_copy(update={"culprit": culprit, "victims": victims, "major": is_major})
         await self.publish("culprit_found", incident.id, {"culprit": culprit, "victims": victims,

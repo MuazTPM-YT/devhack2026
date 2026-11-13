@@ -234,6 +234,53 @@ async def test_datastore_scaled_to_zero_moves_culprit_to_protected_dependency(tm
                                      "by_agent": False}], "cart", [], SERVICES, 960, 600) is None  # own change wins
 
 
+# live 2026-11-13: payment errors from a flag flip, traces blamed frontend-proxy, no deploy in the window.
+# The flag's journal entry must move the culprit to payment (it used to end "unknown" -> escalated)
+async def test_flag_change_moves_untouchable_trace_culprit_to_flagged_service(tmp_path):
+    proxy_trace = {"traceID": "t9", "processes": {"p1": {"serviceName": "frontend-proxy"}},
+                   "spans": [{"spanID": "a", "processID": "p1", "operationName": "ingress",
+                              "tags": [{"key": "error", "value": True}]}]}
+
+    class FlagWorld(World):
+        def __call__(self, request):
+            path = request.url.path
+            if path == "/journal":
+                return httpx.Response(200, json=[{
+                    "id": 32, "object": "configmap/flagd-config", "kind": "flag", "ts": 950.0,
+                    "field_manager": "chaos-panel", "by_agent": False,
+                    "diff": {"flags[paymentFailure].defaultVariant": {"old": "off", "new": "50%"}}}])
+            if path.endswith("/api/dependencies"):
+                return httpx.Response(200, json={"data": []})
+            if path.startswith("/jaeger"):
+                return httpx.Response(200, json={"data": [proxy_trace]})
+            return super().__call__(request)
+
+    world = FlagWorld()
+    brain = make(world, [diagnosis_json(causes=[], prediction=None)], tmp_path)
+    brain.flag_map = config.load("services")["flags"]
+    record = await brain.handle(INC.model_copy(update={"unhealthy": ["payment"]}))
+    culprit_event = next(e for e in world.published if e["type"] == "culprit_found")
+    assert culprit_event["payload"]["culprit"] == "payment"
+    assert culprit_event["payload"]["moved_from"] == "frontend-proxy"
+    assert record["pattern"] == "recent_change"
+    assert [(a.tool, a.target, a.journal_entry) for a in brain.submitted] == [("revert_config", "payment", 32)]
+
+
+def test_dependency_change_flag_needs_a_mapped_dependency():
+    from brain.culprit import dependency_change
+    flag = {"id": 5, "object": "configmap/flagd-config", "kind": "flag", "ts": 950.0, "by_agent": False,
+            "diff": {"flags[paymentFailure].defaultVariant": {"old": "off", "new": "50%"}}}
+    flags = {"paymentFailure": "payment"}
+    edges = [("checkout", "payment", 1.0)]
+    assert dependency_change([flag], "checkout", edges, SERVICES, 960, 600, flags) == (flag, "payment")
+    # not downstream, culprit is a real service: no move
+    assert dependency_change([flag], "cart", edges, SERVICES, 960, 600, flags) is None
+    # unmapped flag never moves anything
+    assert dependency_change([flag], "checkout", edges, SERVICES, 960, 600, {}) is None
+    # an agent's own change never counts
+    assert dependency_change([{**flag, "by_agent": True}], "checkout", edges, SERVICES, 960, 600, flags) is None
+
+
 # MCP/schema refused it before the checklist ran: no one else would end the incident (it stayed open forever)
 async def test_schema_refusal_escalates_with_why(tmp_path):
     world = World()

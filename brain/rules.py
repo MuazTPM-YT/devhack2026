@@ -22,7 +22,7 @@ def _action(incident: dict, tool: str, target: str, pattern: str, evidence: list
 
 
 # services a flag journal entry touches, via config/services.yaml `flags:`
-def _flag_targets(entry: dict, flag_map: dict) -> set[str]:
+def flag_targets(entry: dict, flag_map: dict) -> set[str]:
     names = [p[len("flags["):].split("]", 1)[0] for p in entry.get("diff", {}) if p.startswith("flags[")]
     return {flag_map[n] for n in names if n in flag_map}
 
@@ -33,7 +33,7 @@ def latest_change_before_onset(journal: list[dict], culprit: str, onset: float, 
                                flag_map: dict | None = None) -> dict | None:
     hits = [j for j in journal if onset - window_s <= j["ts"] <= onset and j["kind"] != "restart"
             and (j["object"] == f"deployment/{culprit}"
-                 or (j["kind"] == "flag" and culprit in _flag_targets(j, flag_map or {})))]
+                 or (j["kind"] == "flag" and culprit in flag_targets(j, flag_map or {})))]
     return max(hits, key=lambda j: (j["ts"], j["id"]), default=None)
 
 
