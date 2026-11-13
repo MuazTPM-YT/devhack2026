@@ -1,4 +1,9 @@
+import os
+
 import pytest
+
+# processes share ONCALL_API_TOKEN; tests use a fixed fake one
+os.environ.setdefault("ONCALL_API_TOKEN", "test-token-0123456789")
 
 from schemas.models import ActionRequest, Evidence, EvidenceBundle, Incident
 

@@ -19,9 +19,18 @@ class FreshnessTest(unittest.TestCase):
                          ("ok", None))
 
     def test_refuse_when_problem_gone(self):
-        healthy = {"services": {"payment": {"unhealthy": False}}}
+        healthy = {"services": {"payment": {"unhealthy": False, "err_ratio": 0.0}}}
         self.assertEqual(check(healthy, "payment", RULE, RULE, None, None)[0], "refused")
-        self.assertEqual(check({"services": {}}, "payment", RULE, RULE, None, None)[0], "refused")
+
+    # live smoke inc-1794562461681: metrics stopped arriving, payment read None, and the bad image
+    # stayed live while the incident closed as "problem no longer present"
+    def test_no_readings_anywhere_asks_a_human(self):
+        blind = {"err_ratio": None, "p95_ms": None, "bad_pods": 0, "unhealthy": False}
+        health = {"services": {"payment": blind, "checkout": dict(blind)}}
+        outcome, reason = check(health, "payment", RULE, RULE, None, None, ["checkout"])
+        self.assertEqual(outcome, "awaiting_approval")
+        self.assertIn("no health readings", reason)
+        self.assertEqual(check({"services": {}}, "payment", RULE, RULE, None, None)[0], "awaiting_approval")
 
     # valkey-cart scaled to 0 has no spans and no pods: only its sick caller shows the problem
     def test_unmeasured_culprit_judged_by_its_victims(self):

@@ -3,7 +3,7 @@
 import { useLayoutEffect, useRef } from "react";
 
 import { since } from "@/lib/format";
-import { EDGE_LABEL, flowAt, NODES, type NodeId } from "@/lib/flow";
+import { EDGE_LABEL, flowAt, NODES, type NodeId } from "@/lib/request-flow";
 import type { Incident } from "@/lib/live";
 
 import styles from "./flow-map.module.css";

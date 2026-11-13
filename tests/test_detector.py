@@ -69,6 +69,27 @@ class DetectorTest(unittest.TestCase):
         d.tick(30, {}, {}, {})  # both recover
         self.assertEqual(d.tick(35, {}, {}, {"payment": 1})[1][0], "incident_opened")
 
+    # live: a second fault while the first incident waited on an approval went unpaged for minutes
+    def test_new_fault_after_old_incident_went_quiet_opens_its_own(self):
+        d = det()
+        d.tick(0, {}, {}, {"payment": 1})
+        ok = {"payment": {"err_ratio": 0.0, "p95_ms": 50}}
+        _, event = d.tick(150, ok, {}, {"cart": 1})
+        self.assertEqual(event[0], "incident_opened")
+        self.assertEqual(event[1]["unhealthy"], ["cart"])
+        self.assertNotEqual(event[1]["id"], "inc-0")
+        # inside the grouping window, or while the old services are still sick: unchanged behaviour
+        d = det()
+        d.tick(0, {}, {}, {"payment": 1})
+        self.assertEqual(d.tick(60, ok, {}, {"cart": 1})[1][0], "alerts_grouped")
+        d = det()
+        d.tick(0, {}, {}, {"payment": 1})
+        self.assertIsNone(d.tick(150, {}, {}, {"payment": 1, "cart": 1})[1])
+        # a service with no reading is not proven healthy: the old incident stays
+        d = det()
+        d.tick(0, {}, {}, {"payment": 1})
+        self.assertIsNone(d.tick(150, {}, {}, {"cart": 1})[1])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 
 import { duration, plural, since } from "@/lib/format";
-import { describe, type Line, NODES, pathOf, type Phase, phaseOf, type Row, rows, stageTimes } from "@/lib/flow";
+import { describe, type Line, NODES, pathOf, type Phase, phaseOf, type Row, rows, stageTimes } from "@/lib/request-flow";
 import type { Incident, IncidentEvent } from "@/lib/live";
 
 import styles from "./timeline.module.css";

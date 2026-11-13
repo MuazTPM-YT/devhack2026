@@ -39,9 +39,9 @@ async def test_gateway_refusal_does_not_record_approval(tmp_path):
 async def test_consumer_restart_deduplicates_and_resolves_wake(tmp_path):
     class FakeNotifier:
         calls = []
-        async def wake(self, card, briefing):
+        async def wake(self, card, briefing, details=None):
             self.calls.append("wake")
-        async def fyi(self, card, url):
+        async def fyi(self, card, url, details=None):
             self.calls.append("fyi")
     card = {"incident_id": "i", "status": "ESCALATED", "text": "needs help", "evidence_ids": []}
     record = {"seq": 1, "event": {"type": "escalated", "incident_id": "i", "payload": {"card": card}}}
@@ -75,7 +75,7 @@ async def test_repage_expiry_and_persistent_buttons(tmp_path, monkeypatch):
     class FakeNotifier:
         def __init__(self):
             self.pages, self.closed = [], []
-        async def wake(self, card, briefing):
+        async def wake(self, card, briefing, details=None):
             self.pages.append(card.incident_id)
         async def close_approval(self, approval_id, row, decision):
             self.closed.append((approval_id, decision))
@@ -119,9 +119,9 @@ def test_notifier_rejects_rehearsal_identity_in_human_allowlist(monkeypatch):
 class PagerNotifier:
     def __init__(self):
         self.pages = []
-    async def request_approval(self, *args):
+    async def request_approval(self, *args, **kwargs):
         pass
-    async def wake(self, card, briefing):
+    async def wake(self, card, briefing, details=None):
         self.pages.append(briefing)
     async def close_approval(self, approval_id, row, decision):
         pass
@@ -194,15 +194,33 @@ async def test_incident_closed_during_repage_stays_closed(tmp_path):
     state.set("wakes", {"i": {"card": card, "briefing": "b", "last_page": 0}})
 
     class SlowDiscord:
-        async def wake(self, card, briefing):
+        async def wake(self, card, briefing, details=None):
             await consumer.handle({"seq": 1, "event": {"type": "handed_off", "incident_id": "i",
                                                        "payload": {"card": card.model_dump()}}})
             return "m1"
 
-        async def fyi(self, card, url):
+        async def fyi(self, card, url, details=None):
             pass
 
     async with httpx.AsyncClient() as client:
         consumer = NotificationConsumer(client, "http://gateway", SlowDiscord(), state, repage_s=1)
         await consumer.repage_once()
     assert state.get("wakes") == {}
+
+
+# live: a wake saved before the card fields were renamed failed validation and the crash stopped all paging
+async def test_unreadable_saved_wake_still_pages_as_text(tmp_path):
+    class FakeNotifier:
+        pages: list = []
+
+        async def wake(self, card, briefing, details=None):
+            self.pages.append((card.incident_id, card.text, card.fields))
+
+    state = NotifierState(tmp_path / "state.db")
+    old = {"incident_id": "i", "status": "NEEDS YOU", "text": "payment is failing", "evidence_ids": [],
+           "fields": [{"name": "Why", "value": "x"}]}
+    state.set("wakes", {"i": {"card": old, "briefing": "b", "last_page": 0}})
+    notifier = FakeNotifier()
+    async with httpx.AsyncClient() as client:
+        await NotificationConsumer(client, "http://gateway", notifier, state, repage_s=10).repage_once()
+    assert notifier.pages == [("i", "payment is failing", [])]

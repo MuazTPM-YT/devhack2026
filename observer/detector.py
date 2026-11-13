@@ -63,6 +63,14 @@ class Detector:
 
         self.suppressed &= set(unhealthy)  # a service that recovered may open an incident again
         fresh = [s for s in unhealthy if s not in self.suppressed]
+        # the open incident's services all read healthy and a different one broke after the grouping window:
+        # a new fault, not this incident. Live, a fault landing while an approval waited sat unpaged until the
+        # approval expired. The old one stays the gateway's (a late approve fails freshness: "no longer present")
+        if self.incident is not None and now - self.incident["opened_at"] > self.group_within_s:
+            new = [s for s in fresh if s not in self.incident["unhealthy"]]
+            quiet = all(services.get(s, {}).get("unhealthy") is False for s in self.incident["unhealthy"])
+            if new and quiet:
+                self.incident = None
         if fresh and self.incident is None:
             starts = [services[s]["first_breach_ts"] for s in unhealthy]
             self.incident = {"id": f"inc-{int(now * 1000)}", "opened_at": now,

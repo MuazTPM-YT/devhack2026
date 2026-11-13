@@ -39,6 +39,8 @@
 
   --sans: var(--font-sans), system-ui, sans-serif;
   --mono: var(--font-mono), ui-monospace, monospace;
+  /* kept for components/flow (Muaz's /flow page): the serif face was dropped, headings use Geist */
+  --serif: var(--sans);
 
   color-scheme: light;
 }
@@ -135,6 +137,7 @@ h1, h2, h3 { font-weight: 600; letter-spacing: -0.01em; }
 .btn:active { transform: scale(0.97); }
 .btn:disabled { opacity: 0.55; cursor: default; transform: none; }
 .btn-dark { background: var(--ink); color: var(--frame); }
+.pill-dark { background: var(--ink); border-color: var(--ink); color: var(--frame); }
 
 @media (hover: hover) and (pointer: fine) {
   .btn:hover:not(:disabled) { background: var(--card-sunk); }

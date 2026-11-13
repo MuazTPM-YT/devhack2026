@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 from pydantic import ValidationError
 
+from brain import memory, runbooks
 from brain.bundle import why_text
 from brain.major import shared_change
 from brain.rules import latest_change_before_onset
@@ -56,7 +57,8 @@ class Gateway:
     def __init__(self, conn: sqlite3.Connection, apps: Any, core: Any, http: httpx.AsyncClient, observer_url: str,
                  services: dict, policy_cfg: dict, publish: Callable[[dict], Awaitable[Any]],
                  receipts: ReceiptStore, approvers: set[str], clock: Callable[[], float] = time.time,
-                 graph: Any = None, flag_map: dict | None = None, rehearsal: bool = False):
+                 graph: Any = None, flag_map: dict | None = None, rehearsal: bool = False,
+                 books: list[dict] | None = None):
         self.conn, self.apps, self.core, self.http, self.observer_url = conn, apps, core, http, observer_url
         self.services, self.policy, self.publish, self.receipts = services, policy_cfg, publish, receipts
         self.approvers, self.clock = approvers, clock
@@ -69,6 +71,9 @@ class Gateway:
         self.verifying: dict[int, asyncio.Task] = {}
         self.rehearsal = rehearsal  # ONCALL_REHEARSAL=1: bench trust runs, per-hour budget lifted
         self.why: dict[str, str] = {}  # incident id -> card "Why" line; ponytail: never pruned, tiny per incident
+        self.books = books or []  # config/runbooks.yaml; hard rules enforced in steps 3 and 7
+        self.guide: dict[str, dict] = {}  # incident id -> runbook + seen-before for Discord; same ceiling as why
+        self.health: dict[str, dict] = {}  # incident id -> last health read, for the card's numbers; same ponytail
 
     # ---- helpers -------------------------------------------------------------------------------
     def incident(self, incident_id: str) -> dict | None:
@@ -85,7 +90,22 @@ class Gateway:
 
     def card(self, row: dict, target: str | None, **kw: Any) -> Card:
         return build_incident_card(self.card_incident(row, target), why=self.why.get(row["id"]),
-                                   pattern=row.get("pattern"), model_says=row.get("llm_why"), **kw)
+                                   pattern=row.get("pattern"), model_says=row.get("llm_why"),
+                                   health=self.health.get(row["id"]), **kw)
+
+    # runbook + "seen before" line for one incident's notification payloads; first computed in run()
+    def guidance(self, incident_id: str, pattern: str | None = None, tool: str | None = None,
+                 target: str | None = None, matched: list[dict] | None = None) -> dict:
+        if matched is None and incident_id in self.guide:
+            return self.guide[incident_id]
+        if matched is None:
+            matched = runbooks.match(self.books, pattern, target, tool, None)
+        row = self.incident(incident_id) or {}
+        with self.lock:
+            past = memory.similar(self.conn, incident_id, row.get("culprit") or target, pattern or row.get("pattern"))
+        self.guide[incident_id] = {"runbook": runbooks.brief(matched[0]) if matched else None,
+                                   "seen_before": memory.summary(past)}
+        return self.guide[incident_id]
 
     async def step(self, incident_id: str, steps: list[dict], name: str, passed: bool, reason: str | None = None):
         steps.append({"name": name, "passed": passed, "reason": reason})
@@ -115,10 +135,14 @@ class Gateway:
         if row is not None:
             gone = name == "freshness" and outcome == "refused"
             event = "incident_resolved" if gone else ("handed_off" if outcome == "handed_off" else "escalated")
-            card = self.card(row, target, decision=decision)
+            card = self.card(row, target, decision=decision,
+                             proposal=action if isinstance(action, ActionRequest) else None)
             self.set_state(incident_id, {"incident_resolved": "resolved"}.get(event, event))
+            pattern = action.pattern if isinstance(action, ActionRequest) else action.get("pattern")
+            tool = action.tool if isinstance(action, ActionRequest) else action.get("tool")
             await self.publish({"type": event, "incident_id": incident_id,
-                                "payload": {"card": card.model_dump(mode="json"), "briefing": reason or ""}})
+                                "payload": {"card": card.model_dump(mode="json"), "briefing": reason or "",
+                                            **self.guidance(incident_id, pattern, tool, target)}})
         return decision
 
     # ---- entry points --------------------------------------------------------------------------
@@ -172,10 +196,16 @@ class Gateway:
             health = await self.get_json("/health/now")
         except (httpx.HTTPError, ValueError) as e:
             return await self.stop(action, row, steps, "hands_off", "escalated", f"observer unreachable: {e}")
+        self.health[action.incident_id] = health
 
         entry = next((r for r in journal_rows if r["id"] == action.journal_entry), None)
         if (why := why_text(entry, row["onset_at"])) is not None:
             self.why[action.incident_id] = why
+        # company runbooks, matched by code from what the gateway itself read (never the brain's word)
+        matched = runbooks.match(self.books, action.pattern, action.target, action.tool,
+                                 entry["kind"] if entry else None)
+        self.guidance(action.incident_id, matched=matched)
+        needs_human, forbidden_by = runbooks.hard_rules(matched, action.tool)
 
         # 2 hands-off: a human changed something after we opened the incident (chaos injections excluded:
         # live, a flag flip landing while another incident was open handed that incident off)
@@ -203,6 +233,9 @@ class Gateway:
                                              (action.incident_id, "restart_service")).fetchone()[0]
             if bad := policy.major_check(action.model_dump(), row.get("culprit"), restarts):
                 return await self.stop(action, row, steps, "policy", "refused", bad)
+        if forbidden_by:
+            return await self.stop(action, row, steps, "policy", "escalated",
+                                   f"runbook {forbidden_by} forbids {action.tool} on {action.target}; a human must act")
         await self.step(action.incident_id, steps, "policy", True)
 
         # 4 dry run + snapshot
@@ -264,6 +297,9 @@ class Gateway:
         with self.lock:
             gate = trust.check(self.conn, self.policy["trust"], self.policy["tools"][action.tool], action.pattern,
                                action.tool, action.target, kind)
+        if not approved and needs_human:
+            return await self.ask(action, row, steps, plan, f"runbook {', '.join(needs_human)} requires a human "
+                                                            "to approve this action", gate)
         if not approved and protected:
             return await self.ask(action, row, steps, plan, f"{action.target} is a protected data store; "
                                                             "a human must approve", gate)
@@ -289,13 +325,12 @@ class Gateway:
                                     self.policy["approval"]["expiry_seconds"])
         decision = GatewayDecision(decision="awaiting_approval", failed_step=step_name, reason=reason,
                                    approval_id=appr["id"])
-        card = self.card(row, action.target, decision=decision,
-                         did=f"wants to {action.tool} {action.target}: {plan['summary']}")
+        card = self.card(row, action.target, decision=decision, proposal=action, did=plan["summary"])
         changed = ", ".join(sorted(plan["diff"]))[:500]
         await self.publish({"type": "approval_requested", "incident_id": action.incident_id, "payload": {
             "card": card.model_dump(mode="json"), "approval_id": appr["id"], "expires_at": appr["expires_at"],
             "diff": f"{action.tool} {action.target}: {plan['summary']}; changes {changed}",
-            "forecast": forecast_text(plan)}})
+            "forecast": forecast_text(plan), **self.guidance(action.incident_id)}})
         self.set_state(action.incident_id, "awaiting_approval")
         return decision
 
@@ -319,6 +354,12 @@ class Gateway:
         if patch["kind"] == "scale":
             diff = spec_diff({"replicas": live["spec"].get("replicas")}, {"replicas": dry["spec"].get("replicas")})
             inverse = {"op": "scale", "target": target, "replicas": live["spec"].get("replicas")}
+            bounds = self.policy["tools"]["scale"]
+            # scale 0 -> 1 brings a store back; its undo (back to 0) would re-break it and admission refuses it
+            if not bounds["min"] <= (inverse["replicas"] or 0) <= bounds["max"]:
+                inverse = {"op": "none", "target": target,
+                           "why": f"undo would scale {target} to {inverse['replicas'] or 0} replicas, "
+                                  f"outside the allowed {bounds['min']}-{bounds['max']}"}
         else:
             diff = spec_diff(live["spec"], dry["spec"])
             # undo = put the pre-action template back (JSON Patch, agent identity), whatever the tool changed
@@ -394,9 +435,11 @@ class Gateway:
         victims = json.loads(row.get("victims_json") or "[]")
         cfg = self.policy["verify"]
         extra = cfg["flag_extra_seconds"] if plan["patch"]["kind"] == "configmap" else 0  # flagd reload ~60 s
+        # aborting means undoing; with no safe undo, give the fix its whole window instead
+        can_undo = plan["inverse"]["op"] != "none"
         v = Verification(self.clock(), plan["health"], action.target, victims,
                          action.prediction.model_dump() if action.prediction else None,
-                         cfg["window_seconds"] + extra, cfg["early_abort"],
+                         cfg["window_seconds"] + extra, cfg["early_abort"] and can_undo,
                          grace_s=cfg["early_abort_grace_seconds"] + extra, prediction_delay_s=extra)
         health, human, result = plan["health"], [], None
         while result is None:
@@ -439,6 +482,8 @@ class Gateway:
     async def undo_and_close(self, receipt_id: int, action: ActionRequest, row: dict, receipt: Receipt,
                              v: Verification, pause: bool, harm: dict | None, reason: str,
                              hash_after: str | None = None, plan: dict | None = None) -> str:
+        if receipt.inverse.get("op") == "none":
+            return await self.keep_and_page(receipt_id, action, row, receipt, reason)
         try:
             await asyncio.to_thread(self.undo, action.target, receipt.inverse, pause)
         except WriteRefused as e:
@@ -447,17 +492,40 @@ class Gateway:
             with self.lock:
                 self.conn.execute("UPDATE receipts SET outcome='undo_failed' WHERE id=?", (receipt_id,))
                 self.conn.commit()
-            self.receipts.update(receipt_id, receipt.model_copy(update={"outcome": "undo_failed"}))
+            failed = receipt.model_copy(update={"outcome": "undo_failed"})
+            self.receipts.update(receipt_id, failed)
             self.heartbeats.pop(receipt_id, None)
             self.verifying.pop(receipt_id, None)
+            card = self.card(row, action.target, receipt=failed, receipt_id=receipt_id, reason="UNDO FAILED")
             await self.publish({"type": "escalated", "incident_id": action.incident_id, "payload": {
-                "card": self.card(row, action.target).model_dump(mode="json"),
-                "briefing": f"UNDO FAILED ({e.reason}); receipt #{receipt_id} needs a human now"}})
+                "card": card.model_dump(mode="json"),
+                "briefing": f"UNDO FAILED ({e.reason}); receipt #{receipt_id} needs a human now",
+                **self.guidance(action.incident_id, action.pattern, action.tool, action.target)}})
             self.set_state(action.incident_id, "escalated")
             return "undo_failed"
         await self.publish({"type": "action_undone", "incident_id": action.incident_id,
                             "payload": {"receipt_id": receipt_id, "reason": reason}})
         return await self.close(receipt_id, action, row, receipt, v, "undone", harm, reason, hash_after, plan=plan)
+
+    # fix did not prove itself but undoing it is unsafe: leave it in place, hand the incident to a person
+    async def keep_and_page(self, receipt_id: int, action: ActionRequest, row: dict, receipt: Receipt,
+                            reason: str) -> str:
+        with self.lock:
+            self.conn.execute("UPDATE receipts SET outcome='handed_off' WHERE id=?", (receipt_id,))
+            # unproven is a failure for trust, same as close() books an undo; the bench credits rehearsals
+            if receipt.trust.get("approved_by") != approvals.REHEARSAL_APPROVER:
+                trust.record(self.conn, action.pattern, action.tool, action.target, "real", False, self.clock())
+            self.conn.commit()
+        kept = receipt.model_copy(update={"outcome": "handed_off"})
+        self.receipts.update(receipt_id, kept)
+        self.heartbeats.pop(receipt_id, None)
+        self.verifying.pop(receipt_id, None)
+        card = self.card(row, action.target, receipt=kept, receipt_id=receipt_id, reason="no safe undo")
+        await self.publish({"type": "escalated", "incident_id": action.incident_id, "payload": {
+            "card": card.model_dump(mode="json"),
+            "briefing": f"no safe undo ({receipt.inverse.get('why')}); fix kept after: {reason}"}})
+        self.set_state(action.incident_id, "escalated")
+        return "handed_off"
 
     # pause an in-progress rollout first so the inverse lands on a still object (§6.4.9 Undo);
     # always unpause, a failed undo must not leave the Deployment paused
@@ -468,6 +536,8 @@ class Gateway:
         def gen() -> int:
             return read_deployment(self.apps, target)["metadata"]["generation"]
 
+        if inverse["op"] not in ("restore_configmap", "scale", "restore_template"):
+            raise WriteRefused("refused", f"no safe undo ({inverse.get('why', inverse['op'])})")
         if inverse["op"] == "restore_configmap":
             cm = read_configmap(self.core, inverse["name"])
             patch_configmap(self.core, inverse["name"], {"metadata": {"resourceVersion": cm["metadata"]["resourceVersion"]},
@@ -520,6 +590,7 @@ class Gateway:
         mitigated = action.tool == "restart_service" and outcome in ("success", "right_by_accident")
         victims = json.loads(row.get("victims_json") or "[]")
         card = self.card(row, action.target, receipt=final, receipt_id=receipt_id, mitigated=mitigated,
+                         reason=reason,
                          took_s=self.clock() - (row.get("opened_at") or v.t0), did=(plan or {}).get("summary"),
                          metric=error_change((plan or {}).get("health") or {}, v.last_health,
                                              [action.target, *victims]))
@@ -528,7 +599,8 @@ class Gateway:
             "card": card.model_dump(mode="json"), "receipt_url": f"/receipts/{receipt_id}",
             "briefing": reason or "", "receipt_id": receipt_id, "tier": tier_of(receipt.trust),
             "prediction_held": final.prediction_held, "harm_clean": final.harm_clean,
-            "forecast_s": final.forecast_s, "actual_added_s": final.added_disruption_s}})
+            "forecast_s": final.forecast_s, "actual_added_s": final.added_disruption_s,
+            **self.guidance(action.incident_id, action.pattern, action.tool, action.target)}})
         return outcome
 
     # Q2: bench reports ground truth; credit only finished rehearsal receipts, once
@@ -613,16 +685,18 @@ class Gateway:
                     trust.record(self.conn, gate.get("pattern"), r["tool"], r["target"], "real", False, now)
                 self.conn.commit()
             if (view := self.receipts.get(r["id"])) is not None:  # the /receipts page reads the view
-                self.receipts.update(r["id"], view.model_copy(
-                    update={"outcome": "undone" if outcome == "undone" else "undo_failed"}))
+                view = view.model_copy(update={"outcome": "undone" if outcome == "undone" else "undo_failed"})
+                self.receipts.update(r["id"], view)
             self.heartbeats.pop(r["id"], None)
             if outcome == "undone":
                 await self.publish({"type": "action_undone", "incident_id": r["incident_id"],
                                     "payload": {"receipt_id": r["id"], "reason": "watchdog"}})
             self.set_state(r["incident_id"], "escalated")
-            card = self.card(row, r["target"])
+            card = self.card(row, r["target"], receipt=view, receipt_id=r["id"] if view else None, reason=reason)
             await self.publish({"type": "escalated", "incident_id": r["incident_id"],
-                                "payload": {"card": card.model_dump(mode="json"), "briefing": reason}})
+                                "payload": {"card": card.model_dump(mode="json"), "briefing": reason,
+                                            **self.guidance(r["incident_id"], gate.get("pattern"), r["tool"],
+                                                            r["target"])}})
             done += 1
         return done
 
