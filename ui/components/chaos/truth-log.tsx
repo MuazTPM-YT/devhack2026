@@ -13,16 +13,22 @@ function detail(e: TruthEntry): string {
   return [e.target, typeof e.key === "string" ? e.key : null].filter(Boolean).join(" · ");
 }
 
-// what was really broken and when; the bench scores against this, the agent never sees it
-export function TruthLog({ version, className }: { version: number; className?: string }) {
+const POLL_MS = 5000;
+
+// what was really broken and when; faults come from the CLI, so poll. The agent never sees this.
+export function TruthLog({ className }: { className?: string }) {
   const [entries, setEntries] = useState<TruthEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    groundTruth()
-      .then((all) => { setEntries(all.slice(-12).reverse()); setError(null); })
-      .catch((e: Error) => setError(e.message));
-  }, [version]);
+    let live = true;
+    const tick = () => groundTruth()
+      .then((all) => { if (live) { setEntries(all.slice(-15).reverse()); setError(null); } })
+      .catch((e: Error) => { if (live) setError(e.message); });
+    tick();
+    const id = setInterval(tick, POLL_MS);
+    return () => { live = false; clearInterval(id); };
+  }, []);
 
   return (
     <article className={`card ${className ?? ""}`}>
@@ -30,7 +36,7 @@ export function TruthLog({ version, className }: { version: number; className?: 
         <h2 className="card-title">Ground truth</h2>
         <span className="label">bench only</span>
       </div>
-      {error ? (
+      {error && !entries ? (
         <p className="empty bad">Chaos panel unreachable: {error}</p>
       ) : !entries?.length ? (
         <p className="empty">Nothing injected yet.</p>

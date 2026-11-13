@@ -906,13 +906,15 @@ def append(event: dict, prev_hash: str) -> str:
 
 | Page | Content |
 |---|---|
-| `/` Live incident | Six stage tiles that light up; alert-grouping counter; culprit and victims; evidence list as sent to Claude; checklist steps with pass/fail and reason; trust numbers; predicted vs actual chart; card; receipt |
-| `/chaos` | Fault buttons, raw `kubectl` box, reset, current health |
+| `/` Live incident | Six stage tiles that light up; request-flow map (each bus event drawn as a pulse between observer, brain, model, gateway, notifier, Kubernetes, verifier); per-incident timeline with every event and its payload; alert-grouping counter; culprit and victims; evidence list as sent to Claude; checklist steps with pass/fail and reason; trust numbers; predicted vs actual chart; card; receipt |
+| `/chaos` | Read-only monitor: current health, ground-truth log, and the CLI commands. Faults, reset and the raw `kubectl` box run from a terminal: `uv run python -m chaos.cli` (wraps the chaos API, so ground truth is still logged). The UI proxies only `GET /chaos/ground-truth`. |
 | `/trust` | Ledger table: pattern, action, target, rehearsal and real counts, proven lower bound, gate open or closed |
 | `/receipts` | List and detail; "verify audit log" button |
 | `/benchmark` | Results tables and charts |
 
 **Live updates:** `new EventSource("http://localhost:7003/events")`; one handler per event type in section 5.3. Keep state in a single reducer. Link out to Jaeger for traces.
+
+**Layout:** left sidebar (pages, incident history from the bus replay, gateway and observer status); one SSE stream in the layout shared by every page; `/?incident=<id>` opens an older incident.
 
 ---
 

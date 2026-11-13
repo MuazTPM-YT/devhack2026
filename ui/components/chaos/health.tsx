@@ -1,13 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-import { type HealthNow, healthNow } from "@/lib/chaos-api";
 import { clock } from "@/lib/format";
+import { useLiveContext } from "@/lib/live-context";
 
 import styles from "./health.module.css";
 
-const POLL_MS = 3000;
 // severity worth a full arc; higher still draws as full
 const ARC_MAX = 12;
 
@@ -19,25 +16,15 @@ function Gauge({ severity }: { severity: number }) {
   return (
     <svg viewBox="0 0 220 120" className={styles.gauge} aria-hidden="true">
       <path d="M20 110 A90 90 0 0 1 200 110" className={styles.track} />
-      <path d="M20 110 A90 90 0 0 1 200 110" className={styles.fill}
-        style={{ strokeDasharray: `${len * f} ${len}` }} />
+      {/* a round cap on a zero-length dash still draws a dot, so 0 draws nothing */}
+      {f > 0 && <path d="M20 110 A90 90 0 0 1 200 110" className={styles.fill}
+        style={{ strokeDasharray: `${len * f} ${len}` }} />}
     </svg>
   );
 }
 
 export function Health({ className }: { className?: string }) {
-  const [health, setHealth] = useState<HealthNow | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let live = true;
-    const tick = () => healthNow()
-      .then((h) => { if (live) { setHealth(h); setError(null); } })
-      .catch((e: Error) => { if (live) setError(e.message); });
-    tick();
-    const id = setInterval(tick, POLL_MS);
-    return () => { live = false; clearInterval(id); };
-  }, []);
+  const { health, error } = useLiveContext().observer;
 
   const services = health ? Object.entries(health.services).sort(([, a], [, b]) => Number(b.unhealthy) - Number(a.unhealthy)) : [];
   return (
