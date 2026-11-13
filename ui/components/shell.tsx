@@ -8,6 +8,7 @@ import styles from "./shell.module.css";
 
 const NAV = [
   { href: "/", label: "Live incident" },
+  { href: "/flow", label: "Flow" },
   { href: "/chaos", label: "Chaos" },
   { href: "/trust", label: "Trust" },
   { href: "/receipts", label: "Receipts" },
