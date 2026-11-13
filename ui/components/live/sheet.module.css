@@ -22,7 +22,7 @@
 .quote {
   margin: 0 0 12px;
   padding: 10px 12px;
-  border-left: 3px solid var(--ink);
+  border-top: 2px solid var(--ink);
   background: var(--paper);
   font-size: 13px;
   line-height: 1.5;
