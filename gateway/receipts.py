@@ -150,8 +150,8 @@ REASONS = [
     (r"journal entry \d+ (?:no longer matches|not found)", "The change the agent wanted to undo has changed again "
                                                            "since. A person should check."),
     (r"observer unreachable", "The agent cannot read health data right now, so it will not act."),
-    (r"literal_error, input_value='([^']+)'", "{0} is not on the list of services the agent may change, "
-                                              "so it was blocked."),
+    (r"literal_error, input_value='([a-z0-9-]{1,63})'", "{0} is not on the list of services the agent may change, "
+                                                        "so it was blocked."),
     (r"action refused|not allowed|unknown service|is not actable|validation error",
      "The fix the agent proposed is not allowed by its rules, so it was blocked."),
     (r"trust bound", "The agent has not proven this fix often enough yet to run it alone."),

@@ -216,6 +216,12 @@ def test_schema_refusal_names_the_service_the_agent_may_not_change():
     assert explain(reason) == "astronomy-db is not on the list of services the agent may change, so it was blocked."
 
 
+# the refused target is the model's own text: only a plain k8s name may reach the page
+def test_schema_refusal_hides_a_target_that_is_not_a_plain_name():
+    reason = "1 validation error [type=literal_error, input_value='[click](https://evil.example) @everyone', x]"
+    assert explain(reason) == "The fix the agent proposed is not allowed by its rules, so it was blocked."
+
+
 # live: "astronomy-db is unhealthy" said nothing; a datastore has no request metrics, only sick pods
 def test_datastore_symptom_counts_sick_pods():
     db = INC.model_copy(update={"culprit": "astronomy-db", "unhealthy": ["astronomy-db"], "victims": []})
