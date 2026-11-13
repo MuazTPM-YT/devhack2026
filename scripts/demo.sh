@@ -43,26 +43,46 @@ launch() {
   exit 1
 }
 
-# quick tunnel (trycloudflare, no account); its random URL lands in $RUN/<name>.url
+# quick tunnel (trycloudflare, no account); its random URL lands in $RUN/<name>.url.
+# trycloudflare refuses some starts (rate limit), so a refused tunnel gets 3 tries
 tunnel() {
   local name=$1 origin=$2; shift 2
   if alive "$name" && [ -s "$RUN/$name.url" ]; then
     echo "SKIP  $name: already open at $(cat "$RUN/$name.url")"
     return
   fi
+  local try
+  for try in 1 2 3; do
+    open_tunnel "$name" "$origin" "$@" && return
+    [ "$try" = 3 ] && break
+    echo "RETRY $name in $((try * 10)) s: $(last_error "$name")" >&2
+    sleep $((try * 10))
+  done
+  echo "FAIL  $name got no trycloudflare URL after 3 tries: $(last_error "$name")" >&2
+  echo "      full log: $RUN/$name.log" >&2
+  exit 1
+}
+
+last_error() { grep -iE 'error|fail' "$RUN/$1.log" | tail -n 1 || true; }
+
+# one start; returns 1 when cloudflared gives no tunnel URL (process stopped)
+open_tunnel() {
+  local name=$1 origin=$2; shift 2
   rm -f "$RUN/$name.url"
   setsid cloudflared tunnel --no-autoupdate --url "$origin" "$@" >"$RUN/$name.log" 2>&1 < /dev/null &
   echo $! >"$RUN/$name.pid"
   local url=""
   for _ in $(seq 1 60); do
-    url=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$RUN/$name.log" | head -n 1 || true)
+    # api.trycloudflare.com is where cloudflared asks for a tunnel; it shows up in its error lines
+    url=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$RUN/$name.log" \
+      | grep -v '^https://api\.trycloudflare\.com$' | head -n 1 || true)
     [ -n "$url" ] && break
     alive "$name" || break
     sleep 1
   done
   if [ -z "$url" ]; then
-    echo "FAIL  $name got no trycloudflare URL; see $RUN/$name.log" >&2
-    exit 1
+    kill -- "-$(cat "$RUN/$name.pid")" 2>/dev/null || true
+    return 1
   fi
   # new hostnames take a few seconds to resolve; 000 = no answer yet, 530 = edge has no route yet
   local code=000
@@ -240,6 +260,9 @@ status() {
     if alive "$name"; then echo "UP    $name $(cat "$RUN/$name.url" 2>/dev/null)"; fi
   done
 }
+
+# sourced by tests: load functions, run nothing
+[ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 
 case "${1:-}" in
   up) up ;;
