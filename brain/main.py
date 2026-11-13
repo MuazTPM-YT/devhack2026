@@ -151,6 +151,23 @@ class Brain:
                 record["followups_sent"].append(await self.hand_over(incident, follow, result.diagnosis, pattern, why))
         return record
 
+    # a crash must still end the incident: without a terminal event the observer keeps it open and opens
+    # no other incident, ever
+    async def handle_safely(self, incident: Incident) -> dict:
+        try:
+            return await self.handle(incident)
+        except Exception as e:
+            log.error("incident %s failed in the brain: %r", incident.id, e)
+            decision = GatewayDecision(decision="escalated", failed_step="brain", reason=type(e).__name__)
+            record = {"incident": incident.model_dump(mode="json"), "error": repr(e)}
+            self.results[incident.id] = record
+            try:
+                record["gateway"] = await self.escalate(incident, None, decision,
+                                                        f"brain failed ({type(e).__name__}); look by hand", None)
+            except Exception as again:  # bus down too: logged, the observer's max age is the last net
+                log.error("incident %s: escalation failed too: %r", incident.id, again)
+            return record
+
     # the gateway decides from here; with nothing safe to do, wake a human ourselves
     async def hand_over(self, incident: Incident, action: ActionRequest | None, diagnosis: Any,
                         pattern: str, why: str | None = None) -> dict:
@@ -228,7 +245,7 @@ def create_app(brain: Brain | None = None) -> FastAPI:
         b = app.state.brain
         if incident.id in b.results or any(t.get_name() == incident.id for t in tasks):
             return {"incident_id": incident.id, "status": "already_handled"}
-        task = asyncio.create_task(b.handle(incident), name=incident.id)
+        task = asyncio.create_task(b.handle_safely(incident), name=incident.id)
         tasks.add(task)
         task.add_done_callback(_finished)
         return {"incident_id": incident.id, "status": "accepted"}

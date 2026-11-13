@@ -281,6 +281,22 @@ def test_dependency_change_flag_needs_a_mapped_dependency():
     assert dependency_change([{**flag, "by_agent": True}], "checkout", edges, SERVICES, 960, 600, flags) is None
 
 
+# a crash anywhere in handle() used to leave the incident open forever (observer blocks all later ones)
+async def test_crash_in_handle_still_escalates(tmp_path):
+    world = World()
+    brain = make(world, [diagnosis_json()], tmp_path)
+
+    async def boom(*a, **k):
+        raise RuntimeError("bundle exploded")
+
+    brain.diagnoser.diagnose = boom  # type: ignore[method-assign]
+    record = await brain.handle_safely(INC)
+    assert "bundle exploded" in record["error"]
+    assert world.published[-1]["type"] == "escalated"
+    assert "brain failed (RuntimeError)" in world.published[-1]["payload"]["briefing"]
+    assert brain.conn.execute("SELECT state FROM incidents").fetchone()[0] == "escalated"
+
+
 # MCP/schema refused it before the checklist ran: no one else would end the incident (it stayed open forever)
 async def test_schema_refusal_escalates_with_why(tmp_path):
     world = World()
