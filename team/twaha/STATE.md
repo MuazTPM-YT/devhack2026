@@ -17,7 +17,17 @@
   (1.4 s + 1.2 s two turns); `x-opencode-session` header required (400 without).
   Live model on fake upstreams: 64.1 s, 6 requests, 19 tool calls, 26.3k prompt
   + 4.1k completion tokens, right cause (journal:41), prediction err_ratio
-  < 0.05 within 120 s. Not yet run on the cluster.
+  < 0.05 within 120 s.
+  Live smoke, agent mode, k3d bad deploy: PASS `inc-1794570030014`, detect
+  51.0 s, diagnose 67.1 s, act 110.5 s (Twaha approved in Discord), recover
+  180.7 s. Agent: 4 requests, 6 tool calls (health, changes, fix history,
+  metric history, pods, logs), 14.5k + 0.9k tokens, ~16 s. Cause cites
+  journal:53 + range metric, confidence 0.93; prediction held, harm clean;
+  audit verified 841. Bundle-mode smokes #3/#11 diagnosed at 95.1/96.6 s.
+  Before the run: collector OTLP push got HTTP 400 from Prometheus again
+  (`rollout restart ds/otel-collector-agent` fixed it); `.env` lacked
+  `ONCALL_API_TOKEN`, generated a local one (two-machine demo needs the
+  same value on both).
   Open: `.env.example` needs `BRAIN_MODE=` and `PROMETHEUS_URL=` (deny rule
   blocks my edit); main.py wiring commit waits for it. pydantic-ai warns
   `httpx.AsyncClient` support goes in its v3 (we pin 2.63).
