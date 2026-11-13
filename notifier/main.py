@@ -1,10 +1,15 @@
 import asyncio
+import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
+import discord
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 
 from notifier.consumer import NotificationConsumer
 from notifier.discord_bot import ApprovalController, DiscordNotifier
@@ -12,6 +17,12 @@ from notifier.state import NotifierState
 from schemas import auth, logs
 
 logs.setup()
+log = logging.getLogger(__name__)
+
+
+class Ack(BaseModel):
+    by: str = Field(min_length=1, max_length=40)
+    via: Literal["discord", "akira-mcp"] = "akira-mcp"
 
 
 def required(name: str) -> str:
@@ -58,9 +69,53 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(auth.TokenGuard)  # ack writes need our token; /health and /pages stay open like gateway reads
 
 
 @app.get("/health")
 async def health():
     notifier = getattr(app.state, "notifier", None)
     return {"ready": bool(notifier and notifier.is_ready())}
+
+
+def running() -> DiscordNotifier:
+    notifier = getattr(app.state, "notifier", None)
+    if notifier is None:
+        raise HTTPException(503, "notifier not started")
+    return notifier
+
+
+# what Discord is waiting on: wake pages still re-paging, approval messages not yet decided
+@app.get("/pages")
+async def pages():
+    state = running().controller.state
+    now = time.time()
+    wakes = [{"incident_id": i, "briefing": w.get("briefing"), "pages": w.get("pages", 1),
+              "last_page": w.get("last_page"), "approval_id": w.get("approval_id"),
+              "headline": (w.get("card") or {}).get("headline") or (w.get("card") or {}).get("status"),
+              "acknowledged": state.get(f"ack:{i}")} for i, w in (state.get("wakes") or {}).items()]
+    asks = [{"approval_id": a, "expires_at": r.get("expires_at")} for a, r in state.approvals().items()
+            if not r.get("decision") and (r.get("expires_at") or 0) > now]
+    return {"pages": wakes, "approvals": asks}
+
+
+# acknowledge without opening Discord: same allowlist as the button, then the message loses its button
+@app.post("/pages/{incident_id}/ack")
+async def ack(incident_id: str, body: Ack):
+    notifier = running()
+    row = (notifier.controller.state.get("wakes") or {}).get(incident_id)
+    if row is None:
+        raise HTTPException(404, "no open page for this incident")
+    result = await notifier.controller.acknowledge(incident_id, body.by)
+    if result == "not authorised":
+        raise HTTPException(403, result)
+    if result == "already acknowledged":
+        raise HTTPException(409, result)
+    updated = False
+    if row.get("message_id"):
+        try:
+            await notifier.close_page(row["message_id"], body.by, via=body.via)
+            updated = True
+        except (discord.HTTPException, ValueError) as e:
+            log.warning("ack %s: wake message not updated: %s", incident_id, type(e).__name__)
+    return {"result": result, "message_updated": updated}
