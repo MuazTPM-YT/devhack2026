@@ -42,6 +42,10 @@ export const groundTruth = () => call<TruthEntry[]>("/api/chaos/ground-truth");
 
 export const healthNow = () => call<HealthNow>("/api/observer/health/now");
 
+// Jaeger call graph for the last hour, raw; lib/service-map.ts parses it
+export const dependencies = () =>
+  call<unknown>(`/api/jaeger/api/dependencies?endTs=${Date.now()}&lookback=3600000`);
+
 export const registry = () => call<Registry>("/api/chaos/registry");
 
 export const experiments = () => call<Experiment[]>("/api/chaos/experiments");

@@ -17,7 +17,6 @@ import { ActiveRun } from "./active-run";
 import { CliGuide } from "./cli-guide";
 import { Composer } from "./composer";
 import { EnvStrip } from "./env-strip";
-import { Health } from "./health";
 import styles from "./lab.module.css";
 import { TruthLog } from "./truth-log";
 
@@ -77,7 +76,7 @@ export function ChaosView() {
 
   return (
     <div className={page.page}>
-      <PageHead eyebrow="Chaos Lab · judge controls · Akira has no path here" title="Break it your way, watch Akira respond"
+      <PageHead eyebrow="judge controls · Akira has no path here" title="Chaos Lab"
         aside={mode ? <Tag tone={mode.tone} title={mode.title}>{mode.label}</Tag> : undefined} />
       {!tele.ok && tele.state !== "waiting" && <p className={styles.banner} role="alert">{tele.text}. An experiment started now cannot be read.</p>}
       <EnvStrip telemetry={tele} registry={reg} run={openRun} error={error} busy={busy === "reset"}
@@ -148,11 +147,6 @@ export function ChaosView() {
             </table>
           )}
         </div>
-      </details>
-
-      <details className={styles.more}>
-        <summary>Health now</summary>
-        <div className={styles.moreBody}><Health health={observer.health} error={observer.error} /></div>
       </details>
 
       <details className={styles.more} onToggle={(e) => setHistory(e.currentTarget.open)}>

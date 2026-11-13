@@ -15,11 +15,8 @@ import styles from "./shell.module.css";
 const NAV: { href: string; label: string; icon: IconName }[] = [
   { href: "/", label: "Overview", icon: "grid" },
   { href: "/live", label: "Live incident", icon: "live" },
-  { href: "/flow", label: "Flow", icon: "flow" },
   { href: "/chaos", label: "Chaos Lab", icon: "chaos" },
-  { href: "/trust", label: "Trust", icon: "trust" },
   { href: "/receipts", label: "Receipts", icon: "receipts" },
-  { href: "/benchmark", label: "Benchmark", icon: "bench" },
 ];
 
 const LINK_DOT: Record<LinkState, string> = { live: "dot-ok", connecting: "dot-warn", down: "dot-bad", demo: "dot-warn" };
