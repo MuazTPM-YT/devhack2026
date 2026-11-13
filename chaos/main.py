@@ -19,6 +19,7 @@ FAULTS: dict[str, Callable[[Kubectl], dict[str, str]]] = {
     "memory-leak": faults.memory_leak,
     "datastore-down": faults.datastore_down,
     "flag-flip": faults.flag_flip,
+    "shared-outage": faults.shared_outage,
 }
 
 # judge commands that change nothing; everything else is logged as ground truth for the bench
