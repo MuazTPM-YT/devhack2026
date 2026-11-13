@@ -154,6 +154,13 @@ chaos panel on `:7004` (`CHAOS_URL`), so every change is logged in
 `data/ground_truth.jsonl`. The agent never reads that file. Every fault
 stays until `reset`.
 
+Interactive shell: run `uv run -m chaos.cli` with no command. Type `/` for
+a dropdown of commands (arrow keys to pick, Tab or Enter to fill in);
+`/inject <Tab>` lists the faults; `/watch` streams the agent's steps live;
+the bottom bar shows gateway and observer state and the current severity.
+
+One-shot commands (scripts, CI):
+
 ```bash
 uv run python -m chaos.cli list                       # faults you can inject
 uv run python -m chaos.cli inject bad-deploy          # break payment; watch http://localhost:3000/live

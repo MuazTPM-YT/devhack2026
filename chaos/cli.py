@@ -7,6 +7,8 @@ from typing import Any
 
 import httpx
 
+from chaos.term import BAD, MUTE, OK, OXBLOOD, ROSE, paint, tag
+
 # what each fault does to the shop; names match chaos/main.py FAULTS (tests keep the two in sync)
 FAULTS: dict[str, str] = {
     "bad-deploy": "payment ships image payment:v2-bad, about 40% of charges fail",
@@ -64,21 +66,21 @@ def truth_line(e: dict[str, Any]) -> str:
 
 def cmd_list(args: argparse.Namespace) -> int:
     for name, what in FAULTS.items():
-        print(f"{name:<15} {what}")
+        print(f"{paint(name.ljust(15), fg=ROSE, bold=True)} {what}")
     return 0
 
 
 def cmd_inject(args: argparse.Namespace) -> int:
     entry = call("POST", f"{args.chaos_url}/chaos/{args.fault}")
-    print(f"injected  {truth_line(entry)}")
-    print("watch the agent at http://localhost:3000/live; undo with: uv run python -m chaos.cli reset")
+    print(f"{paint('injected', fg=OXBLOOD, bold=True)}  {truth_line(entry)}")
+    print(paint("watch the agent at http://localhost:3000/live (or /watch in the shell); undo with reset", fg=MUTE))
     return 0
 
 
 def cmd_reset(args: argparse.Namespace) -> int:
     print("resetting: restore snapshot, then wait for severity 0 (can take a few minutes)…", flush=True)
     entry = call("POST", f"{args.chaos_url}/chaos/reset", timeout=RESET_TIMEOUT_S)
-    print(truth_line(entry))
+    print(paint(truth_line(entry), fg=BAD if entry.get("healthy") is False else OK))
     return 1 if entry.get("healthy") is False else 0
 
 
@@ -103,8 +105,8 @@ def cmd_status(args: argparse.Namespace) -> int:
         v = services[name]
         err = "–" if v.get("err_ratio") is None else f"{v['err_ratio'] * 100:.1f}%"
         p95 = "–" if v.get("p95_ms") is None else f"{v['p95_ms']:.0f} ms"
-        state = "UNHEALTHY" if v.get("unhealthy") else ("breaching" if v.get("breaching") else "ok")
-        print(f"  {name:<18} {state:<10} err {err:>6}  p95 {p95:>8}  bad pods {v.get('bad_pods', 0)}")
+        state, tone = ("unhealthy", "bad") if v.get("unhealthy") else (("breaching", "warn") if v.get("breaching") else ("ok", "ok"))
+        print(f"  {name:<18} {tag(state, tone)}{" " * (9 - len(state))} err {err:>6}  p95 {p95:>8}  bad pods {v.get('bad_pods', 0)}")
     return 0
 
 
@@ -119,8 +121,9 @@ def cmd_truth(args: argparse.Namespace) -> int:
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="uv run python -m chaos.cli",
-        description="Break the shop and watch the agent fix it. Every change goes through the chaos "
+        prog="uv run -m chaos.cli",
+        description="Break the shop and watch the agent fix it. Run with no command for the interactive shell. "
+                    "Every change goes through the chaos "
                     "panel (:7004) so it is logged as ground truth.")
     p.add_argument("--chaos-url", default=os.environ.get("CHAOS_URL", DEFAULT_CHAOS),
                    help="chaos panel (env CHAOS_URL, default %(default)s)")
@@ -144,6 +147,10 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
+    if not argv:  # no command: the interactive shell
+        from chaos import shell  # deferred: one-shot commands don't need prompt_toolkit
+
+        return shell.run()
     rest: list[str] = []
     if "kubectl" in argv:
         at = argv.index("kubectl") + 1
@@ -155,7 +162,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return int(args.run(args))
     except CliError as e:
-        print(f"error: {e}", file=sys.stderr)
+        print(f"{paint('error:', fg=BAD, bold=True, stream=sys.stderr)} {e}", file=sys.stderr)
         return 1
 
 
