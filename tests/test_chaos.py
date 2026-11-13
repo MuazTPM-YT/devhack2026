@@ -1,5 +1,6 @@
 import copy
 import json
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,9 +10,9 @@ from chaos.faults import (BAD_PAYMENT_IMAGE, BROKEN_PAYMENT_ADDR, FLAG_CONFIGMAP
                           FLIP_FLAG, LEAK_FLAG, KubectlError, bad_deploy,
                           broken_config, datastore_down, flag_flip, memory_leak, shared_outage)
 from chaos.main import FAULTS, create_app
-from schemas import auth
 from chaos.reset import TARGETS, diff_ops, ensure_snapshot, reset
 
+JUDGE = {"X-Chaos-Token": os.environ["CHAOS_JUDGE_TOKEN"]}
 GOOD_IMAGE = "ghcr.io/open-telemetry/demo:3.1.0-payment"
 GOOD_FLAGS = json.dumps({"flags": {LEAK_FLAG: {"defaultVariant": "off",
                                               "variants": {"off": False, "on": True}},
@@ -24,6 +25,11 @@ def deployment(name, image=None, replicas=1, env=None):
     return {"metadata": {"name": name}, "spec": {"replicas": replicas, "template": {"spec": {
         "containers": [{"name": name, "image": image or f"demo:{name}",
                         "env": env if env is not None else [{"name": "PORT", "value": "8080"}]}]}}}}
+
+
+# a client that holds the judge token, like the CLI, the bench and the UI server do
+def judge(app):
+    return TestClient(app, headers=JUDGE)
 
 
 # in-memory cluster that applies the patch types chaos sends and logs every call
@@ -44,6 +50,8 @@ class FakeKubectl:
             raise KubectlError(f"kubectl {args[0]} {args[1]}: forbidden")
         if args[:2] == ("get", "deployments"):
             return json.dumps({"items": list(self.deployments.values())})
+        if args[0] == "patch" and "--dry-run=server" in args:
+            return ""
         if args[:2] == ("patch", "deployment"):
             target = self.deployments[args[2]]
             patch = json.loads(args[args.index("-p") + 1])
@@ -64,7 +72,11 @@ class FakeKubectl:
                         if container["name"] != change["name"]:
                             continue
                         env = {e["name"]: e for e in container["env"]}
-                        env.update({e["name"]: e for e in change.pop("env", [])})
+                        for e in change.pop("env", []):
+                            if e.get("$patch") == "delete":
+                                env.pop(e["name"], None)
+                            else:
+                                env[e["name"]] = e
                         container.update(change, env=list(env.values()))
             return ""
         if args[:2] == ("get", "configmap"):
@@ -182,7 +194,7 @@ def test_reset_patches_only_changed_and_waits_for_rollout(tmp_path):
 
 def test_http_inject_then_reset_records_ground_truth(tmp_path):
     fake = FakeKubectl()
-    with TestClient(create_app(tmp_path, fake), headers=auth.headers()) as client:
+    with judge(create_app(tmp_path, fake)) as client:
         injected = client.post("/chaos/bad-deploy").json()
         assert injected["type"] == "bad_deploy" and injected["target"] == "payment"
         assert fake.image("payment") == BAD_PAYMENT_IMAGE
@@ -194,7 +206,7 @@ def test_http_inject_then_reset_records_ground_truth(tmp_path):
 
 def test_http_kubectl_failure_is_502_and_not_recorded(tmp_path):
     fake = FakeKubectl()
-    with TestClient(create_app(tmp_path, fake), headers=auth.headers()) as client:
+    with judge(create_app(tmp_path, fake)) as client:
         fake.fail_on = "patch"
         response = client.post("/chaos/bad-deploy")
         assert response.status_code == 502 and "forbidden" in response.json()["detail"]
@@ -276,7 +288,7 @@ def test_wait_healthy_needs_a_stable_zero_or_times_out():
 
 
 def test_http_reset_reports_healthy(tmp_path):
-    with TestClient(create_app(tmp_path, FakeKubectl(), severity=lambda: 0, reset_stable_s=0), headers=auth.headers()) as client:
+    with judge(create_app(tmp_path, FakeKubectl(), severity=lambda: 0, reset_stable_s=0)) as client:
         assert client.post("/chaos/reset").json()["healthy"] is True
 
 
@@ -305,7 +317,7 @@ def test_reset_undoes_every_fault_at_once(tmp_path):
     ("shared-outage", "shared_dependency", "kafka"),
 ])
 def test_http_each_fault_records_ground_truth(tmp_path, path, kind, target):
-    with TestClient(create_app(tmp_path, FakeKubectl()), headers=auth.headers()) as client:
+    with judge(create_app(tmp_path, FakeKubectl())) as client:
         response = client.post(f"/chaos/{path}")
         assert response.status_code == 200
         entry = response.json()
@@ -338,7 +350,7 @@ class FakeRaw:
 
 def test_judge_kubectl_splits_without_shell_and_records_writes(tmp_path):
     raw = FakeRaw()
-    with TestClient(create_app(tmp_path, FakeKubectl(), raw), headers=auth.headers()) as client:
+    with judge(create_app(tmp_path, FakeKubectl(), raw)) as client:
         body = client.post("/chaos/kubectl", json={"command": "kubectl scale deploy/cart --replicas=0"}).json()
         assert body == {"ok": True, "output": "deployment.apps/cart scaled", "recorded": True}
         assert raw.calls == [["scale", "deploy/cart", "--replicas=0"]]
@@ -349,14 +361,14 @@ def test_judge_kubectl_splits_without_shell_and_records_writes(tmp_path):
 
 def test_judge_kubectl_shell_metacharacters_stay_plain_args(tmp_path):
     raw = FakeRaw()
-    with TestClient(create_app(tmp_path, FakeKubectl(), raw), headers=auth.headers()) as client:
+    with judge(create_app(tmp_path, FakeKubectl(), raw)) as client:
         client.post("/chaos/kubectl", json={"command": "get pods; rm -rf / | cat $(id)"})
         assert raw.calls == [["get", "pods;", "rm", "-rf", "/", "|", "cat", "$(id)"]]
 
 
 def test_judge_kubectl_read_only_not_recorded(tmp_path):
     raw = FakeRaw((True, "NAME READY"))
-    with TestClient(create_app(tmp_path, FakeKubectl(), raw), headers=auth.headers()) as client:
+    with judge(create_app(tmp_path, FakeKubectl(), raw)) as client:
         body = client.post("/chaos/kubectl", json={"command": "get pods -o wide"}).json()
         assert body["recorded"] is False
         assert client.get("/chaos/ground-truth").json() == []
@@ -369,13 +381,13 @@ def test_judge_kubectl_read_only_not_recorded(tmp_path):
 ])
 def test_judge_kubectl_verb_found_after_global_flags(tmp_path, command, recorded):
     raw = FakeRaw((True, "ok"))
-    with TestClient(create_app(tmp_path, FakeKubectl(), raw), headers=auth.headers()) as client:
+    with judge(create_app(tmp_path, FakeKubectl(), raw)) as client:
         assert client.post("/chaos/kubectl", json={"command": command}).json()["recorded"] is recorded
 
 
 def test_judge_kubectl_failure_returns_output_not_500(tmp_path):
     raw = FakeRaw((False, 'Error from server (NotFound): deployments.apps "nope" not found'))
-    with TestClient(create_app(tmp_path, FakeKubectl(), raw), headers=auth.headers()) as client:
+    with judge(create_app(tmp_path, FakeKubectl(), raw)) as client:
         body = client.post("/chaos/kubectl", json={"command": "delete deploy nope"}).json()
         assert body["ok"] is False and "NotFound" in body["output"]
 
@@ -383,7 +395,7 @@ def test_judge_kubectl_failure_returns_output_not_500(tmp_path):
 @pytest.mark.parametrize("command, status", [("", 422), ("kubectl", 400), ("get 'unclosed", 400)])
 def test_judge_kubectl_rejects_bad_input(tmp_path, command, status):
     raw = FakeRaw()
-    with TestClient(create_app(tmp_path, FakeKubectl(), raw), headers=auth.headers()) as client:
+    with judge(create_app(tmp_path, FakeKubectl(), raw)) as client:
         assert client.post("/chaos/kubectl", json={"command": command}).status_code == status
         assert raw.calls == []
 
@@ -416,15 +428,36 @@ def test_reset_with_old_snapshot_without_resources_still_works(tmp_path):
     assert restored[0] == "kafka" and fake.replicas("kafka") == 1
 
 
-# the panel runs any kubectl as cluster admin; it had no login and the UI proxy + a public tunnel reached it
-def test_chaos_writes_need_the_token_reads_do_not(tmp_path):
-    from schemas import auth
-    raw_calls = []
-    with TestClient(create_app(tmp_path, FakeKubectl(), lambda a: (raw_calls.append(a), (True, ""))[1])) as client:
-        assert client.post("/chaos/kubectl", json={"command": "get secrets -A"}).status_code == 401
-        assert client.post("/chaos/bad-deploy").status_code == 401
-        assert client.post("/chaos/reset", headers={auth.HEADER: "x" * 20}).status_code == 401
-        assert client.get("/chaos/ground-truth").status_code == 200
-        assert raw_calls == []
-        ok = client.post("/chaos/kubectl", json={"command": "get pods"}, headers=auth.headers())
-        assert ok.status_code == 200 and raw_calls == [["get", "pods"]]
+def test_read_field_sees_every_owned_kind():
+    from chaos.faults import read_field
+    fake = FakeKubectl()
+    assert read_field("image", "payment", None, fake) == GOOD_IMAGE
+    assert read_field("replicas", "payment", None, fake) == 2
+    assert read_field("env", "checkout", "PAYMENT_ADDR", fake) == "payment:8080"
+    assert read_field("env", "checkout", "NOT_SET", fake) is None
+    assert read_field("flag", FLIP_FLAG, None, fake) == "off"
+
+
+def test_write_field_removes_an_env_var_and_leaves_the_rest():
+    from chaos.faults import write_field
+    fake = FakeKubectl()
+    write_field("env", "checkout", "EXTRA", "1", fake)
+    assert fake.env("checkout")["EXTRA"] == "1"
+    write_field("env", "checkout", "EXTRA", None, fake)
+    assert fake.env("checkout") == {"CHECKOUT_PORT": "8080", "PAYMENT_ADDR": "payment:8080"}
+
+
+def test_dry_write_changes_nothing():
+    from chaos.faults import write_field
+    fake = FakeKubectl()
+    write_field("image", "payment", None, BAD_PAYMENT_IMAGE, fake, dry=True)
+    write_field("flag", FLIP_FLAG, None, "50%", fake, dry=True)
+    assert fake.image("payment") == GOOD_IMAGE
+    assert json.loads(fake.configmaps[FLAG_CONFIGMAP]["data"][FLAG_FILE])["flags"][FLIP_FLAG]["defaultVariant"] == "off"
+    assert all("--dry-run=server" in c for c in fake.calls if c[0] == "patch")
+
+
+def test_unknown_deployment_fails_loud():
+    from chaos.faults import read_field
+    with pytest.raises(KubectlError, match="not found"):
+        read_field("image", "nope", None, FakeKubectl())

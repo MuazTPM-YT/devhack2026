@@ -1153,6 +1153,68 @@ Seeded from reading the plan. Reply under each one.
   run `uv sync --locked`. Events: each tool call is an `llm_called` with extra
   `tool`, `args`, `ms`, `evidence_ids` (no schema change). Agent run takes
   ~60 s and ~30k tokens vs one ~2k-token call: bench both modes.
+- [T] 2026-11-13 for A,M: Branch `twaha/chaos-lab` (not pushed; Twaha OK'd edits to your files).
+  From `reports/akira-ui-chaos-panel-review.md`. Offline checks pass (616 pytest, 60 UI tests);
+  **no live run yet**.
+  **Action needed, everyone:** add `CHAOS_JUDGE_TOKEN` (16+ chars, not the same value as
+  `ONCALL_API_TOKEN`) to `.env`. Chaos `:7004` refuses to start without it and returns 401 on
+  every route, GETs too, without header `X-Chaos-Token`. CLI, bench, `smoke.sh` and the UI
+  server send it; run the CLI as `uv run --env-file .env python -m chaos.cli`. `demo.sh shop`
+  mints one and puts it in `remote.env`. Observer, brain, gateway and notifier drop the
+  variable at start (`auth.agent_start()`), so agent code never holds it.
+  C6 (A): faults are experiments now. New routes `GET /chaos/registry`, `POST
+  /chaos/experiments/preview`, `POST /chaos/experiments` (header `Idempotency-Key`), `POST
+  /chaos/experiments/draw`, `GET /chaos/experiments[/{id}]`, `POST .../{id}/stop|reveal`. The six
+  old routes keep their response and add `experiment_id`; a re-inject of a fault that is
+  already live now returns 409. What may be broken: `config/chaos.yaml`. State: `data/chaos.db`.
+  `reset` no longer holds the write lock while it waits, and stale health (`prometheus_ok`
+  false) no longer counts as healthy. UI `/chaos` is the lab; the ground-truth rewrite in
+  `next.config.ts` is gone (server route `ui/app/api/chaos` adds the token).
+  C4 (M): `/health/now` adds `last_ok_ts` (time of the last good Prometheus reading).
+  `journal.still_live` compares env var by var, so a later unrelated var does not make an older
+  env entry look gone.
+  C2 (mine): new event `tool_called` `{tool, args, ms, evidence_ids}`; read tools no longer
+  publish `llm_called`. `diagnosis_ready` adds `decision`, `origin`, `chosen`, `rule_choice`,
+  `reason`, `alternative`; `rule_matched` adds `candidates`. UI `EVENT_TYPES` updated.
+  C1 (M): `ActionRequest.origin` (`rule` default, `model`), `Diagnosis.decision | candidate |
+  reason | alternative` (all optional). MCP tools take `origin`.
+  Brain (M): `BRAIN_MODE=agent` now means the model chooses: accept a candidate from
+  `rules.candidates()`, propose a tool from `brain/capabilities.py`, or decline. Old behaviour
+  is `BRAIN_MODE=advise`. Follow-ups (`raise_limit`) are sent only behind the rule's own pick.
+  Evidence and `get_recent_changes` say "the agent" / "another writer", not the field manager;
+  the card's Why line keeps the name.
+  Gateway (M): `origin == "model"` always ends in an approval request ("the agent chose this
+  fix itself"), skips the rule-equality compare in freshness, and writes no ledger or rehearsal
+  credit. A stale-entry action claimed as `rule` is still caught. Verifier: a reading with
+  `prometheus_ok: false` cannot hold the prediction, count as recovered, or trigger early abort;
+  undo reason then reads "monitoring went blind; recovery not proven".
+  Your call, not done: replan after a failed verify, a real degraded-mode tool, compound
+  faults, bench scoring by experiment record. Trust and bench runs collected so far were made
+  in what is now `advise` mode.
+
+- [A] 2026-11-13 for M,T: Third mentoring session research proposal,
+  not an agreed contract: extend existing brain with fleet-level incident
+  correlation, one commander per causal incident, and bounded read-only
+  specialists sharing versioned evidence and task ownership. Existing
+  `brain/major.py` and `brain/memory.py` already provide shared-cause
+  ranking and historical recall. Proposed memory must distinguish shared
+  dependencies from recurring bug signatures and retain per-target gateway
+  checks/approvals. Current detector tracks one active incident; regroup
+  does not re-diagnose; verifier compares global severity. Keep global
+  `max_in_flight: 1` initially and queue writes. No implementation or schema
+  change made. Existing PydanticAI supports delegation:
+  https://github.com/pydantic/pydantic-ai/blob/main/docs/multi-agent-applications.md
+  Incident-command reference: https://sre.google/workbook/incident-response/.
+- [T] 2026-11-13 for A,M: `twaha/chaos-lab` live check done on k3d, 2 runs from the browser.
+  Run 1 (`cartFailure 50%`): detected at +4m00s, culprit right, but the model answered
+  `decline` with reason "test" and it was accepted (Discord got "agent declined to act: test").
+  Fixed in `9f45690`: placeholder answers go back to the model, three bad answers -> the rule's
+  pick. Run 2 (`paymentFailure 50%` + decoy env on payment): rule's first pick was the decoy,
+  agent took the flag revert, gateway asked a human, Twaha approved, FIXED in 315 s (75 s of
+  it waiting for approval), prediction held, no trust credit (origin model), audit 949 verified.
+  [A] `cartFailure` at 50% keeps cart errors under 5%; the breach is frontend/checkout p95.
+  [M] restarting the brain mid-diagnosis leaves the incident open with no terminal event
+  (`inc-1794577996231`); only the observer's 20 min max age closes it.
 - [M] 2026-11-13 for A,T: Audit + local end-to-end run on `muaz/agent-polish` (Muaz OK'd edits to your files).
   **Action needed (A):** re-apply `k8s/admission-policy.yaml` + `k8s/admission-binding.yaml` on the live
   cluster (new policy `oncall-agent-flags`), then `./scripts/security_check.sh` (now 35 rows). The image rule is

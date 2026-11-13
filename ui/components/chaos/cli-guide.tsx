@@ -7,7 +7,8 @@ import page from "@/components/page.module.css";
 
 import styles from "./cli-guide.module.css";
 
-const CLI = "uv run python -m chaos.cli";
+// --env-file: the chaos panel answers only to CHAOS_JUDGE_TOKEN
+const CLI = "uv run --env-file .env python -m chaos.cli";
 
 // §7 scenarios; names match chaos/cli.py FAULTS (and chaos/main.py routes)
 const FAULTS = [

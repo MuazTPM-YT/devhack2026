@@ -10,7 +10,7 @@ export interface Policy {
   maxAgeS: number | null;
 }
 
-export interface ServiceInfo { kind: string; critical: boolean; actable: boolean }
+export interface ServiceInfo { kind: string; critical: boolean; actable: boolean; protected: boolean }
 
 const num = (text: string, key: string): number | null => {
   const m = text.match(new RegExp(`^\\s*${key}:\\s*([0-9.]+)`, "m"));
@@ -33,14 +33,18 @@ export function parseServices(text: string): Record<string, ServiceInfo> {
   const row = /^ {2}([\w-]+):\s*\{([^}]*)\}/gm;
   for (const m of text.matchAll(row)) {
     const field = (k: string) => m[2].match(new RegExp(`${k}:\\s*([\\w-]+)`))?.[1];
-    out[m[1]] = { kind: field("kind") ?? "unknown", critical: field("critical") === "true", actable: field("actable") === "true" };
+    out[m[1]] = { kind: field("kind") ?? "unknown", critical: field("critical") === "true", actable: field("actable") === "true",
+      protected: field("protected") === "true" };
   }
   return out;
 }
 
-export type ServiceStatus = "unhealthy" | "breaching" | "ok" | "nodata";
+// unknown: monitoring is blind or stale, so the last numbers prove nothing. nodata: no measurement at all.
+// Neither is "ok": only a fresh reading inside the limits is
+export type ServiceStatus = "unhealthy" | "breaching" | "ok" | "nodata" | "unknown";
 
-export function serviceStatus(s: ServiceHealth | undefined): ServiceStatus {
+export function serviceStatus(s: ServiceHealth | undefined, blind = false): ServiceStatus {
+  if (blind) return "unknown";
   if (!s) return "nodata";
   if (s.unhealthy) return "unhealthy";
   if (s.breaching) return "breaching";
@@ -55,9 +59,11 @@ export function latencyLimit(base: number | null, p: Policy): number | null {
 }
 
 // one line per service card, worst news first
-export function serviceSentence(s: ServiceHealth | undefined, p: Policy): string {
-  const st = serviceStatus(s);
-  if (!s || st === "nodata") return "No traffic in the last window.";
+export function serviceSentence(s: ServiceHealth | undefined, p: Policy, blind = false): string {
+  const st = serviceStatus(s, blind);
+  if (st === "unknown") return "Monitoring unavailable; health unknown.";
+  if (!s) return "No reading for this service; health unknown.";
+  if (st === "nodata") return "No requests measured in the last window; health not proven.";
   const parts: string[] = [];
   if (p.errThreshold != null && s.err_ratio != null && s.err_ratio > p.errThreshold) {
     parts.push(`errors ${(s.err_ratio * 100).toFixed(1)}%, over the ${(p.errThreshold * 100).toFixed(0)}% line`);
@@ -66,6 +72,8 @@ export function serviceSentence(s: ServiceHealth | undefined, p: Policy): string
   if (limit != null && s.p95_ms != null && s.p95_ms > limit) parts.push(`p95 ${Math.round(s.p95_ms)} ms, limit ${Math.round(limit)} ms`);
   if (s.bad_pods > 0) parts.push(`${s.bad_pods} pod${s.bad_pods === 1 ? "" : "s"} not ready`);
   if (parts.length) return `${parts.join("; ")}.`.replace(/^./, (c) => c.toUpperCase());
+  // the observer says it is over a limit even when our own copy of the limits does not show which
+  if (st !== "ok") return "Over a limit the observer measured.";
   return "Inside its error and latency baselines.";
 }
 
@@ -77,13 +85,30 @@ export function incidentStatus(inc: Incident, now: number, maxAgeS: number | nul
   return maxAgeS != null && now - inc.openedAt > maxAgeS ? "lost" : "open";
 }
 
+// what "resolved" really proved. verified: recovery matched the prediction made before the fix.
+// unproven: the shop recovered, the cause was not proven. mitigated: a restart bought time, the cause stays
+export type Verdict = "verified" | "unproven" | "mitigated";
+
+export function verdict(inc: Incident): Verdict | null {
+  if (inc.outcome !== "resolved") return null;
+  const status = inc.card?.status ?? "";
+  if (status.startsWith("MITIGATED")) return "mitigated";
+  return inc.predictionHeld === true || status.startsWith("FIXED") ? "verified" : "unproven";
+}
+
+export const VERDICT: Record<Verdict, { label: string; short: string; tone: "ok" | "warn" }> = {
+  verified: { label: "Fix verified", short: "Fix verified", tone: "ok" },
+  unproven: { label: "Recovered, cause unproven", short: "Unproven", tone: "warn" },
+  mitigated: { label: "Mitigated, not fixed", short: "Mitigated", tone: "warn" },
+};
+
 export interface IncidentStats {
-  total: number; open: number; resolved: number; escalated: number; handedOff: number; lost: number;
+  total: number; open: number; resolved: number; verified: number; escalated: number; handedOff: number; lost: number;
   medianFixS: number | null;
 }
 
 export function incidentStats(state: LiveState, now: number, maxAgeS: number | null): IncidentStats {
-  const out: IncidentStats = { total: 0, open: 0, resolved: 0, escalated: 0, handedOff: 0, lost: 0, medianFixS: null };
+  const out: IncidentStats = { total: 0, open: 0, resolved: 0, verified: 0, escalated: 0, handedOff: 0, lost: 0, medianFixS: null };
   const fix: number[] = [];
   for (const id of state.order) {
     const inc = state.incidents[id];
@@ -91,6 +116,7 @@ export function incidentStats(state: LiveState, now: number, maxAgeS: number | n
     const st = incidentStatus(inc, now, maxAgeS);
     if (st === "handed_off") out.handedOff += 1;
     else out[st] += 1;
+    if (verdict(inc) === "verified") out.verified += 1;
     if (st === "resolved" && inc.closedAt != null) fix.push(inc.closedAt - inc.openedAt);
   }
   if (fix.length) {

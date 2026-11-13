@@ -75,7 +75,7 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        auth.token()  # fail at start, not on the first approval
+        auth.agent_start()  # fail at start, not on the first approval
         holder["gw"] = gateway or build_from_env()
         app.state.gateway = holder["gw"]
         async with contextlib.AsyncExitStack() as stack:

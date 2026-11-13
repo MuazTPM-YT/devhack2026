@@ -1,5 +1,6 @@
 import { plural, words } from "@/lib/format";
 import type { Incident } from "@/lib/live";
+import { readTitle } from "@/lib/request-flow";
 
 import s from "./sheet.module.css";
 
@@ -15,7 +16,7 @@ export function Evidence({ incident }: { incident: Incident }) {
   return (
     <section className={s.sec} aria-labelledby="sec-evidence">
       <div className={s.head}>
-        <h2 id="sec-evidence" className={s.title}>Evidence sent</h2>
+        <h2 id="sec-evidence" className={s.title}>Evidence</h2>
         {incident.culprit && (
           <a className="pill" href={`${JAEGER}/search?service=${encodeURIComponent(incident.culprit)}`} target="_blank" rel="noreferrer">
             Traces in Jaeger ↗
@@ -23,7 +24,7 @@ export function Evidence({ incident }: { incident: Incident }) {
         )}
       </div>
       <p className={s.note}>
-        {plural(total, "item")}, redacted · {incident.pattern ? words(incident.pattern) : "no"} pattern · {plural(incident.llmCalls, "model call")}
+        {plural(total, "item")}, redacted · {incident.pattern ? words(incident.pattern) : "no"} pattern · {plural(incident.llmCalls, "model request")} · {plural(incident.reads.length, "telemetry read")}
         {incident.quarantined > 0 && <span className="bad"> · {plural(incident.quarantined, "line")} quarantined</span>}
       </p>
       <div className={s.bars}>
@@ -38,6 +39,19 @@ export function Evidence({ incident }: { incident: Incident }) {
           );
         })}
       </div>
+      {incident.reads.length > 0 && (
+        <>
+          <p className={`${s.note} ${s.noteTop}`}>What the agent read itself</p>
+          <ol className={s.steps}>
+            {incident.reads.map((r, i) => (
+              <li key={`${r.ts}-${i}`} className={s.step}>
+                <span>{readTitle(r.tool, r.args)}</span>
+                <span className="num muted">{r.evidence} found</span>
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
       {incident.tools.length > 0 && (
         <p className={`${s.note} ${s.noteTop}`}>Rule proposes <span className="mono">{incident.tools.join(", ")}</span></p>
       )}

@@ -34,13 +34,15 @@ def clock(ts: float) -> str:
     return time.strftime("%H:%M:%S", time.localtime(ts))
 
 
+# the chaos panel answers only to the judge token (.env CHAOS_JUDGE_TOKEN)
+def judge() -> dict[str, str]:
+    try:
+        return auth.headers(auth.JUDGE_ENV, auth.JUDGE_HEADER)
+    except RuntimeError as e:
+        raise CliError(f"{e}; run with `uv run --env-file .env`") from None
+
+
 def call(method: str, url: str, timeout: float = 30, **kw: Any) -> Any:
-    if method != "GET":  # chaos writes are admin kubectl: the panel refuses them without the shared token
-        token = os.environ.get(auth.ENV, "").strip()
-        if not token:
-            raise CliError(f"set {auth.ENV} (the same one the services use); the chaos panel refuses writes "
-                           "without it")
-        kw["headers"] = {**kw.get("headers", {}), auth.HEADER: token}
     try:
         r = httpx.request(method, url, timeout=timeout, **kw)
     except httpx.TimeoutException:
@@ -78,7 +80,7 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def cmd_inject(args: argparse.Namespace) -> int:
-    entry = call("POST", f"{args.chaos_url}/chaos/{args.fault}")
+    entry = call("POST", f"{args.chaos_url}/chaos/{args.fault}", headers=judge())
     print(f"{paint('injected', fg=OXBLOOD, bold=True)}  {truth_line(entry)}")
     print(paint("watch the agent at http://localhost:3000/live (or /watch in the shell); undo with reset", fg=MUTE))
     return 0
@@ -86,7 +88,7 @@ def cmd_inject(args: argparse.Namespace) -> int:
 
 def cmd_reset(args: argparse.Namespace) -> int:
     print("resetting: restore snapshot, then wait for severity 0 (can take a few minutes)…", flush=True)
-    entry = call("POST", f"{args.chaos_url}/chaos/reset", timeout=RESET_TIMEOUT_S)
+    entry = call("POST", f"{args.chaos_url}/chaos/reset", timeout=RESET_TIMEOUT_S, headers=judge())
     print(paint(truth_line(entry), fg=BAD if entry.get("healthy") is False else OK))
     return 1 if entry.get("healthy") is False else 0
 
@@ -95,7 +97,7 @@ def cmd_kubectl(args: argparse.Namespace) -> int:
     words = args.args[1:] if args.args[:1] == ["--"] else args.args
     if not words:
         raise CliError("give kubectl arguments, e.g. kubectl scale deploy/cart --replicas=0")
-    res = call("POST", f"{args.chaos_url}/chaos/kubectl", json={"command": shlex.join(words)})
+    res = call("POST", f"{args.chaos_url}/chaos/kubectl", json={"command": shlex.join(words)}, headers=judge())
     out = res.get("output") or "(no output)"
     print(out.rstrip(), file=sys.stdout if res.get("ok") else sys.stderr)
     if res.get("recorded"):
@@ -118,7 +120,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def cmd_truth(args: argparse.Namespace) -> int:
-    entries = call("GET", f"{args.chaos_url}/chaos/ground-truth")
+    entries = call("GET", f"{args.chaos_url}/chaos/ground-truth", headers=judge())
     for e in entries[-args.last:]:
         print(truth_line(e))
     if not entries:

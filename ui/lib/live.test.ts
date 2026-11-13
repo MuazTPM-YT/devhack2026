@@ -137,3 +137,41 @@ test("a gate that asks a human does not leave check stopped", () => {
   );
   assert.equal(s.incidents["inc-1"].stages.check, "done");
 });
+
+test("a telemetry read is a read, never a model call", () => {
+  const s = run(
+    rec("incident_opened", { opened_at: 100, severity: 4, unhealthy: ["payment"] }, "inc-r"),
+    rec("tool_called", { tool: "get_pods", args: { service: "payment" }, ms: 12, evidence_ids: ["event:1", "event:2"] }, "inc-r"),
+    // audit logs written before tool_called existed carry reads as llm_called with a tool name
+    rec("llm_called", { tool: "get_recent_changes", args: {}, ms: 9, evidence_ids: [] }, "inc-r"),
+    rec("llm_called", { provider: "opencode_go", attempt: 4, usage: { requests: 4, tool_calls: 2, prompt_tokens: 900, completion_tokens: 100 } }, "inc-r"),
+  );
+  const inc = s.incidents["inc-r"];
+  assert.deepEqual(inc.reads.map((r) => [r.tool, r.evidence, r.ms]), [["get_pods", 2, 12], ["get_recent_changes", 0, 9]]);
+  assert.equal(inc.llmCalls, 4);
+  assert.equal(inc.stages.diagnose, "active");
+});
+
+test("the agent's choice is kept next to what the rule would have done", () => {
+  const ready = (payload: Record<string, unknown>) => run(
+    rec("incident_opened", { opened_at: 100, severity: 4, unhealthy: ["payment"] }, "inc-c"),
+    rec("diagnosis_ready", { pattern: "recent_change", culprit: "payment", ...payload }, "inc-c"),
+  ).incidents["inc-c"].choice;
+  assert.equal(ready({}), null);  // advise and bundle mode send no decision
+  assert.deepEqual(ready({ decision: "accept", origin: "model", chosen: { tool: "revert_config", target: "payment" },
+    rule_choice: { tool: "rollback_deploy", target: "payment" }, reason: "The flag fits.", alternative: "The env change is harmless." }),
+  { decision: "accept", origin: "model", chosen: { tool: "revert_config", target: "payment" },
+    ruleChoice: { tool: "rollback_deploy", target: "payment" }, reason: "The flag fits.", alternative: "The env change is harmless." });
+  const declined = ready({ decision: "decline", origin: null, chosen: null, rule_choice: null, reason: "Too thin." });
+  assert.deepEqual([declined?.decision, declined?.chosen, declined?.origin], ["decline", null, null]);
+});
+
+test("resolved keeps whether the fix was proven", () => {
+  const closed = (held: unknown) => run(
+    rec("incident_opened", { opened_at: 100, severity: 4, unhealthy: ["payment"] }, "inc-p"),
+    rec("incident_resolved", { card: { ...card, incident_id: "inc-p" }, prediction_held: held }, "inc-p"),
+  ).incidents["inc-p"].predictionHeld;
+  assert.equal(closed(true), true);
+  assert.equal(closed(false), false);
+  assert.equal(closed(undefined), null);
+});

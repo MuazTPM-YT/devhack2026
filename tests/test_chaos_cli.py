@@ -103,10 +103,10 @@ def test_kubectl_without_args_is_an_error(chaos_app, capsys):
     assert "give kubectl arguments" in capsys.readouterr().err
 
 
-# chaos writes need ONCALL_API_TOKEN now; without it the CLI says so plainly and sends nothing
+# chaos answers only to the judge token; without it the CLI says so plainly and sends nothing
 def test_write_without_token_says_so_and_sends_nothing(monkeypatch, capsys):
     sent = []
     monkeypatch.setattr(cli.httpx, "request", lambda *a, **k: sent.append(a))
-    monkeypatch.delenv("ONCALL_API_TOKEN")
+    monkeypatch.delenv("CHAOS_JUDGE_TOKEN")
     assert run("inject", "bad-deploy") == 1
-    assert sent == [] and "ONCALL_API_TOKEN" in capsys.readouterr().err
+    assert sent == [] and "CHAOS_JUDGE_TOKEN" in capsys.readouterr().err

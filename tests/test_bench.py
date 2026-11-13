@@ -193,7 +193,7 @@ def test_sync_provider_usage_normalizes_without_double_counting():
     assert result.usage == {"prompt_tokens": 110, "completion_tokens": 22}
 
 
-# chaos writes need the token now (admin kubectl behind them); the harness must send it on inject and reset
+# chaos answers only to the judge token (admin kubectl behind it); the harness sends it on inject and reset
 async def test_harness_sends_the_token_to_chaos():
     import httpx
     from bench.harness import HttpTrialServices
@@ -201,11 +201,12 @@ async def test_harness_sends_the_token_to_chaos():
     seen = []
 
     def handle(request):
-        seen.append((request.url.path, request.headers.get(auth.HEADER)))
+        seen.append((request.url.path, request.headers.get(auth.JUDGE_HEADER)))
         return httpx.Response(200, json={"ts": 1, "type": "bad_deploy", "target": "payment"})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
         services = HttpTrialServices(client, "http://gateway", "http://observer", "http://chaos")
         await services.reset()
         await services.inject("bad-deploy")
-    assert seen == [("/chaos/reset", auth.token()), ("/chaos/bad-deploy", auth.token())]
+    judge = auth.token(auth.JUDGE_ENV)
+    assert seen == [("/chaos/reset", judge), ("/chaos/bad-deploy", judge)]

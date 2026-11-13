@@ -39,6 +39,22 @@ def test_missing_or_short_token_fails_loud(monkeypatch):
         auth.token()
 
 
+# agents load the same .env as the judge tooling; once started they must not hold the judge's secret
+def test_agent_processes_drop_the_judge_token_at_start(tmp_path):
+    import os
+
+    from brain.main import create_app as brain_app
+    from gateway.main import create_app as gateway_app
+
+    assert os.environ[auth.JUDGE_ENV]
+    with TestClient(brain_app(object())):  # type: ignore[arg-type]
+        assert auth.JUDGE_ENV not in os.environ
+    os.environ[auth.JUDGE_ENV] = "judge-token-0123456789"
+    with TestClient(gateway_app(World(tmp_path).gw), base_url="http://127.0.0.1:7003"):
+        assert auth.JUDGE_ENV not in os.environ
+    assert auth.agent_start() == os.environ[auth.ENV]
+
+
 # /journal carries env var VALUES (a password set as env shows in clear); it was an open GET, and the UI
 # proxy put it on the local network. Now it needs the token; the gateway and the brain send it
 def test_journal_needs_the_token_and_our_readers_send_it(tmp_path):

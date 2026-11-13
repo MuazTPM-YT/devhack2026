@@ -82,6 +82,8 @@ async def test_prometheus_down_keeps_last_health_and_skips_detector():
     clock[0] = 1040.0
     assert await obs.step() is None
     assert obs.health["prometheus_ok"] is False and obs.detector.incident is None
+    # ts is when we last asked; last_ok_ts is how old the numbers really are
+    assert (obs.health["ts"], obs.health["last_ok_ts"]) == (1040.0, 1000.0)
 
 
 # live smoke inc-1794562461681: Prometheus answered with no span metrics (collector pushes rejected),

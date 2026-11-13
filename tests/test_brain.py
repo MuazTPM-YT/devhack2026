@@ -408,7 +408,7 @@ async def test_agent_mode_reads_through_tools_and_keeps_rule_fix(tmp_path):
     record = await world.brain.handle(INC)
     assert record["action"]["tool"] == "rollback_deploy" and record["action"]["prediction"]["within_s"] == 90
     assert record["diagnosis"]["causes"][0]["evidence_ids"] == ["journal:41"] and record["llm_error"] is None
-    tools = [e["payload"]["tool"] for e in world.published if e["type"] == "llm_called" and "tool" in e["payload"]]
+    tools = [e["payload"]["tool"] for e in world.published if e["type"] == "tool_called"]
     assert tools == ["get_recent_changes"]
     for e in world.published:  # the gateway's bus accepts every event the agent adds
         Event.model_validate(e)
@@ -420,5 +420,92 @@ def test_bad_brain_mode_fails_loud(monkeypatch):
     from brain.main import build_from_env
 
     monkeypatch.setenv("BRAIN_MODE", "yolo")
-    with pytest.raises(RuntimeError, match="BRAIN_MODE must be agent or bundle"):
+    with pytest.raises(RuntimeError, match="BRAIN_MODE must be agent, advise or bundle"):
         build_from_env()
+
+
+def choosing_brain(world, tmp_path, *steps):
+    from pydantic_ai.models.function import FunctionModel
+
+    from brain.agent import AgentDiagnosisService
+    from test_agent import Script, call
+
+    world.brain = make(world, [], tmp_path)
+    world.brain.agent = AgentDiagnosisService(FunctionModel(Script(lambda m, i: call("get_recent_changes"), *steps)),
+                                              choose=True)
+    return world.brain
+
+
+def last(world, kind):
+    return [e["payload"] for e in world.published if e["type"] == kind][-1]
+
+
+# BRAIN_MODE=agent: the model accepts the rule's pick, so nothing changes for the gateway's trust path
+async def test_agent_accepts_the_rule_candidate_and_says_why(tmp_path):
+    from schemas.models import Event
+    from test_agent import chosen
+
+    world = World()
+    brain = choosing_brain(world, tmp_path, lambda m, i: chosen(i, "accept", "c1"))
+    record = await brain.handle(INC)
+    sent = brain.submitted[0]
+    assert (sent.tool, sent.origin, sent.journal_entry) == ("rollback_deploy", "rule", 41)
+    assert sent.prediction.within_s == 90 and record["action"]["origin"] == "rule"
+    assert last(world, "rule_matched")["candidates"] == [{
+        "id": "c1", "basis": "newest change, image on deployment/payment 10 s before errors began",
+        "tool": "rollback_deploy", "target": "payment"}]
+    ready = last(world, "diagnosis_ready")
+    assert (ready["decision"], ready["origin"]) == ("accept", "rule")
+    assert ready["chosen"] == ready["rule_choice"] == {"tool": "rollback_deploy", "target": "payment"}
+    assert ready["reason"] and ready["alternative"]
+    for e in world.published:
+        Event.model_validate(e)
+
+
+# the agent may refuse to act: a human is woken with its reason and with what the rule would have done
+async def test_agent_decline_wakes_a_human_and_submits_nothing(tmp_path):
+    from test_agent import chosen
+
+    world = World()
+    brain = choosing_brain(world, tmp_path, lambda m, i: chosen(
+        i, "decline", reason="Image change does not explain errors on checkout too; check the payment provider.",
+        prediction=None))
+    record = await brain.handle(INC)
+    assert brain.submitted == [] and record["action"] is None
+    assert record["gateway"]["decision"] == "escalated" and record["gateway"]["failed_step"] == "agent"
+    assert record["gateway"]["reason"].startswith("agent declined to act: Image change does not explain")
+    assert record["gateway"]["reason"].endswith("The rule suggested rollback_deploy on payment.")
+    ready = last(world, "diagnosis_ready")
+    assert ready["decision"] == "decline" and ready["chosen"] is None and ready["origin"] is None
+    assert ready["rule_choice"] == {"tool": "rollback_deploy", "target": "payment"}
+    assert [e["type"] for e in world.published][-1] == "escalated"
+
+
+async def test_agent_own_proposal_goes_out_marked_as_the_models(tmp_path):
+    from test_agent import chosen
+
+    world = World()
+    proposal = {"incident_id": "inc-1", "tool": "restart_service", "target": "payment", "pattern": "unknown",
+                "evidence_ids": ["journal:41"]}
+    brain = choosing_brain(world, tmp_path, lambda m, i: chosen(i, "other", proposed=proposal))
+    await brain.handle(INC)
+    sent = brain.submitted[0]
+    assert (sent.tool, sent.origin, sent.pattern) == ("restart_service", "model", "recent_change")
+    assert last(world, "diagnosis_ready")["origin"] == "model"
+
+
+# the journal row says chaos-panel wrote it; nothing the model reads may carry that name
+async def test_change_author_never_reaches_the_model(tmp_path):
+    seen = []
+
+    class Recording(FakeProvider):
+        async def generate(self, request):
+            seen.append(repr(request))
+            return await super().generate(request)
+
+    world = World()
+    brain = make(world, [], tmp_path)
+    brain.diagnoser.provider = Recording([diagnosis_json()])
+    record = await brain.handle(INC)
+    assert record["diagnosis"] is not None and len(seen) == 1
+    assert "chaos-panel" not in seen[0] and "change by another writer" in seen[0]

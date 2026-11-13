@@ -1,5 +1,6 @@
 import { Tag, type Tone } from "@/components/ui/tag";
-import type { Incident, Outcome as OutcomeKind } from "@/lib/live";
+import { words } from "@/lib/format";
+import type { Choice, Incident, Outcome as OutcomeKind } from "@/lib/live";
 import type { ReceiptView } from "@/lib/use-receipt";
 
 import s from "./sheet.module.css";
@@ -16,12 +17,23 @@ function Yes({ value, yes, no }: { value: boolean | null | undefined; yes: strin
   return <span className={value ? "ok" : "bad"}>{value ? yes : no}</span>;
 }
 
+function ownPick(choice: Choice): string {
+  const mine = choice.chosen, rule = choice.ruleChoice;
+  if (!mine) return "Agent chose its own fix";
+  if (!rule) return `Agent chose ${words(mine.tool)}; no rule matched`;
+  return rule.tool === mine.tool && rule.target === mine.target
+    ? `Agent chose to undo an older change than the rule's first pick (${words(mine.tool)})`
+    : `Agent chose ${words(mine.tool)}, not the rule's ${words(rule.tool)}`;
+}
+
 // the card the notifier posts, and the receipt numbers behind it
 export function Outcome({ incident, receipt }: { incident: Incident; receipt: ReceiptView | null }) {
   const action = incident.action;
   const bound = receipt?.trust?.lower_bound;
   const tag = OUTCOME_TAG[incident.outcome ?? "open"];
   const briefing = incident.briefing && !incident.card?.text.includes(incident.briefing) ? incident.briefing : null;
+  const choice = incident.choice;
+  const rule = choice?.ruleChoice ?? null;
   return (
     <section className={s.sec} aria-labelledby="sec-outcome">
       <div className={s.head}>
@@ -34,6 +46,18 @@ export function Outcome({ incident, receipt }: { incident: Incident; receipt: Re
         <p className={s.note}>{action ? "Watching health after the fix." : "No action taken yet."}</p>
       )}
       {briefing && <p className={s.note}>{briefing}</p>}
+      {choice && (
+        <p className={s.note}>
+          <strong>
+            {choice.decision === "decline" ? "Agent declined to act."
+              : choice.origin === "model" ? `${ownPick(choice)}; a human approves it.`
+                : "Agent agreed with the rule's pick."}
+          </strong>{" "}
+          {choice.reason}
+          {choice.decision === "decline" && rule && <> Rule suggested <span className="mono">{rule.tool} → {rule.target}</span>.</>}
+          {choice.alternative && <><br /><span className="muted">Also weighed: {choice.alternative}</span></>}
+        </p>
+      )}
       <dl className={s.facts}>
         <div><dt>Action</dt><dd className="mono">{action ? `${action.tool} → ${action.target}` : "–"}</dd></div>
         <div><dt>Harm check</dt><dd><Yes value={incident.harmClean} yes="clean" no="side effects" /></dd></div>

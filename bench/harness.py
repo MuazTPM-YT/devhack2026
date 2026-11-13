@@ -170,7 +170,7 @@ class HttpTrialServices:
 
     async def reset(self):
         response = await self.client.post(f"{self.chaos_url}/chaos/reset", timeout=self.timeout_s,
-                                          headers=auth.headers())
+                                          headers=auth.headers(auth.JUDGE_ENV, auth.JUDGE_HEADER))
         response.raise_for_status()
 
     async def wait_healthy(self):
@@ -197,7 +197,8 @@ class HttpTrialServices:
                 await asyncio.sleep(1)
 
     async def inject(self, scenario):
-        response = await self.client.post(f"{self.chaos_url}/chaos/{scenario}", headers=auth.headers())
+        response = await self.client.post(f"{self.chaos_url}/chaos/{scenario}",
+                                          headers=auth.headers(auth.JUDGE_ENV, auth.JUDGE_HEADER))
         response.raise_for_status()
         return response.json()
 
