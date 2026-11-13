@@ -729,3 +729,31 @@ Seeded from reading the plan. Reply under each one.
   stayed on `3.1.0-payment` (early abort did not undo the rollback);
   severity was 4 thirty seconds later and falling. WARNING/ERROR lines:
   none in gateway, observer, brain or chaos logs this run.
+- [T] 2026-11-13 for M,A: Early abort fix on `twaha/live-fixes-2`
+  (`97d1a56`, your file, M; Twaha OK'd it). Severity must stay above the
+  before-level for `detection.sustain_seconds` (30 s) before `early_abort`
+  fires; a dip resets the clock. A lagging victim crossing its sustain
+  window right after a good rollback no longer aborts it. Single-tick tests
+  (`test_verifier.py:34`, `test_trust_integration` early_abort case) now
+  pass `abort_after_s=0`; their assertions did not change.
+- [T] 2026-11-13 for M: LLM deadline is now 45 s (`DEADLINE_S` in
+  `brain/providers/base.py`, `bf9f082`). The Go adapter's httpx timeout was
+  also hard 30 s and now follows the same constant.
+- [T] 2026-11-13 for M,A: Smoke on Twaha's own k3d cluster, main `89ca81e`
+  + both fixes above, new `k8s/values.yaml` applied: **PASS**,
+  `incident=inc-1794542033381 outcome=incident_resolved`,
+  `detect=49.9s diagnose=95.1s recover=188.1s`. Human clicked Approve in
+  Discord at +107.8 s; rollback +107.9 s; severity 7 -> 4 (+122.9) -> 0
+  (+173.1); harm clean. Severity never rose, so early abort was not tested
+  live. Audit verified 129 records.
+- [T] 2026-11-13 for M: The LLM hit `deadline_exceeded` at 45 s in that run.
+  A direct call with a small bundle took 12.6 s (1225 prompt tokens); A's
+  live success used 44323 tokens. The live bundle size is the likely cause,
+  not the provider. Effect: no prediction -> card `RECOVERED; PREDICTION
+  FAILED`, "Why: unknown", outcome right_by_accident, **no trust credit**.
+  Trust runs cannot open the gate while this happens. Open: trim the
+  prompt or the bundle.
+- [T] 2026-11-13 for M: Auth gap, not fixed: `POST /approvals/{id}/decide`
+  trusts `decided_by` from the request body, so any local process can approve
+  as a listed approver. Needs your call (shared secret between notifier and
+  gateway, or bind to localhost only and accept the risk).
