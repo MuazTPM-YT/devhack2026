@@ -305,6 +305,11 @@ class Gateway:
             if not approved:
                 return await self.ask(action, row, steps, plan, missing, step_name="freshness")
             return await self.stop(action, row, steps, "freshness", "escalated", missing)
+        if health.get("prometheus_ok") is False:  # observer kept its last reading: not a live picture
+            stale = "health data is stale (Prometheus not answering); acting on it is a guess"
+            if not approved:
+                return await self.ask(action, row, steps, plan, stale, step_name="freshness")
+            return await self.stop(action, row, steps, "freshness", "escalated", stale)
         victims = json.loads(row.get("victims_json") or "[]")
         outcome, reason = freshness.check(health, action.target, (action.pattern, action.journal_entry), rule_now,
                                           entry, plan["live"], victims)
@@ -474,7 +479,12 @@ class Gateway:
             try:
                 health = await self.get_json("/health/now")
                 human = [r for r in await self.get_json("/journal", since=v.t0) if not r["by_agent"]]
-                result = v.step(self.clock(), health, bool(human))
+                if health.get("prometheus_ok") is False:
+                    # stale reading = no data: decide nothing on it, let the window run (Muaz chose)
+                    out_of_time = self.clock() - v.t0 >= v.window_s
+                    result = "handed_off" if human else ("stale" if out_of_time else None)
+                else:
+                    result = v.step(self.clock(), health, bool(human))
             except (httpx.HTTPError, ValueError, KeyError) as e:  # observer blip: keep the clock running
                 log.warning("verify tick failed: %s", type(e).__name__)
                 if self.clock() - v.t0 >= v.window_s:
@@ -483,6 +493,10 @@ class Gateway:
             await self.publish({"type": "verify_tick", "incident_id": action.incident_id, "payload": {
                 "receipt_id": receipt_id, "severity": health.get("severity"), "recovered": v.recovered}})
 
+        if result == "stale":  # blind to the end: keep the fix, never undo on blindness, no trust either way
+            return await self.keep_and_page(receipt_id, action, row, receipt,
+                                            "could not check the fix: health data stale to the end of the window",
+                                            failure=False)
         if result == "handed_off":
             return await self.close(receipt_id, action, row, receipt, v, "handed_off", None,
                                     f"{human[-1]['object']} changed by {human[-1]['field_manager']}", plan=plan)
@@ -534,23 +548,26 @@ class Gateway:
                             "payload": {"receipt_id": receipt_id, "reason": reason}})
         return await self.close(receipt_id, action, row, receipt, v, "undone", harm, reason, hash_after, plan=plan)
 
-    # fix did not prove itself but undoing it is unsafe: leave it in place, hand the incident to a person
+    # fix did not prove itself but undoing it is unsafe (or we could not see): leave it, hand it to a person.
+    # failure=False: blind to the end, which says nothing about the fix
     async def keep_and_page(self, receipt_id: int, action: ActionRequest, row: dict, receipt: Receipt,
-                            reason: str) -> str:
+                            reason: str, failure: bool = True) -> str:
         with self.lock:
             self.conn.execute("UPDATE receipts SET outcome='handed_off' WHERE id=?", (receipt_id,))
             # unproven is a failure for trust, same as close() books an undo; the bench credits rehearsals
-            if receipt.trust.get("approved_by") != approvals.REHEARSAL_APPROVER:
+            if failure and receipt.trust.get("approved_by") != approvals.REHEARSAL_APPROVER:
                 trust.record(self.conn, action.pattern, action.tool, action.target, "real", False, self.clock())
             self.conn.commit()
         kept = receipt.model_copy(update={"outcome": "handed_off"})
         self.receipts.update(receipt_id, kept)
         self.heartbeats.pop(receipt_id, None)
         self.verifying.pop(receipt_id, None)
-        card = self.card(row, action.target, receipt=kept, receipt_id=receipt_id, reason="no safe undo")
+        card = self.card(row, action.target, receipt=kept, receipt_id=receipt_id,
+                         reason="no safe undo" if failure else reason)
+        briefing = f"no safe undo ({receipt.inverse.get('why')}); fix kept after: {reason}" if failure \
+            else f"{reason}; fix kept, a person must check"
         await self.publish({"type": "escalated", "incident_id": action.incident_id, "payload": {
-            "card": card.model_dump(mode="json"),
-            "briefing": f"no safe undo ({receipt.inverse.get('why')}); fix kept after: {reason}"}})
+            "card": card.model_dump(mode="json"), "briefing": briefing}})
         self.set_state(action.incident_id, "escalated")
         return "handed_off"
 

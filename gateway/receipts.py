@@ -148,7 +148,11 @@ REASONS = [
     (r"another action is still being verified", "The agent is still checking an earlier fix, "
                                                 "so it will not start another one yet."),
     (r"problem no longer present", "The problem went away before the agent acted."),
-    (r"no health readings", "Health data stopped arriving, so the agent cannot tell if the problem is still "
+    (r"health data is stale", "Health data stopped arriving, so the agent will not act on old numbers. "
+                              "A person must check."),
+    (r"could not check the fix", "Health data stopped arriving while the agent checked its fix. It kept the "
+                                 "fix and did not undo it. A person must check."),
+    (r"no health readings","Health data stopped arriving, so the agent cannot tell if the problem is still "
                             "there. A person must check."),
     (r"no safe undo", "The fix has not proven itself yet, but undoing it would break things again, so the agent "
                       "kept it. A person must check."),

@@ -317,3 +317,37 @@ async def test_watchdog_on_a_fix_with_no_safe_undo_fails_closed(tmp_path):
     assert await w.gw.watchdog() == 1
     assert w.conn.execute("SELECT outcome FROM receipts").fetchone()[0] == "watchdog_failed"
     assert w.apps.dep["spec"]["template"]["spec"]["containers"][0]["image"] == GOOD  # fix left in place
+
+
+def blind(h):
+    return {**h, "prometheus_ok": False}
+
+
+# metrics stopped (observer keeps the last reading, prometheus_ok false): the gateway acted on that stale
+# picture, live in e2e. Now: never act on stale health; ask, and an approved run while still stale stops
+async def test_stale_health_never_executes(tmp_path):
+    w = World(tmp_path)
+    w.gw.http = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda r: httpx.Response(200, json=blind(sick())) if r.url.path == "/health/now" else w.obs(r)))
+    d = await w.gw.submit(action())
+    assert d.decision == "awaiting_approval" and "stale" in d.reason
+    d = await w.gw.decide(d.approval_id, "approved", "u1")
+    assert d.decision == "escalated" and "stale" in d.reason
+    assert not [p for p in w.apps.patches if p["dry_run"] is None]
+
+
+# metrics stop while checking a fix: stale ticks are no data; still stale at the window end -> keep the fix,
+# page a human, no undo and no trust failure (Muaz chose: never undo on blindness)
+async def test_stale_health_to_window_end_keeps_fix_and_pages(tmp_path):
+    w, d, outcome = await executed(tmp_path, [blind(sick())])
+    assert outcome == "handed_off"
+    assert "action_undone" not in w.types() and w.types()[-1] == "escalated"
+    assert w.apps.dep["spec"]["template"]["spec"]["containers"][0]["image"] == GOOD
+    assert "could not check" in w.events[-1]["payload"]["briefing"]
+    assert ledger(w) == []
+
+
+# a stale tick in the middle is skipped, not read as "still sick"; fresh data then proves the fix
+async def test_stale_ticks_then_fresh_recovery_is_success(tmp_path):
+    w, d, outcome = await executed(tmp_path, [blind(sick())] * 3 + [healthy()])
+    assert outcome == "success"
