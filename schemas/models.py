@@ -13,6 +13,7 @@ EventType = Literal[
     "rule_matched", "llm_called", "diagnosis_ready", "checklist_step", "approval_requested",
     "approval_decided", "action_executed", "verify_tick", "early_abort", "action_undone",
     "harm_check", "incident_resolved", "escalated", "handed_off", "injection_quarantined", "blocked",
+    "tool_called",
 ]
 
 
@@ -73,6 +74,9 @@ class ActionRequest(Model):
     evidence_ids: list[str]
     prediction: Prediction | None = None
     journal_entry: int | None = None
+    # who picked the fix: the rule's first candidate, or the model (another candidate or its own proposal).
+    # Set by brain code, never by the model; the gateway asks a human for every "model" action
+    origin: Literal["rule", "model"] = "rule"
 
 
 class Diagnosis(Model):
@@ -80,6 +84,11 @@ class Diagnosis(Model):
     prediction: Prediction | None = None
     proposed: ActionRequest | None = None
     confidence: float = Field(ge=0, le=1)
+    # agent mode: accept a rule candidate (by id), propose another available tool, or decline to act
+    decision: Literal["accept", "other", "decline"] | None = None
+    candidate: str | None = None
+    reason: str | None = Field(default=None, max_length=400)
+    alternative: str | None = Field(default=None, max_length=400)
 
 
 class GatewayDecision(Model):
@@ -179,6 +188,14 @@ class InferencePayload(Payload):
     cached: bool = False
 
 
+# one read-tool call of the diagnosis agent (brain/tools.py): a read, not a model request
+class ToolCalledPayload(Payload):
+    tool: str
+    args: dict[str, Any] = Field(default_factory=dict)
+    ms: float | None = None
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
 PAYLOADS: dict[str, type[Payload]] = {
     "approval_requested": ApprovalRequestedPayload,
     "approval_decided": ApprovalDecidedPayload,
@@ -186,6 +203,7 @@ PAYLOADS: dict[str, type[Payload]] = {
     "checklist_step": ChecklistPayload,
     "injection_quarantined": QuarantinePayload,
     "llm_called": InferencePayload,
+    "tool_called": ToolCalledPayload,
     "incident_resolved": CardPayload,
     "escalated": CardPayload,
     "handed_off": CardPayload,

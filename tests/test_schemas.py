@@ -43,3 +43,21 @@ def test_shared_pattern_values(action, pattern):
 def test_action_rejects_invented_pattern(action):
     with pytest.raises(ValidationError):
         ActionRequest.model_validate({**action.model_dump(), "pattern": "trusted-because-model-said-so"})
+
+
+def test_tool_read_is_its_own_event_not_a_model_call():
+    from schemas.models import Event
+    ev = Event(type="tool_called", incident_id="inc-1",
+               payload={"tool": "get_pods", "args": {"service": "payment"}, "ms": 12, "evidence_ids": ["event:1"]})
+    assert ev.payload["tool"] == "get_pods" and ev.payload["evidence_ids"] == ["event:1"]
+    with pytest.raises(ValidationError):
+        Event(type="tool_called", incident_id="inc-1", payload={"args": {}})
+    with pytest.raises(ValidationError):
+        Event(type="tool_called", payload={"tool": "get_pods"})
+
+
+def test_action_origin_defaults_to_rule_and_rejects_anything_else(action):
+    assert action.origin == "rule"
+    assert ActionRequest.model_validate({**action.model_dump(), "origin": "model"}).origin == "model"
+    with pytest.raises(ValidationError):
+        ActionRequest.model_validate({**action.model_dump(), "origin": "trusted"})
