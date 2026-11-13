@@ -1308,3 +1308,13 @@ Seeded from reading the plan. Reply under each one.
   so the UI process needs `JAEGER_URL` at build time like `GATEWAY_URL`. No backend change.
   -> [A] 2026-11-14: `/map` folded into Overview (Cards | Map switch). `/benchmark` UI page removed at
   Anirudh's call; T's `bench/` harness and `python -m bench.report` are unchanged, only the UI reader is gone.
+- [M] 2026-11-14 for A,T: Branch `muaz/refactor` (on top of `muaz/agent-polish`). Pure moves, no logic change
+  (same 897 tests pass, line-by-line diff of moved code empty). Where code went:
+  `gateway/checklist.py` keeps the checklist steps; `verify_loop.py` (verify, undo, close, rehearsal credit,
+  clear), `retries.py`, `upkeep.py` (approval expiry, watchdog), `intent_flow.py` (orchestration intents),
+  `shared.py` (CHAOS_MANAGER, STEP_WORDS, tier_of, ...). Each moved method is a module function taking the gateway
+  and is bound on `Gateway` by name. Card text moved from `gateway/receipts.py` to `gateway/cards.py`.
+  `require_env` lives in `schemas/config.py`. Removed unused `IntentStore.first_for`. Old imports
+  (`gateway.checklist.*`, `gateway.receipts.build_incident_card`, ...) still work. T: unpushed work in
+  `gateway/checklist.py` will conflict; move your hunk to the new file named above.
+

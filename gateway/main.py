@@ -20,8 +20,10 @@ from gateway.approvals import approvers_from_env
 from gateway.checklist import Gateway, brain_retry
 from gateway.intents import Conflict, IntentStore
 from gateway.mcp_server import build_mcp
-from gateway.receipts import ReceiptStore, build_card, create_receipts_router
+from gateway.cards import build_card
+from gateway.receipts import ReceiptStore, create_receipts_router
 from schemas import auth, config, migrations
+from schemas.config import require_env
 from schemas.db import DEFAULT_PATH, connect
 from schemas.orchestration import IntentEnvelope, OrchestrationPolicy, load_policy
 from schemas.workspace import Workspace
@@ -63,13 +65,6 @@ def approval_view(row: dict, now: float) -> dict:
     out["action"] = json.loads(row["action_json"])
     out["past_expiry"] = row["expires_at"] <= now
     return redact_value(out)
-
-
-def require_env(*names: str) -> list[str]:
-    missing = [n for n in names if not os.environ.get(n)]
-    if missing:
-        raise RuntimeError(f"missing required env var(s): {', '.join(missing)}")
-    return [os.environ[n] for n in names]
 
 
 def build_from_env() -> Gateway:

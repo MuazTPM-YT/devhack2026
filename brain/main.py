@@ -29,9 +29,10 @@ from brain.gateway_client import call_tool
 from brain.graph import DependencyGraph
 from brain.llm import DiagnosisService
 from brain.redact import redact
-from gateway.receipts import started_by
+from gateway.cards import started_by
 from brain.tools import KubeReader, ToolBox
 from schemas import auth, config, migrations
+from schemas.config import require_env
 from schemas.db import DEFAULT_PATH, connect
 from schemas.models import ActionRequest, GatewayDecision, Incident, Pattern
 from schemas.orchestration import OrchestrationPolicy, SignalBatch, load_policy
@@ -41,13 +42,6 @@ from schemas import logs
 logs.setup()
 
 log = logging.getLogger("brain")
-
-
-def require_env(*names: str) -> list[str]:
-    missing = [n for n in names if not os.environ.get(n)]
-    if missing:
-        raise RuntimeError(f"missing required env var(s): {', '.join(missing)}")
-    return [os.environ[n] for n in names]
 
 
 class Brain:
@@ -338,7 +332,7 @@ class Brain:
 
     async def escalate(self, incident: Incident, diagnosis: Any, decision: GatewayDecision, briefing: str,
                        why: str | None, health: dict | None = None, action: ActionRequest | None = None) -> dict:
-        from gateway.receipts import build_incident_card, source  # pure card builder, no cluster access
+        from gateway.cards import build_incident_card, source  # pure card builder, no cluster access
 
         retry = {"tries": self.tried.get(incident.id, []), "max": 1 + int(self.policy["budgets"]["max_retries"])}
         card = build_incident_card(incident, diagnosis, decision=decision.model_copy(update={"decision": "escalated"}),

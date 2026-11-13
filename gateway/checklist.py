@@ -5,9 +5,8 @@ import logging
 import sqlite3
 import threading
 import time
-from contextvars import ContextVar
-from datetime import datetime, timezone
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -17,84 +16,40 @@ from brain import memory, runbooks
 from brain.bundle import why_text
 from brain.major import shared_change
 from brain.rules import latest_change_before_onset
-from gateway import approvals, blast, freshness, policy, trust
-from gateway.dryrun import build_flag_patch, build_patch, namespace_hash, outside_allowed, rollback_patch, spec_diff, spec_hashes
-from gateway.verifier import Verification, harm_check, ledger_effect
-from gateway.executor import (WriteRefused, list_json, patch_configmap, patch_deployment, patch_scale,
-                              read_configmap, read_deployment)
-from gateway.intents import IntentStore, precondition, submission
-from gateway.receipts import ReceiptStore, build_incident_card, source, started_by
+from gateway import approvals, blast, freshness, intent_flow, policy, retries, trust, upkeep, verify_loop
+from gateway.cards import build_incident_card, source, started_by
+from gateway.dryrun import (
+    build_flag_patch,
+    build_patch,
+    namespace_hash,
+    outside_allowed,
+    spec_diff,
+    spec_hashes,
+)
+from gateway.executor import (
+    WriteRefused,
+    list_json,
+    patch_configmap,
+    patch_deployment,
+    patch_scale,
+    read_configmap,
+    read_deployment,
+)
+from gateway.intents import IntentStore, precondition
+from gateway.receipts import ReceiptStore
+from gateway.retries import RETRY_DEADLINE_S as RETRY_DEADLINE_S
+from gateway.retries import RETRY_REASONS as RETRY_REASONS
+from gateway.retries import brain_retry as brain_retry
+from gateway.shared import CHAOS_MANAGER as CHAOS_MANAGER
+from gateway.shared import STEP_WORDS, _intent, forecast_text, tier_of
+from gateway.verify_loop import error_change as error_change
+from gateway.verify_loop import failed_try as failed_try
 from observer import journal
 from observer.kube_watch import service_of
 from schemas import auth
 from schemas.models import ActionRequest, Card, GatewayDecision, Incident, Receipt
-from schemas.orchestration import IntentEnvelope, IntentSubmission
 
 log = logging.getLogger("gateway")
-# chaos/faults.py FIELD_MANAGER: a fault injection is the incident's cause, not a human taking over (§6.4.2 step 2)
-CHAOS_MANAGER = "chaos-panel"
-# orchestration: the intent the running checklist works for (None = legacy MCP/HTTP submit)
-_intent: ContextVar[str | None] = ContextVar("intent", default=None)
-
-
-def forecast_text(plan: dict) -> str:
-    f, b = plan.get("forecast") or {}, plan.get("blast") or {}
-    hit = ", ".join(b.get("healthy_affected", [])) or "none known"
-    return (f"about {f.get('forecast_s', 0):.0f} s of lost capacity ({plan['replicas']} replicas, "
-            f"surge {'on' if plan.get('surge') else 'off'}); healthy callers at risk: {hit}")
-
-
-def tier_of(gate: dict) -> str:
-    return "ask" if gate.get("approved_by") else "auto"
-
-
-# checklist step names in plain words, for the "Sent by" line on Discord
-STEP_WORDS = {"schema": "schema check", "hands_off": "hands-off check", "policy": "policy check",
-              "dry_run": "dry run", "net_benefit": "net-benefit check", "freshness": "freshness check",
-              "trust_gate": "trust gate", "approval": "approval", "execute": "execute", "retry": "retry deadline"}
-# why a fix was undone -> may the agent try another one? Blind monitoring proves nothing, so no retry on it
-RETRY_REASONS = ("severity rose after the action", "did not recover", "harm check failed")
-RETRY_DEADLINE_S = 300.0  # brain agent run is capped at 150 s; past this the brain is lost, page a human
-
-
-# gateway -> brain "try another fix" call; (accepted, why not)
-def brain_retry(http: httpx.AsyncClient, brain_url: str) -> Callable[[dict], Awaitable[tuple[bool, str]]]:
-    async def ask(body: dict) -> tuple[bool, str]:
-        r = await http.post(f"{brain_url}/incidents/{body['incident']['id']}/retry", json=body, timeout=5,
-                            headers=auth.headers())
-        if r.status_code == 202:
-            return True, ""
-        try:
-            detail = r.json().get("detail")
-        except ValueError:
-            detail = None
-        return False, f"brain refused the retry: {detail or r.status_code}"
-    return ask
-
-
-# "payment errors 38.0% -> 0.4%" for the card's first line: first watched service with both readings
-def error_change(before: dict, after: dict | None, services: list[str]) -> str | None:
-    for s in services:
-        a = before.get("services", {}).get(s, {}).get("err_ratio")
-        b = (after or {}).get("services", {}).get(s, {}).get("err_ratio")
-        if a is not None and b is not None:
-            return f"{s} errors {a:.1%} -> {b:.1%}"
-    return None
-
-
-
-# one failed fix as the brain's error context: what ran, why it was undone, what the numbers did meanwhile
-def failed_try(receipt_id: int, action: ActionRequest, v: Verification, harm: dict | None, reason: str | None,
-               plan: dict | None) -> dict:
-    after = v.last_health.get("services", {})
-    return {"receipt_id": receipt_id, "tool": action.tool, "target": action.target, "params": action.params,
-            "journal_entry": action.journal_entry, "origin": action.origin, "change": (plan or {}).get("summary"),
-            "why_undone": reason, "ran_s": round(v.last_ts - v.t0, 1),
-            "severity_before": v.sev_before, "severity_after": v.last_health.get("severity"),
-            "recovered": v.recovered, "prediction": action.prediction.model_dump() if action.prediction else None,
-            "prediction_held": v.prediction_held, "worse_services": (harm or {}).get("worse_services", []),
-            "readings_after": {s: {k: after.get(s, {}).get(k) for k in ("err_ratio", "p95_ms", "unhealthy")}
-                               for s in v.watched}}
 
 
 class Gateway:
@@ -593,565 +548,33 @@ class Gateway:
         task.add_done_callback(self.tasks.discard)
         return GatewayDecision(decision="executed", receipt_id=receipt_id)
 
-    # ---- verification (§6.4.9): poll health, decide, undo if needed, credit the ledger ------------
-    async def verify(self, receipt_id: int, action: ActionRequest, row: dict, plan: dict, receipt: Receipt) -> str:
-        victims = json.loads(row.get("victims_json") or "[]")
-        cfg = self.policy["verify"]
-        extra = cfg["flag_extra_seconds"] if plan["patch"]["kind"] == "configmap" else 0  # flagd reload ~60 s
-        # aborting means undoing; with no safe undo, give the fix its whole window instead
-        can_undo = plan["inverse"]["op"] != "none"
-        scope = plan.get("scope")  # orchestration: this action's own services, frozen at execute time
-        v = Verification(self.clock(), plan["health"], action.target, victims,
-                         action.prediction.model_dump() if action.prediction else None,
-                         cfg["window_seconds"] + extra, cfg["early_abort"] and can_undo,
-                         grace_s=cfg["early_abort_grace_seconds"] + extra, prediction_delay_s=extra,
-                         scope=set(scope["services"]) if scope else None)
-        health, human, others, result = plan["health"], [], [], None
-        while result is None:
-            await asyncio.sleep(self.verify_every)
-            try:
-                health = await self.get_json("/health/now")
-                others = [r for r in await self.get_json("/journal", since=v.t0) if not r["by_agent"]]
-                # same rule as step 2: a chaos write (fault, decoy, its cleanup) is no person taking over
-                human = [r for r in others if r.get("field_manager") != CHAOS_MANAGER]
-                if health.get("prometheus_ok") is False:
-                    # stale reading = no data: decide nothing on it, let the window run (Muaz chose)
-                    out_of_time = self.clock() - v.t0 >= v.window_s
-                    result = "handed_off" if human else ("stale" if out_of_time else None)
-                else:
-                    result = v.step(self.clock(), health, bool(human))
-            except (httpx.HTTPError, ValueError, KeyError) as e:  # observer blip: keep the clock running
-                log.warning("verify tick failed: %s", type(e).__name__)
-                if self.clock() - v.t0 >= v.window_s:
-                    result = "window_end"
-            self.heartbeats[receipt_id] = self.clock()
-            await self.publish({"type": "verify_tick", "incident_id": action.incident_id, "payload": {
-                "receipt_id": receipt_id, "severity": health.get("severity"), "recovered": v.recovered}})
-
-        if result == "stale":  # blind to the end: keep the fix, never undo on blindness, no trust either way
-            return await self.keep_and_page(receipt_id, action, row, receipt,
-                                            "could not check the fix: health data stale to the end of the window",
-                                            failure=False)
-        if result == "handed_off":
-            return await self.close(receipt_id, action, row, receipt, v, "handed_off", None,
-                                    f"{human[-1]['object']} changed by {human[-1]['field_manager']}", plan=plan)
-        if result == "early_abort":
-            await self.publish({"type": "early_abort", "incident_id": action.incident_id,
-                                "payload": {"receipt_id": receipt_id, "severity": health.get("severity"),
-                                            "before": v.sev_before}})
-            return await self.undo_and_close(receipt_id, action, row, receipt, v, pause=True, harm=None,
-                                             reason="severity rose after the action", plan=plan)
-        after = await asyncio.to_thread(lambda: spec_hashes(list_json(self.apps.list_namespaced_deployment),
-                                                            list_json(self.core.list_namespaced_config_map)))
-        harm = harm_check(plan["hashes"], after, plan["declared"], {r["object"] for r in others},
-                          plan["health"], health, {action.target, *victims, *plan["blast"].get("upstream", [])},
-                          excused=frozenset(scope["unrelated"]) if scope else frozenset())
-        await self.publish({"type": "harm_check", "incident_id": action.incident_id,
-                            "payload": {"receipt_id": receipt_id, **harm}})
-        outcome = v.outcome(harm["clean"])
-        if (scope and outcome == "undo" and v.recovered and harm["declared_changed"] and not harm["unexpected_changes"]
-                and harm["worse_services"]):
-            # recovered, but services nobody can tie to this fix or to another incident got worse: undoing a
-            # working fix is a guess too. Keep it, page, no trust either way (pending review, handoff §9.3)
-            return await self.keep_and_page(receipt_id, action, row, receipt,
-                                            f"recovered, but {', '.join(harm['worse_services'])} got worse and "
-                                            "nothing shows why; check by hand", failure=False)
-        if outcome == "undo":
-            reason = "harm check failed" if v.recovered else (
-                "monitoring went blind; recovery not proven" if v.blind else "did not recover")
-            return await self.undo_and_close(receipt_id, action, row, receipt, v, pause=False, harm=harm,
-                                             reason=reason, hash_after=namespace_hash(after), plan=plan)
-        return await self.close(receipt_id, action, row, receipt, v, outcome, harm, None, namespace_hash(after),
-                                plan=plan)
-
-    async def undo_and_close(self, receipt_id: int, action: ActionRequest, row: dict, receipt: Receipt,
-                             v: Verification, pause: bool, harm: dict | None, reason: str,
-                             hash_after: str | None = None, plan: dict | None = None) -> str:
-        if receipt.inverse.get("op") == "none":
-            return await self.keep_and_page(receipt_id, action, row, receipt, reason)
-        try:
-            await asyncio.to_thread(self.undo, action.target, receipt.inverse, pause)
-        except WriteRefused as e:
-            # terminal, else the pending receipt counts as in flight and blocks every later action
-            log.error("receipt #%s: UNDO FAILED (%s)", receipt_id, e.reason)
-            with self.lock:
-                self.conn.execute("UPDATE receipts SET outcome='undo_failed' WHERE id=?", (receipt_id,))
-                self.conn.commit()
-            failed = receipt.model_copy(update={"outcome": "undo_failed"})
-            self.receipts.update(receipt_id, failed)
-            self.heartbeats.pop(receipt_id, None)
-            self.verifying.pop(receipt_id, None)
-            card = self.card(row, action.target, receipt=failed, receipt_id=receipt_id, reason="UNDO FAILED")
-            await self.publish({"type": "escalated", "incident_id": action.incident_id, "payload": {
-                "card": card.model_dump(mode="json"),
-                "briefing": f"UNDO FAILED ({e.reason}); receipt #{receipt_id} needs a human now",
-                **self.guidance(action.incident_id, action.pattern, action.tool, action.target),
-                **self.facts(action.incident_id, row, "verifier", "undo")}})
-            self.set_state(action.incident_id, "escalated")
-            return "undo_failed"
-        await self.publish({"type": "action_undone", "incident_id": action.incident_id,
-                            "payload": {"receipt_id": receipt_id, "reason": reason}})
-        return await self.close(receipt_id, action, row, receipt, v, "undone", harm, reason, hash_after, plan=plan)
-
-    # fix did not prove itself but undoing it is unsafe (or we could not see): leave it, hand it to a person.
-    # failure=False: blind to the end, which says nothing about the fix
-    async def keep_and_page(self, receipt_id: int, action: ActionRequest, row: dict, receipt: Receipt,
-                            reason: str, failure: bool = True,
-                            sent_by: tuple[str, str] = ("verifier", "fix check")) -> str:
-        with self.lock:
-            self.conn.execute("UPDATE receipts SET outcome='handed_off' WHERE id=?", (receipt_id,))
-            # unproven is a failure for trust, same as close() books an undo; the bench credits rehearsals
-            if failure and receipt.trust.get("approved_by") != approvals.REHEARSAL_APPROVER:
-                trust.record(self.conn, action.pattern, action.tool, action.target, "real", False, self.clock())
-            self.conn.commit()
-        kept = receipt.model_copy(update={"outcome": "handed_off"})
-        self.receipts.update(receipt_id, kept)
-        self.heartbeats.pop(receipt_id, None)
-        self.verifying.pop(receipt_id, None)
-        card = self.card(row, action.target, receipt=kept, receipt_id=receipt_id,
-                         reason="no safe undo" if failure else reason)
-        briefing = f"no safe undo ({receipt.inverse.get('why')}); fix kept after: {reason}" if failure \
-            else f"{reason}; fix kept, a person must check"
-        await self.publish({"type": "escalated", "incident_id": action.incident_id, "payload": {
-            "card": card.model_dump(mode="json"), "briefing": briefing,
-            **self.facts(action.incident_id, row, *sent_by)}})
-        self.set_state(action.incident_id, "escalated")
-        return "handed_off"
-
-    # pause an in-progress rollout first so the inverse lands on a still object (§6.4.9 Undo);
-    # always unpause, a failed undo must not leave the Deployment paused
-    def undo(self, target: str, inverse: dict, pause: bool) -> None:
-        def rv() -> str:
-            return read_deployment(self.apps, target)["metadata"]["resourceVersion"]
-
-        def gen() -> int:
-            return read_deployment(self.apps, target)["metadata"]["generation"]
-
-        if inverse["op"] not in ("restore_configmap", "scale", "restore_template"):
-            raise WriteRefused("refused", f"no safe undo ({inverse.get('why', inverse['op'])})")
-        if inverse["op"] == "restore_configmap":
-            cm = read_configmap(self.core, inverse["name"])
-            patch_configmap(self.core, inverse["name"], {"metadata": {"resourceVersion": cm["metadata"]["resourceVersion"]},
-                                                         "data": inverse["data"]}, False)
-            return
-        if inverse["op"] == "scale":
-            patch_scale(self.apps, target, {"metadata": {"resourceVersion": rv()},
-                                            "spec": {"replicas": inverse["replicas"]}}, False)
-            return
-        template = inverse["template"]
-
-        test = {"op": "test", "path": "/metadata/generation"}
-        if pause:
-            patch_deployment(self.apps, target, [{**test, "value": gen()},
-                                                 {"op": "add", "path": "/spec/paused", "value": True}], False)
-        try:
-            patch_deployment(self.apps, target, rollback_patch(gen(), template), False)
-        finally:
-            if pause:
-                patch_deployment(self.apps, target, [{**test, "value": gen()},
-                                                     {"op": "replace", "path": "/spec/paused", "value": False}], False)
-
-    async def close(self, receipt_id: int, action: ActionRequest, row: dict, receipt: Receipt, v: Verification,
-                    outcome: str, harm: dict | None, reason: str | None, hash_after: str | None = None,
-                    plan: dict | None = None) -> str:
-        final = receipt.model_copy(update={"outcome": outcome, "prediction_held": v.prediction_held,
-                                           "harm_clean": harm["clean"] if harm else None,
-                                           "elapsed_s": round(self.clock() - v.t0, 1),
-                                           "added_disruption_s": round(sum(v.collateral.values()), 1),
-                                           "hash_after": hash_after})
-        self.receipts.update(receipt_id, final)
-        effect = ledger_effect({"undone": "undo"}.get(outcome, outcome))
-        by = receipt.trust.get("approved_by")
-        with self.lock:
-            self.conn.execute("UPDATE receipts SET outcome=?, hash_after=? WHERE id=?",
-                              (outcome, hash_after, receipt_id))
-            # real success needs a human's yes (§6.4.6); a failure always counts; the bench credits rehearsals.
-            # The ledger is the rule's record: a fix the model chose earns and costs it nothing
-            if (effect is not None and by != approvals.REHEARSAL_APPROVER and (by or not effect)
-                    and action.origin != "model"):
-                trust.record(self.conn, action.pattern, action.tool, action.target, "real", effect, self.clock())
-            self.conn.commit()
-        # fixes run in this incident, this one included (follow-ups count: they share the per-incident budget)
-        with self.lock:
-            done = self.conn.execute("SELECT COUNT(*) FROM receipts WHERE incident_id=?",
-                                     (action.incident_id,)).fetchone()[0]
-        if outcome == "undone":
-            self.tries.setdefault(action.incident_id, []).append(
-                {"attempt": done, **failed_try(receipt_id, action, v, harm, reason, plan)})
-        # a clean undo for a wrong fix may hand the incident back to the brain instead of paging (§6.4.11)
-        retrying, no_retry = False, None
-        # single-agent path only: with orchestration on, intents and the coordinator own what comes next
-        if outcome == "undone" and reason in RETRY_REASONS and self.request_retry is not None and self.intents is None:
-            no_retry = self.retry_blocker(action.incident_id)
-            retrying = no_retry is None
-        event = {"success": "incident_resolved", "right_by_accident": "incident_resolved",
-                 "handed_off": "handed_off"}.get(outcome, "escalated")
-        state = "replanning" if retrying else {"incident_resolved": "resolved"}.get(event, event)
-        # state first: the brain's next fix can reach run() before this method returns
-        with self.lock:
-            self.conn.execute("UPDATE incidents SET state=?, resolved_at=? WHERE id=?",
-                              (state, self.clock() if state == "resolved" else None, action.incident_id))
-            self.conn.commit()
-        self.heartbeats.pop(receipt_id, None)
-        self.verifying.pop(receipt_id, None)
-        if retrying:
-            no_retry = await self.start_retry(action, row, done + 1)
-            retrying = no_retry is None
-            if not retrying:
-                self.set_state(action.incident_id, "escalated")
-        mitigated = action.tool == "restart_service" and outcome in ("success", "right_by_accident")
-        victims = json.loads(row.get("victims_json") or "[]")
-        retry: dict[str, Any] = {"next": done + 1} if retrying else {"stop": no_retry}
-        card = self.card(row, action.target, receipt=final, receipt_id=receipt_id, mitigated=mitigated,
-                         reason=reason, retry=retry,
-                         took_s=self.clock() - (row.get("opened_at") or v.t0), did=(plan or {}).get("summary"),
-                         metric=error_change((plan or {}).get("health") or {}, v.last_health,
-                                             [action.target, *victims]))
-        briefing = (reason or "") + (f"; no retry: {no_retry}" if no_retry else "")
-        # the bench (§9.1) reads tier, harm, prediction and forecast vs actual off the terminal event
-        await self.publish({"type": "retry_started" if retrying else event, "incident_id": action.incident_id,
-                            "payload": {
-            "card": card.model_dump(mode="json"), "receipt_url": f"/receipts/{receipt_id}",
-            "briefing": briefing, "receipt_id": receipt_id, "tier": tier_of(receipt.trust),
-            "prediction_held": final.prediction_held, "harm_clean": final.harm_clean,
-            "forecast_s": final.forecast_s, "actual_added_s": final.added_disruption_s,
-            **({"attempt": retry["next"], "max_attempts": self.max_tries} if retrying else {}),
-            **self.guidance(action.incident_id, action.pattern, action.tool, action.target),
-            **self.facts(action.incident_id, row, "verifier", "fix check")}})
-        return outcome
-
-    # why the agent may not try another fix now; None = it may
-    def retry_blocker(self, incident_id: str) -> str | None:
-        with self.lock:
-            used = policy.usage(self.conn, incident_id, self.clock())
-            waiting = self.conn.execute("SELECT COUNT(*) FROM approvals WHERE incident_id=? AND state='pending'",
-                                        (incident_id,)).fetchone()[0]
-        b = self.policy["budgets"]
-        if used["incident"] >= self.max_tries:
-            return f"all {self.max_tries} fixes tried"
-        hour = 0 if self.rehearsal else used["hour"]
-        if used["incident"] >= b["max_actions_per_incident"] or hour >= b["max_actions_per_hour"]:
-            return "action budget used up"
-        if waiting:  # a follow-up (raise_limit) still waits for a person: they are already involved
-            return "another approval for this incident is waiting for a person"
-        return None
-
-    # grant the retry, then ask the brain for the next fix; None = the brain took it, else why not
-    async def start_retry(self, action: ActionRequest, row: dict, attempt: int) -> str | None:
-        assert self.request_retry is not None
-        failed = self.tries.get(action.incident_id, [])
-        self.retry_grants[action.incident_id] = (self.clock(), attempt)
-        body = {"incident": self.card_incident(row, action.target).model_dump(mode="json"), "attempt": attempt,
-                "max_attempts": self.max_tries, "failed": failed}
-        try:
-            ok, why = await self.request_retry(body)
-        except (httpx.HTTPError, ValueError) as e:
-            ok, why = False, f"brain unreachable ({type(e).__name__})"
-        if ok:
-            log.info("incident %s: fix %s failed, brain asked for fix %s of %s", action.incident_id, attempt - 1,
-                     attempt, self.max_tries)
-            return None
-        self.retry_grants.pop(action.incident_id, None)
-        log.warning("incident %s: no retry: %s", action.incident_id, why)
-        return why
-
-    # a granted retry the brain never answered (crash, restart): page instead of waiting for the max age
-    async def retry_timeouts(self) -> int:
-        now, done = self.clock(), 0
-        # a gateway restart forgot its grants: watch those incidents from now; their next fix is no retry (asks)
-        with self.lock:
-            orphans = [r[0] for r in self.conn.execute("SELECT id FROM incidents WHERE state='replanning'")]
-        for incident_id in orphans:
-            self.retry_grants.setdefault(incident_id, (now, None))
-        for incident_id, (granted_at, _) in list(self.retry_grants.items()):
-            row = self.incident(incident_id)
-            if row is None or row.get("state") != "replanning":
-                self.retry_grants.pop(incident_id, None)  # the brain escalated itself, or a fix is running
-                continue
-            if now - granted_at < RETRY_DEADLINE_S:
-                continue
-            self.retry_grants.pop(incident_id, None)
-            await self.stop({"incident_id": incident_id, "target": row.get("culprit"), "pattern": row.get("pattern")},
-                            row, [], "retry", "escalated",
-                            f"the brain sent no new fix within {RETRY_DEADLINE_S:.0f} s of the retry; look by hand",
-                            sent_by=("gateway", "retry deadline"))
-            done += 1
-        return done
-
-    # Q2: bench reports ground truth; credit only finished rehearsal receipts, once
-    def rehearsal_credit(self, receipt_id: int, diagnosis_matched: bool) -> dict:
-        with self.lock:
-            r = self.conn.execute("SELECT * FROM receipts WHERE id=?", (receipt_id,)).fetchone()
-            if r is None:
-                return {"credited": False, "reason": "unknown receipt"}
-            gate = json.loads(r["trust_json"] or "{}")
-            if gate.get("approved_by") != approvals.REHEARSAL_APPROVER:
-                return {"credited": False, "reason": "not a rehearsal receipt"}
-            if gate.get("credited"):
-                return {"credited": False, "reason": "already credited"}
-            if gate.get("origin") == "model":
-                return {"credited": False, "reason": "the model chose this fix; the ledger is the rule's record"}
-            if r["outcome"] in ("pending", "handed_off", "right_by_accident"):
-                return {"credited": False, "reason": f"outcome {r['outcome']} earns no credit"}
-            success = r["outcome"] == "success" and diagnosis_matched
-            trust.record(self.conn, gate["pattern"], r["tool"], r["target"], "rehearsal", success, self.clock())
-            self.conn.execute("UPDATE receipts SET trust_json=? WHERE id=?",
-                              (json.dumps({**gate, "credited": True}), receipt_id))
-            self.conn.commit()
-        return {"credited": True, "success": success}
-
-    # a failed watchdog undo blocks every action until a human has looked at the cluster; this is how
-    # they say so (approver only, rehearsal identity excluded). Recorded on the audit log.
-    async def clear_receipt(self, receipt_id: int, decided_by: str) -> dict:
-        if decided_by not in self.approvers or decided_by == approvals.REHEARSAL_APPROVER:
-            return {"cleared": False, "reason": "not an approver"}
-        with self.lock:
-            r = self.conn.execute("SELECT incident_id, outcome FROM receipts WHERE id=?", (receipt_id,)).fetchone()
-            if r is None:
-                return {"cleared": False, "reason": "unknown receipt"}
-            if r["outcome"] != "watchdog_failed":
-                return {"cleared": False, "reason": f"receipt is {r['outcome']}, nothing to clear"}
-            self.conn.execute("UPDATE receipts SET outcome='undo_failed' WHERE id=?", (receipt_id,))
-            self.conn.commit()
-        await self.publish({"type": "checklist_step", "incident_id": r["incident_id"], "payload": {
-            "name": "human_clear", "passed": True,
-            "reason": f"receipt #{receipt_id} cleared by {decided_by} after a failed undo"}})
-        return {"cleared": True}
-
-    # ---- background upkeep (§6.4.8 expiry, §6.4.10 watchdog) ------------------------------------
-    async def expire_approvals(self) -> int:
-        now = self.clock()
-        with self.lock:
-            rows = [dict(r) for r in self.conn.execute(
-                "SELECT * FROM approvals WHERE state='pending' AND expires_at < ?", (now,))]
-        for r in rows:
-            approvals.set_state(self.conn, r["id"], "expired", None)
-            action = ActionRequest.model_validate_json(r["action_json"])
-            await self.publish({"type": "approval_decided", "incident_id": action.incident_id,
-                                "payload": {"approval_id": r["id"], "decision": "expired"}})
-            await self.stop(action, self.incident(action.incident_id), [], "approval", "escalated",
-                            "approval expired", sent_by=("gateway", "approval expiry"))
-            if self.intents is not None and r.get("intent_id"):
-                await self.moved(r["intent_id"], "terminal", reason="approval expired")
-        return len(rows)
-
-    # an action older than 180 s whose verifier stopped ticking gets undone and a human woken
-    async def watchdog(self, stale_after_s: float = 180, heartbeat_s: float = 30) -> int:
-        now = self.clock()
-        with self.lock:
-            rows = [dict(r) for r in self.conn.execute(
-                "SELECT * FROM receipts WHERE outcome='pending' AND ts < ?", (now - stale_after_s,))]
-        done = 0
-        for r in rows:
-            beat = self.heartbeats.get(r["id"])
-            if beat is not None and now - beat <= heartbeat_s:
-                continue
-            if (task := self.verifying.pop(r["id"], None)) is not None:
-                task.cancel()
-            inverse, gate = json.loads(r["inverse_json"]), json.loads(r["trust_json"] or "{}")
-            row = self.incident(r["incident_id"]) or {"id": r["incident_id"]}
-            reason = f"watchdog: verifier silent for receipt #{r['id']}"
-            if inverse.get("op") == "none":
-                # nothing safe to undo (a store scaled back from 0): keep the fix, page, don't block (Muaz chose);
-                # losing track says nothing about the fix, so no trust failure
-                view = self.receipts.get(r["id"])
-                lost = ActionRequest(incident_id=r["incident_id"], tool=r["tool"], target=r["target"],
-                                     pattern=gate.get("pattern") or "unknown",
-                                     evidence_ids=view.evidence_ids if view else [])
-                await self.keep_and_page(r["id"], lost, row, view or Receipt(
-                    incident_id=r["incident_id"], tool=r["tool"], target=r["target"], diff={}, inverse=inverse,
-                    evidence_ids=[]), f"{reason}; no safe undo, fix kept", failure=False,
-                    sent_by=("watchdog", "lost verifier"))
-                self.set_state(r["incident_id"], "escalated")
-                done += 1
-                continue
-            try:
-                await asyncio.to_thread(self.undo, r["target"], inverse, inverse["op"] == "restore_template")
-                outcome = "undone"
-            except WriteRefused as e:
-                reason, outcome = f"{reason}; UNDO FAILED ({e.reason})", "pending"
-                log.error("receipt #%s: %s", r["id"], reason)
-            with self.lock:
-                self.conn.execute("UPDATE receipts SET outcome=? WHERE id=?",
-                                  ("undone" if outcome == "undone" else "watchdog_failed", r["id"]))
-                if outcome == "undone" and gate.get("approved_by") != approvals.REHEARSAL_APPROVER:
-                    trust.record(self.conn, gate.get("pattern"), r["tool"], r["target"], "real", False, now)
-                self.conn.commit()
-            if (view := self.receipts.get(r["id"])) is not None:  # the /receipts page reads the view
-                view = view.model_copy(update={"outcome": "undone" if outcome == "undone" else "undo_failed"})
-                self.receipts.update(r["id"], view)
-            self.heartbeats.pop(r["id"], None)
-            if outcome == "undone":
-                await self.publish({"type": "action_undone", "incident_id": r["incident_id"],
-                                    "payload": {"receipt_id": r["id"], "reason": "watchdog"}})
-            self.set_state(r["incident_id"], "escalated")
-            card = self.card(row, r["target"], receipt=view, receipt_id=r["id"] if view else None, reason=reason)
-            await self.publish({"type": "escalated", "incident_id": r["incident_id"],
-                                "payload": {"card": card.model_dump(mode="json"), "briefing": reason,
-                                            **self.guidance(r["incident_id"], gate.get("pattern"), r["tool"],
-                                                            r["target"]),
-                                            **self.facts(r["incident_id"], row, "watchdog", "lost verifier")}})
-            done += 1
-        return done
-
-    async def upkeep(self, every_s: float = 5) -> None:
-        while True:
-            try:
-                await self.expire_approvals()
-                await self.watchdog()
-                await self.retry_timeouts()
-                if self.intents is not None:
-                    await self.sync_intents()
-                    await self.drain_intents()
-            except Exception as e:  # never let upkeep die quietly
-                log.error("upkeep failed: %r", e)
-            await asyncio.sleep(every_s)
-
-    # ---- orchestration intents (handoff §9) ------------------------------------------------------------
-    async def moved(self, intent_id: str, to: str, **fields: Any) -> bool:
-        assert self.intents is not None
-        if not self.intents.move(intent_id, to, **fields):
-            return False
-        row = self.intents.get(intent_id)
-        assert row is not None
-        await self.publish({"type": "action_intent_changed", "incident_id": row["incident_id"], "payload": {
-            "intent_id": intent_id, "status": to, "plan_revision": row["plan_revision"],
-            "approval_id": row["approval_id"], "receipt_id": row["receipt_id"], "reason": row["reason"]}})
-        return True
-
-    # why this intent may no longer run; None while it is the brain's current plan
-    def stale_intent(self, intent_id: str) -> str | None:
-        assert self.intents is not None
-        row = self.intents.get(intent_id)
-        if row is None:
-            return "unknown intent"
-        if row["status"] == "superseded":
-            return "superseded by a newer plan"
-        current = self.intents.current_plan(row["incident_id"])
-        if current is not None and current != row["plan_revision"]:
-            return f"plan {row['plan_revision']} replaced by plan {current}"
-        return None
-
-    def slot_busy(self) -> bool:
-        with self.lock:
-            used = policy.usage(self.conn, "", self.clock())["in_flight"]
-        return used >= self.policy["budgets"]["max_in_flight"]
-
-    # step 3's "asking": these end in an approval request, so a busy slot does not hold them back
-    def will_ask(self, action: ActionRequest) -> bool:
-        protected = bool(self.services.get(action.target, {}).get("protected"))
-        return (self.policy["tools"].get(action.tool, {}).get("auto_eligible") is False or protected
-                or action.origin == "model")
-
-    async def submit_intent(self, env: IntentEnvelope) -> IntentSubmission:
-        if self.intents is None:
-            raise RuntimeError("orchestration intents are off in this gateway")
-        row, created = self.intents.create_or_get(env)  # Conflict when the id holds another action
-        if not created:
-            return submission(row)
-        steps: list[dict] = []
-        await self.step(env.incident_id, steps, "schema", True)
-        return await self.run_intent(row, steps)
-
-    # busy slot: queue, never refuse; the queue drains in upkeep and reruns the whole checklist then
-    async def run_intent(self, row: dict, steps: list[dict]) -> IntentSubmission:
-        assert self.intents is not None
-        intent_id = row["intent_id"]
-        action = ActionRequest.model_validate_json(row["action_json"])
-        async with self.run_lock:
-            if stale := self.stale_intent(intent_id):
-                await self.moved(intent_id, "superseded", reason=stale)
-            elif self.slot_busy() and not self.will_ask(action):
-                if row["status"] != "queued":
-                    await self.moved(intent_id, "queued", reason="another action is being verified")
-            else:
-                token = _intent.set(intent_id)
-                try:
-                    decision = await self._run(action, steps, approved=False)
-                finally:
-                    _intent.reset(token)
-                await self.settle_intent(intent_id, decision)
-        latest = self.intents.get(intent_id)
-        assert latest is not None
-        return submission(latest)
-
-    # the checklist ended without a write or an approval request: the intent ends with it
-    async def settle_intent(self, intent_id: str, decision: GatewayDecision) -> None:
-        assert self.intents is not None
-        row = self.intents.get(intent_id)
-        if row is None or row["status"] not in ("new", "queued", "awaiting_approval"):
-            return
-        if decision.decision == "awaiting_approval":
-            return
-        await self.moved(intent_id, "terminal", reason=f"{decision.decision}: {decision.reason or decision.failed_step}")
-
-    async def drain_intents(self) -> None:
-        assert self.intents is not None
-        row = self.intents.oldest("queued")
-        if row is not None and not self.slot_busy():
-            await self.run_intent(row, [])
-
-    # verification finished (any path: close, undo, keep and page, watchdog): the intent is done
-    async def sync_intents(self) -> None:
-        assert self.intents is not None
-        for row in self.intents.with_status("verifying"):
-            with self.lock:
-                r = self.conn.execute("SELECT outcome FROM receipts WHERE id=?", (row["receipt_id"],)).fetchone()
-            if r is not None and r["outcome"] not in ("pending", "watchdog_failed"):
-                await self.moved(row["intent_id"], "terminal", reason=f"receipt #{row['receipt_id']}: {r['outcome']}")
-
-    # services this action answers for, and services another open incident broke on its own before it
-    def verification_scope(self, action: ActionRequest, row: dict, plan: dict) -> dict:
-        victims = json.loads(row.get("victims_json") or "[]")
-        with self.lock:
-            own = {r[0] for r in self.conn.execute(
-                "SELECT service FROM incident_memberships WHERE incident_id=?", (action.incident_id,))}
-            others = self.conn.execute(
-                "SELECT m.service, e.first_breach_at, e.sustained_at FROM incident_memberships m "
-                "JOIN signal_episodes e ON e.episode_id = m.episode_id "
-                "JOIN orchestration_workspaces w ON w.incident_id = m.incident_id "
-                "WHERE m.closed = 0 AND m.incident_id != ? AND w.phase != 'terminal'", (action.incident_id,)).fetchall()
-        mine = {action.target, *victims, *own, *(plan.get("blast") or {}).get("upstream", [])}
-        now = self.clock()
-        unrelated = {r["service"] for r in others if (r["first_breach_at"] or r["sustained_at"]) < now} - mine
-        return {"services": sorted(mine), "unrelated": sorted(unrelated)}
-
-    # restart: a write that started but left no receipt is unknown; never replay it, never undo it blind
-    async def reconcile_intents(self) -> list[str]:
-        if self.intents is None:
-            return []
-        unknown = []
-        for row in self.intents.with_status("executing"):
-            action = ActionRequest.model_validate_json(row["action_json"])
-            with self.lock:
-                rec = self.conn.execute("SELECT id FROM receipts WHERE incident_id=? AND tool=? AND target=? AND "
-                                        "ts >= ? ORDER BY ts LIMIT 1", (row["incident_id"], action.tool, action.target,
-                                                                        row["executing_at"] or 0)).fetchone()
-            if rec is not None:  # receipted: the watchdog takes over the lost verifier
-                await self.moved(row["intent_id"], "verifying", receipt_id=rec["id"])
-                continue
-            why = (f"gateway restarted during the write of intent {row['intent_id']}; outcome unknown. Check "
-                   f"{action.target} by hand, then clear the intent")
-            await self.moved(row["intent_id"], "execution_unknown", reason=why)
-            if (inc := self.incident(row["incident_id"])) is not None:
-                await self.stop(action, inc, [], "execute", "escalated", why)
-            unknown.append(row["intent_id"])
-        with self.lock:
-            receipted = {r[0] for r in self.conn.execute("SELECT id FROM receipts")}
-        orphans = [rid for rid, _ in self.receipts.recent(1000) if rid not in receipted]
-        if orphans:
-            log.error("receipt views without a receipt row (crash between the two writes): %s", orphans)
-        return unknown
-
-    # an approver checked the cluster after an unknown write: the slot frees, audited
-    async def clear_intent(self, intent_id: str, decided_by: str) -> dict:
-        if self.intents is None or decided_by not in self.approvers:
-            return {"cleared": False, "reason": "not an approver" if self.intents else "orchestration off"}
-        row = self.intents.get(intent_id)
-        if row is None or row["status"] != "execution_unknown":
-            return {"cleared": False, "reason": f"intent is {row['status'] if row else 'unknown'}"}
-        await self.moved(intent_id, "terminal", reason=f"cleared by {decided_by} after checking the cluster")
-        await self.publish({"type": "checklist_step", "incident_id": row["incident_id"], "payload": {
-            "name": "human_clear", "passed": True, "reason": f"intent {intent_id} cleared by {decided_by}"}})
-        return {"cleared": True}
-
+    # ---- the rest of the gateway, one module per concern; each is a plain function taking the gateway -------
+    # verification, undo, close (§6.4.9): gateway/verify_loop.py
+    verify = verify_loop.verify
+    undo_and_close = verify_loop.undo_and_close
+    keep_and_page = verify_loop.keep_and_page
+    undo = verify_loop.undo
+    close = verify_loop.close
+    rehearsal_credit = verify_loop.rehearsal_credit
+    clear_receipt = verify_loop.clear_receipt
+    # retry after a clean undo (§6.4.11): gateway/retries.py
+    retry_blocker = retries.retry_blocker
+    start_retry = retries.start_retry
+    retry_timeouts = retries.retry_timeouts
+    # background upkeep (§6.4.8, §6.4.10): gateway/upkeep.py
+    expire_approvals = upkeep.expire_approvals
+    watchdog = upkeep.watchdog
+    upkeep = upkeep.upkeep
+    # orchestration intents (handoff §9): gateway/intent_flow.py
+    moved = intent_flow.moved
+    stale_intent = intent_flow.stale_intent
+    slot_busy = intent_flow.slot_busy
+    will_ask = intent_flow.will_ask
+    submit_intent = intent_flow.submit_intent
+    run_intent = intent_flow.run_intent
+    settle_intent = intent_flow.settle_intent
+    drain_intents = intent_flow.drain_intents
+    sync_intents = intent_flow.sync_intents
+    verification_scope = intent_flow.verification_scope
+    reconcile_intents = intent_flow.reconcile_intents
+    clear_intent = intent_flow.clear_intent

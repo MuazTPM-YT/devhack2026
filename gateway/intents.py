@@ -95,13 +95,6 @@ class IntentStore:
                                   (incident_id,)).fetchone()
         return None if r is None else int(r["plan_revision"])
 
-    def first_for(self, incident_id: str, plan_revision: int) -> str | None:
-        with self.lock:
-            r = self.conn.execute("SELECT intent_id FROM action_intents WHERE incident_id=? AND plan_revision=? "
-                                  "AND parent_intent_id IS NULL ORDER BY created_at LIMIT 1",
-                                  (incident_id, plan_revision)).fetchone()
-        return r[0] if r else None
-
 
 def submission(row: dict[str, Any]) -> IntentSubmission:
     return IntentSubmission.model_validate({"intent_id": row["intent_id"], "reason": row.get("reason"),
