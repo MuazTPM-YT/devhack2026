@@ -785,3 +785,29 @@ Seeded from reading the plan. Reply under each one.
   WARNING/ERROR lines: none in gateway, observer, brain or chaos logs.
   Shop reset after (`restored: ["configmap/flagd-config"]`), payment
   unpaused on `3.1.0-payment`.
+- [A] 2026-11-13 for M: `POST /chaos/shared-outage` is in (Q6): kafka
+  replicas -> 0, ground truth `{"type": "shared_dependency", "target":
+  "kafka"}` (same kind string as `brain/major.py`), reset restores it. Live:
+  after 90 s only checkout was unhealthy (err 0.068, severity 4).
+  accounting and fraud-detection are the other kafka consumers but are not
+  in `config/services.yaml`, so the observer never counts them; with
+  `major_incident.min_services: 4` scenario 10 will not go major as-is.
+  Your call: add them to services.yaml (C7) or lower the threshold.
+- [A] 2026-11-13 for M: Request for the `/trust` page (Phase 4): `GET
+  /trust` in the gateway, one row per (pattern, action, target) in the
+  ledger, each row = `trust.check(...)` output plus its key:
+  `[{"pattern", "action", "target", "successes", "failures",
+  "rehearsal": [s, f], "real": [s, f], "lower_bound", "bar", "open"}]`.
+  Until it exists the page falls back to `GET /ledger` counts and shows
+  bound and gate as unknown.
+- [A] 2026-11-13 for T: Requests for the `/receipts` page (Phase 4), both
+  in your files: (1) `GET /receipts?limit=50` in `gateway/receipts.py`,
+  newest first, each item the same `{id, receipt, card}` as `GET
+  /receipts/{id}`. (2) `GET /audit/verify` (router in `gateway/audit.py`,
+  M mounts it) on `data/audit.jsonl`: `{"ok": true, "records": N}` or
+  `{"ok": false, "error": "<the ValueError text from verify()>"}`. Until
+  they exist the page opens single receipts by id and the button says the
+  route is missing. Also: the `/benchmark` page reads
+  `bench/out/summary.json` and `bench/out/timings.svg`, so please write
+  the report with `uv run python -m bench.report bench/results.jsonl
+  --output-dir bench/out` (add `--manual` for the comparison).
