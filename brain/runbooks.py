@@ -5,7 +5,8 @@ from schemas import config
 from schemas.models import Pattern, Tool
 
 MATCH_KEYS = {"pattern", "services", "tools", "change_kinds", "evidence"}
-ENTRY_KEYS = {"id", "title", "owner", "match", "steps", "require_approval", "forbid_tools"}
+ENTRY_KEYS = {"id", "title", "owner", "severity", "match", "steps", "require_approval", "forbid_tools"}
+SEVERITIES = {"SEV-1", "SEV-2", "SEV-3", "SEV-4"}
 
 
 def _as_list(value: Any) -> list:
@@ -25,6 +26,8 @@ def load(root: str = "config") -> list[dict]:
         if rb["id"] in seen:
             raise ValueError(f"runbook {name}: duplicate id")
         seen.add(rb["id"])
+        if rb.get("severity") is not None and rb["severity"] not in SEVERITIES:
+            raise ValueError(f"runbook {name}: severity must be one of {sorted(SEVERITIES)}")
         match = rb.get("match") or {}
         if bad := set(match) - MATCH_KEYS:
             raise ValueError(f"runbook {name}: unknown match keys {sorted(bad)}")
@@ -67,5 +70,6 @@ def hard_rules(matched: list[dict], tool: str | None) -> tuple[list[str], str | 
 
 # compact form for event payloads, cards and the prompt
 def brief(rb: dict) -> dict:
-    return {"id": rb["id"], "title": rb["title"], "owner": rb.get("owner"), "steps": list(rb["steps"]),
+    return {"id": rb["id"], "title": rb["title"], "owner": rb.get("owner"), "severity": rb.get("severity"),
+            "steps": list(rb["steps"]),
             "require_approval": bool(rb.get("require_approval")), "forbid_tools": list(rb.get("forbid_tools") or [])}

@@ -62,7 +62,8 @@ def runbook_text(rb: dict) -> str:
     if rb.get("forbid_tools"):
         rules.append(f"never: {', '.join(rb['forbid_tools'])}")
     steps = "\n".join(f"{i}. {s}" for i, s in enumerate(rb.get("steps") or [], 1))
-    return f"**{rb.get('id')} {rb.get('title')}**{owner}" + (f"\nRule: {'; '.join(rules)}" if rules else "") + \
+    sev = f" [{rb['severity']}]" if rb.get("severity") else ""
+    return f"**{rb.get('id')} {rb.get('title')}**{sev}{owner}" + (f"\nRule: {'; '.join(rules)}" if rules else "") + \
         (f"\n{steps}" if steps else "")
 
 

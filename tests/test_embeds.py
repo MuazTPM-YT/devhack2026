@@ -11,7 +11,7 @@ FIXED = Card(incident_id="inc-1", status="FIXED", evidence_ids=["journal:41", "q
     "Did: rolled back payment to revision 3 (approved by 111). Receipt #2\n"
     "Checked: prediction held; nothing else got worse\n"
     "Undo: kubectl rollout undo deploy/payment -n shop"))
-RB = {"id": "RB-01", "title": "Bad deploy", "owner": "service team", "steps": ["Roll back.", "Block the tag."],
+RB = {"id": "RB-01", "title": "Bad deploy", "owner": "service team", "severity": "SEV-2", "steps": ["Roll back.", "Block the tag."],
       "require_approval": True, "forbid_tools": []}
 
 
@@ -41,7 +41,7 @@ def test_approval_embed_names_who_can_approve_and_the_runbook():
     assert e.color.value == embeds.ORANGE and e.author.name.startswith("For: approvers")
     assert f["Who can approve"] == "<@111>, <@222>"  # never the rehearsal identity
     assert f["Expires"] == "<t:1000:R> (<t:1000:t>)" and f["Change"].startswith("```rollback_deploy")
-    assert f["Runbook"].startswith("**RB-01 Bad deploy** (owner: service team)")
+    assert f["Runbook"].startswith("**RB-01 Bad deploy** [SEV-2] (owner: service team)")
     assert "Rule: a human approves every action" in f["Runbook"] and "1. Roll back.\n2. Block the tag." in f["Runbook"]
     assert e.footer.text == "Incident inc-1 · Approval a1"
 

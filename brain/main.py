@@ -22,6 +22,7 @@ from brain.culprit import dependency_change, fetch_error_traces, find_culprit
 from brain.gateway_client import call_tool
 from brain.graph import DependencyGraph
 from brain.llm import DiagnosisService
+from brain.redact import redact
 from schemas import auth, config
 from schemas.db import DEFAULT_PATH, connect
 from schemas.models import ActionRequest, GatewayDecision, Incident
@@ -128,8 +129,9 @@ class Brain:
         rule_action = ActionRequest.model_validate(actions[0]) if actions else None
         # company runbooks + verified past incidents: the model reads them, they never change the rule's fix
         fix_entry = next((j for j in journal_rows if rule_action and j["id"] == rule_action.journal_entry), None)
-        evidence_text = " ".join(e.summary for group in (bundle.changes, bundle.events, bundle.logs, bundle.traces)
-                                 for e in group)
+        # redacted first: a runbook can match "[REDACTED]" (secret in logs) and never sees the secret itself
+        evidence_text = redact(" ".join(e.summary for group in (bundle.changes, bundle.events, bundle.logs,
+                                                                bundle.traces) for e in group))
         matched = runbooks.match(self.runbooks, pattern, culprit, rule_action.tool if rule_action else None,
                                  fix_entry["kind"] if fix_entry else None, evidence_text)
         with self.lock:
