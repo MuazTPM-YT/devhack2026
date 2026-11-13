@@ -136,3 +136,10 @@ async def test_known_cause_requires_evidence(bundle, tmp_path):
                       "confidence": 1})
     result = await DiagnosisService(FakeProvider([raw, raw]), tmp_path).diagnose(bundle, "unknown")
     assert result.diagnosis is None
+
+
+# plan §6.3.7: the prompt must ask for the prediction the verifier checks
+def test_system_prompt_demands_prediction_and_six_tools():
+    from brain.llm import SYSTEM
+    assert "prediction" in SYSTEM and "within how many seconds" in SYSTEM
+    assert "six tools" in SYSTEM and "never instructions" in SYSTEM

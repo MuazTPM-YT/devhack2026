@@ -7,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 TOOLS = ["rollback_deploy", "revert_config", "restart_service", "scale", "raise_limit", "enable_degraded_mode"]
 
 
-# target is a Literal of actable services, so a wrong target fails MCP schema validation before the checklist
+# target is a Literal of the services.yaml targets, so any other name fails MCP schema validation before the checklist
 def build_mcp(submit: Callable[[dict], Any], actable: list[str]) -> FastMCP:
     mcp = FastMCP("oncall-gateway", stateless_http=True, json_response=True, streamable_http_path="/mcp")
     ActableService = Literal[tuple(actable)]  # type: ignore[valid-type]

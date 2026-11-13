@@ -347,3 +347,30 @@ def test_judge_kubectl_rejects_bad_input(tmp_path, command, status):
     with TestClient(create_app(tmp_path, FakeKubectl(), raw)) as client:
         assert client.post("/chaos/kubectl", json={"command": command}).status_code == status
         assert raw.calls == []
+
+
+# a failed undo left payment paused, and raise_limit leaves a bigger memory limit: reset undoes both
+def test_reset_unpauses_and_restores_memory_limits(tmp_path):
+    fake = FakeKubectl()
+    fake.deployments["recommendation"]["spec"]["template"]["spec"]["containers"][0]["resources"] = {
+        "limits": {"memory": "200Mi"}}
+    snapshot = ensure_snapshot(tmp_path / "s.json", fake)
+    fake.deployments["payment"]["spec"]["paused"] = True
+    fake.deployments["recommendation"]["spec"]["template"]["spec"]["containers"][0]["resources"] = {
+        "limits": {"memory": "400Mi"}}
+    assert reset(snapshot, fake) == ["payment", "recommendation"]
+    assert fake.deployments["payment"]["spec"]["paused"] is False
+    assert fake.deployments["recommendation"]["spec"]["template"]["spec"]["containers"][0]["resources"] == {
+        "limits": {"memory": "200Mi"}}
+    assert reset(snapshot, fake) == []
+
+
+def test_reset_with_old_snapshot_without_resources_still_works(tmp_path):
+    fake = FakeKubectl()
+    snapshot = ensure_snapshot(tmp_path / "s.json", fake)
+    for state in snapshot["deployments"].values():
+        state.pop("paused")
+        for c in state["containers"]:
+            c.pop("resources")
+    shared_outage(fake)
+    assert reset(snapshot, fake) == ["kafka"] and fake.replicas("kafka") == 1

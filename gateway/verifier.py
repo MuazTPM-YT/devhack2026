@@ -20,8 +20,10 @@ class Verification:
         self.stable_s = stable_s
         self.grace_s = grace_s
         self.healthy_since: float | None = None
-        self.prediction_held = False
+        # None = nothing to check (no prediction); a fix without one can only be "right by accident"
+        self.prediction_held: bool | None = False if prediction else None
         self.recovered = False
+        self.last_health = health_at_action
         self.collateral: dict[str, float] = {}
         self.last_ts = t0
         self.healthy_at_start = {s for s, v in health_at_action["services"].items()
@@ -30,6 +32,7 @@ class Verification:
     # one tick -> None (keep going) | "early_abort" | "handed_off" | "recovered" | "window_end"
     def step(self, now: float, health: dict, non_agent_change: bool) -> str | None:
         services = health["services"]
+        self.last_health = health
         for s in self.healthy_at_start:
             if services.get(s, {}).get("unhealthy"):
                 self.collateral[s] = self.collateral.get(s, 0) + (now - self.last_ts)

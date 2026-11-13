@@ -32,6 +32,12 @@ class ReceiptStore:
             db.execute("UPDATE receipt_views SET body=? WHERE id=?",
                        (json.dumps(redact_value(receipt.model_dump(mode="json"))), receipt_id))
 
+    # newest first, for the UI's /receipts page
+    def recent(self, limit: int = 100) -> list[tuple[int, Receipt]]:
+        with self.connect() as db:
+            rows = db.execute("SELECT id, body FROM receipt_views ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [(row[0], Receipt.model_validate_json(row[1])) for row in rows]
+
     def get(self, receipt_id: int) -> Receipt | None:
         with self.connect() as db:
             row = db.execute("SELECT body FROM receipt_views WHERE id=?", (receipt_id,)).fetchone()
@@ -41,8 +47,9 @@ class ReceiptStore:
 def build_card(receipt: Receipt, receipt_id: int) -> Card:
     proven = receipt.outcome == "success" and receipt.prediction_held is True and receipt.harm_clean is True
     status = "FIXED" if proven else {
-        "undone": "WOKE YOU BECAUSE", "handed_off": "HANDED OFF",
-        "right_by_accident": "RECOVERED; PREDICTION FAILED",
+        "undone": "WOKE YOU BECAUSE", "undo_failed": "WOKE YOU BECAUSE", "handed_off": "HANDED OFF",
+        "right_by_accident": "RECOVERED; PREDICTION FAILED" if receipt.prediction_held is False
+        else "RECOVERED; NO PREDICTION",
     }.get(receipt.outcome, "VERIFICATION PENDING")
     refs = " ".join(f"[{' '.join(value.split())}]" for value in receipt.evidence_ids)
     text = "\n".join([
@@ -59,6 +66,10 @@ def build_card(receipt: Receipt, receipt_id: int) -> Card:
 def create_receipts_router(store: ReceiptStore) -> APIRouter:
     router = APIRouter()
 
+    @router.get("/receipts")
+    def recent(limit: int = 100):
+        return [{"id": i, "receipt": r, "card": build_card(r, i)} for i, r in store.recent(min(max(limit, 1), 500))]
+
     @router.get("/receipts/{receipt_id}")
     def get(receipt_id: int):
         receipt = store.get(receipt_id)
@@ -69,9 +80,51 @@ def create_receipts_router(store: ReceiptStore) -> APIRouter:
     return router
 
 
+def _took(seconds: float) -> str:
+    s = max(0, int(round(seconds)))
+    return f"{s // 60}m {s % 60:02d}s" if s >= 60 else f"{s}s"
+
+
+# "automatic; trust 30 rehearsals, 0 real; proven at least 90%" or "approved by <id>" (plan §6.7.1)
+def _mode(trust: dict) -> str:
+    if trust.get("approved_by"):
+        return f"approved by {trust['approved_by']}"
+    rehearsal, real = trust.get("rehearsal") or [0, 0], trust.get("real") or [0, 0]
+    bound = trust.get("lower_bound")
+    proven = f"; proven at least {bound:.0%}" if isinstance(bound, (int, float)) else ""
+    return f"automatic; trust {rehearsal[0]} rehearsals, {real[0]} real{proven}"
+
+
+def _checked(receipt: Receipt) -> str:
+    if receipt.outcome == "pending":
+        return "verification still running"
+    prediction = {True: "prediction held", False: "prediction missed", None: "no prediction to check"}
+    harm = {True: "nothing else got worse", False: "harm found", None: "harm check not run"}
+    parts = [prediction[receipt.prediction_held], harm[receipt.harm_clean]]
+    if receipt.added_disruption_s is not None:
+        forecast = f" (forecast {receipt.forecast_s:.0f} s)" if receipt.forecast_s is not None else ""
+        parts.append(f"added disruption {receipt.added_disruption_s:.0f} s{forecast}")
+    return "; ".join(parts)
+
+
+# a command a tired human can paste to take the agent's action back
+def _undo(receipt: Receipt, receipt_id: int) -> str:
+    op, target = receipt.inverse.get("op"), receipt.target
+    if receipt.outcome in ("undone", "undo_failed"):
+        return f"already undone by the agent; receipt #{receipt_id}" if receipt.outcome == "undone" \
+            else f"the agent's undo FAILED; restore from receipt #{receipt_id} by hand"
+    if op == "restore_template":
+        return f"kubectl rollout undo deploy/{target} -n shop"
+    if op == "scale":
+        return f"kubectl scale deploy/{target} -n shop --replicas={receipt.inverse.get('replicas')}"
+    return f"put configmap/{receipt.inverse.get('name')} back from receipt #{receipt_id}"
+
+
+# the 5-line card (plan §6.7.1), built by code from incident, diagnosis, decision and receipt
 def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
                         decision: GatewayDecision | None = None, receipt: Receipt | None = None,
-                        receipt_id: int | None = None, mitigated: bool = False) -> Card:
+                        receipt_id: int | None = None, mitigated: bool = False, why: str | None = None,
+                        took_s: float | None = None, metric: str | None = None, did: str | None = None) -> Card:
     if receipt and receipt_id is not None:
         card = build_card(receipt, receipt_id)
     else:
@@ -85,18 +138,27 @@ def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
         card.status = f"MAJOR INCIDENT: {card.status}"
     causes = diagnosis.causes if diagnosis else []
     ids = list(dict.fromkeys(card.evidence_ids + [value for cause in causes for value in cause.evidence_ids]))
-    cause_class = causes[0].cause_class if causes else "unknown"
+
     def clean(text):
         return " ".join(redact_value(str(text)).split())
+
+    reason = why or (causes[0].explanation if causes else None) or (causes[0].cause_class if causes else "unknown")
     refs = " ".join(f"[{clean(value)}]" for value in ids) or "none supplied"
-    action = f"{receipt.tool} on {clean(receipt.target)}; receipt #{receipt_id}" if receipt else "nothing"
-    check = (f"prediction={receipt.prediction_held}; harm clean={receipt.harm_clean}"
-             if receipt else "verification not run")
-    undo = f"inspect receipt #{receipt_id}; request gateway approval" if receipt else "inspect evidence before approving"
+    head = f"{card.status}" + (f" in {_took(took_s)}" if took_s is not None and receipt else "")
+    subject = clean(incident.culprit or "cause unknown") + (f"; {clean(metric)}" if metric else "")
+    if receipt and receipt_id is not None:
+        action = f"{clean(did or receipt.tool)} on {clean(receipt.target)} ({clean(_mode(receipt.trust))}). " \
+                 f"Receipt #{receipt_id}"
+        check, undo = _checked(receipt), _undo(receipt, receipt_id)
+    else:
+        action = clean(did) if did else "nothing yet"
+        check, undo = "verification not run", "nothing to undo; inspect the evidence first"
+    if decision and decision.reason:
+        action += f" ({clean(decision.reason)[:200]})"
     card.text = "\n".join([
-        f"{card.status}: {clean(incident.culprit or 'cause unknown')}",
-        f"Why: {cause_class}; evidence {refs}",
-        f"Did: {action}", f"Checked: {check}", f"Undo / ask: {undo}",
+        f"{head}: {subject}",
+        f"Why: {clean(reason)[:300]} {refs}",
+        f"Did: {action}", f"Checked: {check}", f"Undo: {clean(undo)}",
     ])
     card.evidence_ids = ids
     return card

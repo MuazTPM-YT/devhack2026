@@ -11,7 +11,8 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from gateway import events
+from gateway import events, trust
+from gateway.audit import verify
 from gateway.approvals import approvers_from_env
 from gateway.checklist import Gateway
 from gateway.mcp_server import build_mcp
@@ -49,12 +50,14 @@ def build_from_env() -> Gateway:
     return Gateway(connect(DEFAULT_PATH, shared=True), client.AppsV1Api(api), client.CoreV1Api(api),
                    http, observer, config.load("services")["services"], config.load("policy"),
                    events.publish, ReceiptStore(Path(DEFAULT_PATH)), approvers_from_env(),
-                   graph=DependencyGraph(http, jaeger), flag_map=config.load("services").get("flags") or {})
+                   graph=DependencyGraph(http, jaeger), flag_map=config.load("services").get("flags") or {},
+                   rehearsal=os.environ.get("ONCALL_REHEARSAL") == "1")
 
 
 def create_app(gateway: Gateway | None = None) -> FastAPI:
     services = config.load("services")["services"]
-    actable = [s for s, v in services.items() if v.get("actable") and not v.get("protected")]
+    # protected data stores are valid targets too, for a human-approved scale only (policy step 3)
+    actable = [s for s, v in services.items() if v.get("actable") or v.get("protected")]
     holder: dict[str, Gateway] = {}
 
     async def submit(raw: dict):
@@ -98,6 +101,27 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
         if os.environ.get("ONCALL_REHEARSAL") != "1":
             raise HTTPException(404, "rehearsal mode is off")
         return holder["gw"].rehearsal_credit(body.receipt_id, body.diagnosis_matched)
+
+    # /trust page (plan §6.8, A's shape): one row per key = trust.check(...) + the key
+    @app.get("/trust")
+    def trust_table() -> list[dict]:
+        gw = holder["gw"]
+        with gw.lock:
+            keys = gw.conn.execute("SELECT DISTINCT pattern, action, target FROM ledger "
+                                   "ORDER BY pattern, action, target").fetchall()
+            rows = [{**dict(k), **trust.check(gw.conn, gw.policy["trust"], gw.policy["tools"].get(k["action"], {}),
+                                              k["pattern"], k["action"], k["target"],
+                                              gw.services.get(k["target"], {}).get("kind", "stateless"))}
+                    for k in keys]
+        return rows
+
+    # the "verify audit log" button: walk the hash chain, name the first broken seq
+    @app.get("/audit/verify")
+    def audit_verify() -> dict:
+        try:
+            return {"ok": True, "records": len(verify(events.active_bus().audit.path))}
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
 
     @app.get("/ledger")
     def ledger() -> list[dict]:

@@ -76,7 +76,9 @@ gateway lifespan; a second active application is rejected. Tests and explicitly
 injected applications can still use `create_events_router(bus)`. That factory
 uses the supplied bus directly and does not activate module-level publishing.
 
-Routes: `POST /events/publish`, `GET /events`, `GET /receipts/{receipt_id}`.
+Routes: `POST /events/publish`, `GET /events`, `GET /receipts` (newest first), `GET /receipts/{receipt_id}`.
+The gateway also serves `GET /trust` (per-key counts, proven bound, gate state) and
+`GET /audit/verify` (walks the hash chain; names the first broken seq) for the UI.
 SSE event IDs are audit sequence numbers. `Last-Event-ID` resumes after that
 sequence; slow clients disconnect and replay. Audit append succeeds before fanout.
 Consumers receive `{seq, ts, event, prev_hash, hash}`; `event` contains
@@ -131,7 +133,8 @@ uv run --locked --env-file .env uvicorn notifier.main:app --host 127.0.0.1 --por
 The notifier consumes gateway SSE, stores its cursor and message mappings in
 `data/notifier.db`, and restores pending buttons after restart. FYI messages are
 silent. Wake messages mention only the configured role. Pending approvals and
-unresolved wakes re-page; acknowledgement or resolution stops paging. Expired
+unresolved wakes re-page; the Acknowledge button on a wake page (approvers only)
+or resolution stops paging. Expired
 buttons close. Discord delivery is at least once across process crashes; a crash
 between send and state persistence can produce a duplicate message.
 
@@ -163,7 +166,7 @@ uv run --locked python -m bench.trust_report data/oncall.db
 # After manual trials exist:
 uv run --locked python -m bench.report bench/results.jsonl --manual data/manual-results.jsonl
 # Export tables and chart files from recorded trials:
-uv run --locked python -m bench.report bench/results.jsonl --manual data/manual-results.jsonl --output-dir data/report
+uv run --locked python -m bench.report bench/results.jsonl --manual data/manual-results.jsonl --output-dir bench/out  # the UI /benchmark page reads bench/out
 uv run --locked pytest tests/redteam --junitxml=data/redteam.xml
 uv run --locked python -m bench.redteam data/redteam.xml
 ```
@@ -195,8 +198,10 @@ row starts fresh through reset. Use one writer per output file and a separate
 output file for each configuration or experiment.
 
 SSE observation reconnects after disconnects or temporary stream errors, passing
-the last audit sequence and ignoring replayed events. The 300-second overall
-observation deadline remains in force. Timeout and failed approval/ledger requests
+the last audit sequence and ignoring replayed events. The overall observation
+deadline (`--timeout`, default 600 s; flag-flip needs about 350 s) remains in force.
+In rehearsal the harness approves only the first approval of a trial (the
+scenario's fix); follow-ups such as `raise_limit` are left for a human. Timeout and failed approval/ledger requests
 preserve already collected measurements in the failed trial record. Approval
 and ledger POSTs are not automatically retried after uncertain network outcomes.
 Normalized usage accepts either provider `usage` fields or sync metadata

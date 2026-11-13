@@ -34,7 +34,7 @@ def check(conn: sqlite3.Connection, trust_policy: dict, tool_policy: dict, patte
     s = c["rehearsal"][0] + c["real"][0]
     f = c["rehearsal"][1] + c["real"][1]
     bound = lower_bound(s, f, trust_policy["confidence"])
-    ok = eligible(tool_policy, target_kind) and pattern != "unknown" and bound >= trust_policy["bar"]
+    ok = eligible(tool_policy, target_kind) and pattern not in ("unknown", "protected") and bound >= trust_policy["bar"]
     return {"successes": s, "failures": f, "rehearsal": c["rehearsal"], "real": c["real"],
             "lower_bound": round(bound, 4), "bar": trust_policy["bar"], "open": ok}
 

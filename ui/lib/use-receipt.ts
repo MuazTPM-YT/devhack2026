@@ -29,7 +29,8 @@ export function useReceipt(receiptId: number | null, closed: boolean, demo: bool
     const ctrl = new AbortController();
     fetch(`/api/gateway/receipts/${receiptId}`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : null))
-      .then((body: ReceiptView | null) => setReceipt(body))
+      // GET /receipts/{id} answers {id, receipt, card}; the numbers live under receipt
+      .then((body: { receipt?: ReceiptView } | null) => setReceipt(body?.receipt ?? null))
       .catch(() => {});
     return () => ctrl.abort();
   }, [receiptId, closed, demo]);
