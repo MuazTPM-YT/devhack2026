@@ -409,10 +409,14 @@ class Gateway:
                             "payload": {"receipt_id": receipt_id, "reason": reason}})
         return await self.close(receipt_id, action, row, receipt, v, "undone", harm, reason, hash_after)
 
-    # pause an in-progress rollout first so the inverse lands on a still object (§6.4.9 Undo)
+    # pause an in-progress rollout first so the inverse lands on a still object (§6.4.9 Undo);
+    # always unpause, a failed undo must not leave the Deployment paused
     def undo(self, target: str, inverse: dict, pause: bool) -> None:
         def rv() -> str:
             return read_deployment(self.apps, target)["metadata"]["resourceVersion"]
+
+        def gen() -> int:
+            return read_deployment(self.apps, target)["metadata"]["generation"]
 
         if inverse["op"] == "restore_configmap":
             cm = read_configmap(self.core, inverse["name"])
@@ -425,14 +429,16 @@ class Gateway:
             return
         template = inverse["template"]
 
-        test = {"op": "test", "path": "/metadata/resourceVersion"}
+        test = {"op": "test", "path": "/metadata/generation"}
         if pause:
-            patch_deployment(self.apps, target, [{**test, "value": rv()},
+            patch_deployment(self.apps, target, [{**test, "value": gen()},
                                                  {"op": "add", "path": "/spec/paused", "value": True}], False)
-        patch_deployment(self.apps, target, rollback_patch(rv(), template), False)
-        if pause:
-            patch_deployment(self.apps, target, [{**test, "value": rv()},
-                                                 {"op": "replace", "path": "/spec/paused", "value": False}], False)
+        try:
+            patch_deployment(self.apps, target, rollback_patch(gen(), template), False)
+        finally:
+            if pause:
+                patch_deployment(self.apps, target, [{**test, "value": gen()},
+                                                     {"op": "replace", "path": "/spec/paused", "value": False}], False)
 
     async def close(self, receipt_id: int, action: ActionRequest, row: dict, receipt: Receipt, v: Verification,
                     outcome: str, harm: dict | None, reason: str | None, hash_after: str | None = None) -> str:

@@ -38,7 +38,7 @@ class Script:
         return self.inner(request)
 
 
-async def executed(tmp_path, healths, decided_by="u1", journal_during=None):
+async def executed(tmp_path, healths, decided_by="u1", journal_during=None, setup=None):
     w = World(tmp_path)
     script = Script(w, healths, journal_during)
     w.gw.http = httpx.AsyncClient(transport=httpx.MockTransport(script))
@@ -48,6 +48,8 @@ async def executed(tmp_path, healths, decided_by="u1", journal_during=None):
         w.gw.approvers.add(REHEARSAL_APPROVER)
     d = await w.gw.decide(d.approval_id, "approved", decided_by)
     assert d.decision == "executed"
+    if setup:
+        setup(w)
     script.active = True  # verify task has not run a tick yet; from here health follows the script
     task = next(iter(w.gw.tasks))
     return w, d, await asyncio.wait_for(task, 5)
@@ -95,6 +97,12 @@ async def test_early_abort_pauses_undoes_resumes(tmp_path):
 async def test_lagging_victim_inside_grace_does_not_abort(tmp_path):
     w, d, outcome = await executed(tmp_path, [sick(severity=9)] * 6 + [healthy()])
     assert outcome == "success" and "early_abort" not in w.types()
+
+
+# live run 2026-11-13: rollout status bumped resourceVersion between read and patch -> 422 on undo
+async def test_undo_survives_status_churn(tmp_path):
+    w, d, outcome = await executed(tmp_path, [sick(severity=9)], setup=lambda w: setattr(w.apps, "status_churn", True))
+    assert outcome == "undone" and w.apps.dep["spec"]["paused"] is False
 
 
 async def test_human_change_during_verify_hands_off_without_undo(tmp_path):
