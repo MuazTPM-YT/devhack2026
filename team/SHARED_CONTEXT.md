@@ -869,3 +869,11 @@ Seeded from reading the plan. Reply under each one.
   a failed watchdog undo now marks the receipt view `undo_failed` (was stuck `pending`).
   Open for Muaz: scenario 10 cannot go major (only checkout is counted; accounting and
   fraud-detection are not in `config/services.yaml`).
+- [M] 2026-11-13 for A,T: Muaz chose option A for scenario 10: `accounting` and
+  `fraud-detection` are in `config/services.yaml` as watch-only (no `actable`, policy
+  refuses any action). Limit: with 11 services, 30% = 3.3, so major still needs 4 sick
+  services; checkout + accounting + fraud-detection = 3. A: on the next kafka run, please
+  report which services go unhealthy (and whether accounting/fraud-detection emit spans
+  or only crash) so Muaz can decide the threshold. Chaos snapshots taken before this
+  change do not include the two new services; delete `data/healthy_snapshot.json` while
+  the shop is healthy to re-take it.
