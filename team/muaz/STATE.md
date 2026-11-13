@@ -6,16 +6,29 @@ section. Only my own work here; cross-team facts go in
 
 **Last updated:** 2026-11-13
 **Current phase:** first live run done (A, 2026-11-13); smoke failed on a verifier bug, now fixed; rerun pending
-**Branches:** all merged up to PR #28. Now `muaz/live-fixes` (not pushed)
+**Branches:** all merged up to PR #29. Now `muaz/flag-revert` (not pushed)
 
 ## Done (with proof)
 
+- Flag revert, scenario 3 (branch `muaz/flag-revert`): journal names the
+  flipped flag in the flagd JSON (`flags[<name>].defaultVariant`, per-flag
+  inverse; non-flagd text falls back to the whole key); rules treat a flag
+  change as a recent change on the service `flags:` maps it to; gateway
+  `revert_config` on a flag entry patches only `flagd-config` (merge patch
+  + resourceVersion), dry run must move exactly the recorded flags, "flag
+  already back" is refused before any write, undo restores the old file,
+  harm check declares `configmap/flagd-config`, verify window +90 s
+  (`verify.flag_extra_seconds` in `config/policy.yaml`). Proof: `uv run
+  pytest` -> `329 passed`; `ruff check .` -> `All checks passed!`; `mypy ...
+  chaos` -> `no issues found in 62 source files`; mutation check (flag link,
+  exact-flags check, extra window, configmap undo) -> all caught. Fakes only.
+  `enable_degraded_mode` stays refused (Muaz chose A).
 - Live run by A (2026-11-13, report in SHARED_CONTEXT): security table 19
   PASS, `fails: 0` on the real cluster; RBAC/VAP applied; Jaeger API shape
   matches my graph code; flagd reads the ConfigMap (~60 s); load raised to
   payment ~3 req/s; flag map agreed. Smoke: detect 42.7 s, diagnose 72.9 s,
   approve -> rollback executed (receipt #1), then wrongly undone.
-- Fixes from the live run on `muaz/live-fixes`:
+- Fixes from the live run (merged in PR #29):
   - Verifier watched trace victim `frontend-proxy`, which `/health/now`
     never lists, so recovery could not pass and the good rollback was
     undone. Now it watches only services the observer measures (culprit
@@ -257,7 +270,7 @@ section. Only my own work here; cross-team facts go in
 
 ## Blocked / waiting on
 
-- **Smoke rerun (A):** with `muaz/live-fixes` merged. Expect
+- **Smoke rerun (A):** PR #29 merged; waiting for the rerun. Expect
   `outcome=incident_resolved`.
 - **LLM timeout (T):** both live calls ended `deadline_exceeded` at 30 s
   (deepseek-v4.1-flash). Rules still decide, so not blocking; T to pick a
@@ -270,6 +283,7 @@ section. Only my own work here; cross-team facts go in
 
 ## Decisions made (Muaz)
 
+- `enable_degraded_mode`: stays refused (no feature-off flags in the shop).
 - LLM: OpenCode Go, model `deepseek-v4.1-flash`, through T's
   `DiagnosisService`; my own `brain/llm.py` removed.
 - Approvals: allowlist only, gateway bound to 127.0.0.1, no shared secret.
@@ -279,10 +293,9 @@ section. Only my own work here; cross-team facts go in
 
 ## Next
 
-1. Push + merge `muaz/live-fixes`; A reruns smoke.
-2. Flag work (unblocked): link `flag` journal entries to services via the
-   new `flags:` map in `config/services.yaml`; ConfigMap flag revert in the
-   executor; `enable_degraded_mode`. Plan first, then build.
+1. Push + merge `muaz/flag-revert`.
+2. A reruns `./scripts/smoke.sh` (bad deploy) and tries `/chaos/flag-flip`
+   (scenario 3); expect `incident_resolved` for both.
 3. Tick the Phase 1 exit only with a passing smoke output.
 4. Stretch (Phase 6) only after the Phase 4 exit works live.
 

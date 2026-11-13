@@ -1,11 +1,12 @@
-# writes with the agent identity (IMPLEMENTATION.md §6.4.7). Phase 1: rollback_deploy only.
+# writes with the agent identity (IMPLEMENTATION.md §6.4.7): Deployments, their scale, ConfigMap flagd-config.
 import json
 from typing import Any
 
 from gateway.dryrun import FIELD_MANAGER, JSON_PATCH, MERGE, WriteRefused
 
 NAMESPACE = "shop"
-__all__ = ["WriteRefused", "classify", "patch_deployment", "patch_scale", "read_deployment", "list_json"]
+__all__ = ["WriteRefused", "classify", "patch_deployment", "patch_scale", "patch_configmap", "read_deployment",
+           "read_configmap", "list_json"]
 
 
 # 409 or a failed resourceVersion test -> someone else changed it: hand off; RBAC/admission -> escalate
@@ -35,6 +36,15 @@ def patch_deployment(apps: Any, name: str, body: Any, dry_run: bool, content_typ
 
 def patch_scale(apps: Any, name: str, body: dict, dry_run: bool) -> dict:
     return _call(apps.patch_namespaced_deployment_scale, name, body, dry_run, MERGE)
+
+
+# RBAC lets the agent patch only flagd-config; any other ConfigMap comes back 403 -> escalated
+def patch_configmap(core: Any, name: str, body: dict, dry_run: bool) -> dict:
+    return _call(core.patch_namespaced_config_map, name, body, dry_run, MERGE)
+
+
+def read_configmap(core: Any, name: str) -> dict:
+    return json.loads(core.read_namespaced_config_map(name, NAMESPACE, _preload_content=False).data)
 
 
 def read_deployment(apps: Any, name: str) -> dict:

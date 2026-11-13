@@ -101,7 +101,7 @@ def build_patch(tool: str, live: dict, params: dict, entry: dict | None, replica
     if tool == "revert_config":
         if entry is None or entry["object"] != f"deployment/{name}" or entry["kind"] != "env":
             raise WriteRefused("refused", "revert_config needs an env journal entry on this Deployment "
-                                          "(ConfigMap/flag reverts are not built yet)")
+                                          "or a flag entry (plain ConfigMap reverts are not built)")
         body = next((op["body"] for op in entry["inverse"] if op["op"] == "patch"), None)
         if body is None:
             raise WriteRefused("refused", f"journal entry {entry['id']} has no patch inverse")
@@ -126,3 +126,23 @@ def build_patch(tool: str, live: dict, params: dict, entry: dict | None, replica
                     {"name": c["name"], "resources": {"limits": {"memory": params["memory"]}}}]}}}},
                 "summary": f"memory limit of {c['name']} {old} -> {params['memory']}"}
     raise WriteRefused("refused", f"{tool} not built yet")
+
+
+# set back only the flags the journal entry recorded; the rest of the flagd file stays as is
+def build_flag_patch(cm: dict, entry: dict) -> dict:
+    data = dict(cm.get("data") or {})
+    ops = [op for op in entry["inverse"] if op["op"] == "flag"]
+    if not ops:
+        raise WriteRefused("refused", f"journal entry {entry['id']} has no flag inverse")
+    if all(json.loads(data[op["key"]])["flags"][op["flag"]].get("defaultVariant") == op["defaultVariant"]
+           for op in ops):
+        raise WriteRefused("refused", "flag already back to its old value; nothing to revert")
+    for op in ops:
+        doc = json.loads(data[op["key"]])
+        doc["flags"][op["flag"]]["defaultVariant"] = op["defaultVariant"]
+        data[op["key"]] = json.dumps(doc, indent=2)
+    names = ", ".join(f"{op['flag']} -> {op['defaultVariant']}" for op in ops)
+    return {"kind": "configmap", "name": cm["metadata"]["name"], "content_type": MERGE,
+            "body": {"metadata": {"resourceVersion": cm["metadata"]["resourceVersion"]},
+                     "data": {op["key"]: data[op["key"]] for op in ops}},
+            "expected": {f"flags[{op['flag']}].defaultVariant" for op in ops}, "summary": f"flag {names}"}

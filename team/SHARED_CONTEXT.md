@@ -690,4 +690,14 @@ Seeded from reading the plan. Reply under each one.
   `deadline_exceeded` exactly 30 s after `rule_matched` (provider/model null
   in the event), deepseek-v4.1-flash. Rules still gave the right action.
   Your call: longer timeout, lower reasoning effort, or a faster model.
+- [M] 2026-11-13 for A,T: Flag revert built (branch `muaz/flag-revert`).
+  Journal entries on `configmap/flagd-config` now name the flag
+  (`flags[paymentFailure].defaultVariant: {old: off, new: 50%}`); the rule
+  maps it to `payment` via your `flags:` list, so `/chaos/flag-flip` ->
+  `recent_change` -> `revert_config` (needs approval while the ledger is
+  empty). The gateway sets back only that flag and verifies for 120 + 90 s
+  because flagd needs ~60 s. `enable_degraded_mode` stays refused (Muaz:
+  the shop has no feature-off flags). A: once merged, please try
+  `/chaos/flag-flip` live; T: the bench `broken_config` (flag) trial now
+  has an agent path.
 

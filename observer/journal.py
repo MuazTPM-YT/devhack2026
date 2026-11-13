@@ -93,11 +93,36 @@ def _deployment_changes(old: dict, new: dict) -> tuple[str, dict, list] | None:
     return next(k for k in KIND_ORDER if k in kinds), diff, inverse
 
 
+def _flags(text: str | None) -> dict | None:
+    try:
+        doc = json.loads(text or "")
+    except ValueError:
+        return None
+    return doc.get("flags") if isinstance(doc, dict) and isinstance(doc.get("flags"), dict) else None
+
+
+# flagd file: name the flags whose defaultVariant moved, so a revert touches only those (§6.2.5)
+def _flag_changes(od: dict, nd: dict, undo: dict) -> tuple[dict, list] | None:
+    diff, inverse = {}, []
+    for key in sorted(undo):
+        of, nf = _flags(od.get(key)), _flags(nd.get(key))
+        if of is None or nf is None or of.keys() != nf.keys():
+            return None  # flag added/removed or not flagd JSON: fall back to the whole key
+        for name in sorted(of):
+            a, b = of[name].get("defaultVariant"), nf[name].get("defaultVariant")
+            if a != b:
+                diff[f"flags[{name}].defaultVariant"] = {"old": a, "new": b}
+                inverse.append({"op": "flag", "key": key, "flag": name, "defaultVariant": a})
+    return (diff, inverse) if diff else None
+
+
 def _configmap_changes(old: dict, new: dict, is_flags: bool) -> tuple[str, dict, list] | None:
     od, nd = old.get("data") or {}, new.get("data") or {}
     undo = _undo_map(od, nd)
     if not undo:
         return None
+    if is_flags and (flagged := _flag_changes(od, nd, undo)):
+        return "flag", *flagged
     diff = {f"data[{k}]": {"old": od.get(k), "new": nd.get(k)} for k in sorted(undo)}
     return ("flag" if is_flags else "configmap"), diff, [{"op": "patch", "body": {"data": undo}}]
 
@@ -132,6 +157,12 @@ def current(obj: dict, path: str):
         return sorted(_containers(obj))
     if path.startswith("data["):
         return (obj.get("data") or {}).get(path[5:-1])
+    if path.startswith("flags["):
+        name = path[len("flags["):].split("]", 1)[0]
+        for text in (obj.get("data") or {}).values():
+            if (flags := _flags(text)) and name in flags:
+                return flags[name].get("defaultVariant")
+        return None
     if path.startswith("annotations["):
         return (_template(obj).get("metadata", {}).get("annotations") or {}).get(path[12:-1])
     name, field = path[len("containers["):].split("].", 1)

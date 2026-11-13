@@ -49,7 +49,7 @@ def build_from_env() -> Gateway:
     return Gateway(connect(DEFAULT_PATH, shared=True), client.AppsV1Api(api), client.CoreV1Api(api),
                    http, observer, config.load("services")["services"], config.load("policy"),
                    events.publish, ReceiptStore(Path(DEFAULT_PATH)), approvers_from_env(),
-                   graph=DependencyGraph(http, jaeger))
+                   graph=DependencyGraph(http, jaeger), flag_map=config.load("services").get("flags") or {})
 
 
 def create_app(gateway: Gateway | None = None) -> FastAPI:

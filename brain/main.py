@@ -46,6 +46,7 @@ class Brain:
         self.diagnoser, self.k8s, self.conn = diagnoser, k8s, conn
         self.services, self.policy, self.clock = services, policy, clock
         self.results: dict[str, dict] = {}
+        self.flag_map: dict[str, str] = {}  # config/services.yaml `flags:`, set by build_from_env
         self.lock = threading.Lock()
         self.submit = submit or (lambda a: call_tool(self.gateway_url, a))
 
@@ -95,7 +96,8 @@ class Brain:
             await self.publish("major_incident", incident.id, {"ranked": ranked})
         moved_from = None
         if not is_major and culprit:
-            dep = dependency_change(journal_rows, culprit, edges, self.services, incident.onset_at, window_s)
+            dep = dependency_change(journal_rows, culprit, edges, self.services, incident.onset_at, window_s,
+                                    self.flag_map)
             if dep:
                 moved_from, culprit = culprit, dep["object"].split("/", 1)[1]
                 victims = sorted((set(victims) | {moved_from}) - {culprit})
@@ -114,7 +116,8 @@ class Brain:
                                                          ("changes", "metrics", "traces", "events", "logs")})
 
         pattern, actions = rules.match(incident.model_dump(), journal_rows, [e.model_dump() for e in bundle.events],
-                                       self.services, self.policy, k8s["memory_ratio"], k8s["memory_limit"])
+                                       self.services, self.policy, k8s["memory_ratio"], k8s["memory_limit"],
+                                       self.flag_map)
         await self.publish("rule_matched", incident.id, {"pattern": pattern, "tools": [a["tool"] for a in actions]})
         rule_action = ActionRequest.model_validate(actions[0]) if actions else None
 
@@ -182,11 +185,14 @@ def build_from_env() -> Brain:
     http = httpx.AsyncClient()
     api = kube_config.new_client_from_config(config_file=kubeconfig)
     core, custom = client.CoreV1Api(api), client.CustomObjectsApi(api)
-    services = config.load("services")["services"]
+    services_cfg = config.load("services")
+    services = services_cfg["services"]
     diagnoser = DiagnosisService(OpenCodeGoAdapter.from_env(http), Path("data/llm_cache"))
-    return Brain(http, observer, gateway, jaeger, diagnoser,
-                 lambda svc, now: collect_k8s(core, custom, "shop", svc, now),
-                 connect(DEFAULT_PATH, shared=True), services, config.load("policy"))
+    brain = Brain(http, observer, gateway, jaeger, diagnoser,
+                  lambda svc, now: collect_k8s(core, custom, "shop", svc, now),
+                  connect(DEFAULT_PATH, shared=True), services, config.load("policy"))
+    brain.flag_map = services_cfg.get("flags") or {}
+    return brain
 
 
 def create_app(brain: Brain | None = None) -> FastAPI:
