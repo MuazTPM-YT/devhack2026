@@ -729,3 +729,59 @@ Seeded from reading the plan. Reply under each one.
   stayed on `3.1.0-payment` (early abort did not undo the rollback);
   severity was 4 thirty seconds later and falling. WARNING/ERROR lines:
   none in gateway, observer, brain or chaos logs this run.
+- [A] 2026-11-13 for M: Two live runs on main `89ca81e` (gateway 7003,
+  observer 7001, brain 7002, chaos 7004, started in that order; one curl
+  approval each). **Both FAIL the same way: early abort.**
+  **Run 1, bad deploy (`./scripts/smoke.sh`):**
+  ```
+  reset: {"ts":1794541897.595619,"type":"reset","restored":[]}
+  waiting for severity 0 at http://127.0.0.1:7001/health/now
+  inject: {"ts":1794541897.6909065,"type":"bad_deploy","target":"payment"}
+  incident=inc-1794541947705 outcome=escalated
+  detect=50.1s diagnose=80.3s recover=-
+  exit=1
+  ```
+  Approve (`2dc8916d711a`):
+  `{"decision":"executed","failed_step":null,"reason":null,"receipt_id":3,"approval_id":null}`.
+  83.4 s `action_executed` rollback_deploy; 85.5 `alerts_grouped` adds
+  checkout; 88.4 `verify_tick` sev 8 -> `early_abort {"receipt_id": 3,
+  "severity": 8, "before": 7}` -> `escalated`, briefing:
+  `UNDO FAILED (API server refused (422): {"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"the server rejected our request due to an error in our request","reason":"Invalid","details":{},"code":422}); receipt #3 needs a human now`.
+  **Run 2, flag flip (`POST /chaos/flag-flip`):** inject
+  `{"ts":1794542048.8454347,"type":"broken_config","target":"payment","key":"paymentFailure"}`;
+  incident `inc-1794542154820` opened at 106.0 s (flagd reload lag), rule
+  `recent_change` -> `revert_config` (your flag mapping works: culprit
+  `payment`). Approve (`8e9b2ecf5565`):
+  `{"decision":"executed","failed_step":null,"reason":null,"receipt_id":4,"approval_id":null}`.
+  138.9 s `action_executed` revert_config; 141.5 `alerts_grouped` adds
+  checkout; 143.9 `early_abort {"receipt_id": 4, "severity": 8, "before":
+  7}` -> `action_undone {"reason": "severity rose after the action"}` ->
+  `escalated`. The undo put `paymentFailure` back to `50%` (configmap undo
+  works, no 422). A flag revert cannot show for ~60 s (flagd reload), so
+  early abort 5 s after it will always fire.
+  **Bugs found (your files, not fixed):**
+  1. Early abort (`gateway/verifier.py:44`, `health["severity"] >
+     self.sev_before`) fires 5 s after a correct fix in all 3 runs today:
+     checkout (a victim) crosses its sustain window just after the action
+     and lifts severity 7 -> 8. Needs a grace period (>= flagd's 60 s for
+     flags) or should ignore watched victims.
+  2. Deployment undo after early abort: `undo(..., pause=True)` in
+     `gateway/checklist.py` sets `/spec/paused` true, then
+     `rollback_patch` gets the 422 above, so the unpause never runs.
+     Payment is left `paused=true`. Seen twice (receipts #2 and #3). The
+     next bad deploy then never rolls out: my first smoke this session
+     timed out (`incident=None outcome=timeout`) because of the pause left
+     by the earlier run.
+  3. The stuck receipt then blocks everything: `in_flight` counts
+     `outcome IN ('pending', 'watchdog_failed')` (`gateway/policy.py:13`)
+     and there is no API to clear it. One smoke ended `NO ACTION` with
+     `policy` `another action is still being verified`. With Anirudh's OK
+     I set receipts #2 and #3 to `undone` in `data/oncall.db` by hand,
+     and ran `kubectl rollout resume deploy/payment` each time.
+  4. The `UNDO FAILED` error only goes on the bus; no log line in the
+     gateway.
+  LLM: 2 of 3 calls ended `"error": "deadline_exceeded"` after 30 s
+  (provider/model null); 1 worked (`deepseek-v4.1-flash`, 19.8 s).
+  WARNING/ERROR lines: none in gateway, observer, brain or chaos logs.
+  Shop reset after (`restored: ["configmap/flagd-config"]`), payment
+  unpaused on `3.1.0-payment`.
