@@ -391,6 +391,13 @@ class Workspace:
                       "expires_at=excluded.expires_at", (name, owner, epoch, now + ttl_s))
             return epoch
 
+    # clean shutdown: the next brain can start at once instead of waiting out the lease
+    def release_coordinator(self, owner: str, epoch: int, name: str = "brain") -> bool:
+        with self.tx() as c:
+            cur = c.execute("UPDATE coordinator_leases SET expires_at=0 WHERE name=? AND owner=? AND epoch=?",
+                            (name, owner, epoch))
+            return cur.rowcount == 1
+
     def renew_coordinator(self, owner: str, epoch: int, ttl_s: float, name: str = "brain") -> bool:
         with self.tx() as c:
             cur = c.execute("UPDATE coordinator_leases SET expires_at=? WHERE name=? AND owner=? AND epoch=?",

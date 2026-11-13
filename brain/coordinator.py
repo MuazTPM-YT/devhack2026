@@ -73,13 +73,24 @@ class Coordinator:
 
     # ---- lifecycle
 
-    async def start(self) -> None:
+    # a crashed brain's lease runs out within LEASE_S: wait that long, then refuse loudly (a live second brain)
+    async def start(self, wait_s: float = LEASE_S + 1, poll_s: float = 1.0) -> None:
         if self.policy.mode != "coordinated":
             return
-        self.epoch = self.ws.acquire_coordinator(self.owner, LEASE_S)
-        if self.epoch is None:
-            raise RuntimeError("another brain holds the orchestration coordinator lease; one scheduler per database")
+        deadline = time.monotonic() + wait_s
+        while (epoch := self.ws.acquire_coordinator(self.owner, LEASE_S)) is None:
+            if time.monotonic() >= deadline:
+                raise RuntimeError("another brain holds the orchestration coordinator lease; one scheduler per "
+                                   "database")
+            log.warning("coordinator lease still held (previous brain?); waiting")
+            await asyncio.sleep(poll_s)
+        self.epoch = epoch
         await self.recover()
+
+    def stop(self) -> None:
+        if self.epoch is not None and not self.lost:
+            self.ws.release_coordinator(self.owner, self.epoch)
+        self.epoch = None
 
     async def run(self, every_s: float = 1.0) -> None:
         last_renew = self.clock()

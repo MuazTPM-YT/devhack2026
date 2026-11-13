@@ -393,6 +393,8 @@ def create_app(brain: Brain | None = None) -> FastAPI:
         yield
         for t in tasks:
             t.cancel()
+        if coordinator is not None:
+            coordinator.stop()
         if brain is None:
             await app.state.brain.http.aclose()
 

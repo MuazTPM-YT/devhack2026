@@ -208,7 +208,32 @@ async def test_second_coordinator_refuses_to_start(tmp_path):
     await first.coordinator.start()
     second = coordinated(world, tmp_path, clock, ws=first.coordinator.ws, owner="brain-b")
     with pytest.raises(RuntimeError, match="lease"):
-        await second.coordinator.start()
+        await second.coordinator.start(wait_s=0.05, poll_s=0.01)
+
+
+# live: a restarted brain died on start because the stopped one still held the lease
+async def test_clean_stop_lets_the_next_brain_start_at_once(tmp_path):
+    world, clock = World(), Clock()
+    first = coordinated(world, tmp_path, clock)
+    await first.coordinator.start()
+    first.coordinator.stop()
+    second = coordinated(world, tmp_path, clock, ws=first.coordinator.ws, owner="brain-b")
+    await second.coordinator.start(wait_s=0, poll_s=0.01)
+    assert second.coordinator.epoch == 2
+
+
+async def test_restart_after_crash_waits_for_the_lease_to_lapse(tmp_path):
+    world, clock = World(), Clock()
+    first = coordinated(world, tmp_path, clock)
+    await first.coordinator.start()  # crashes: never stops
+    second = coordinated(world, tmp_path, clock, ws=first.coordinator.ws, owner="brain-b")
+
+    async def lapse():
+        await asyncio.sleep(0.03)
+        clock.t += 31
+
+    await asyncio.gather(second.coordinator.start(wait_s=1, poll_s=0.01), lapse())
+    assert second.coordinator.epoch == 2
 
 
 async def test_outbox_survives_bus_outage_and_delivers_once(tmp_path):
