@@ -220,6 +220,17 @@ async def test_human_change_after_open_hands_off(tmp_path):
     assert (d.decision, d.failed_step) == ("handed_off", "hands_off") and w.types()[-1] == "handed_off"
 
 
+# plan §6.4.2 step 2: the chaos panel's injection is not a human taking over
+async def test_chaos_panel_change_after_open_is_not_hands_off(tmp_path):
+    w = World(tmp_path)
+    w.obs.journal.append({"id": 43, "object": "configmap/flagd-config", "kind": "flag", "ts": 995.0,
+                          "field_manager": "chaos-panel", "by_agent": False, "diff": {}})
+    d = await w.gw.submit(action())
+    assert d.failed_step != "hands_off"
+    step = next(e for e in w.events if e["type"] == "checklist_step" and e["payload"]["name"] == "hands_off")
+    assert step["payload"]["passed"] is True
+
+
 async def test_approval_rules(tmp_path):
     w = World(tmp_path)
     d = await w.gw.submit(action())

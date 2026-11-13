@@ -26,6 +26,8 @@ from observer.kube_watch import service_of
 from schemas.models import ActionRequest, Card, GatewayDecision, Incident, Receipt
 
 log = logging.getLogger("gateway")
+# chaos/faults.py FIELD_MANAGER: a fault injection is the incident's cause, not a human taking over (§6.4.2 step 2)
+CHAOS_MANAGER = "chaos-panel"
 
 
 def forecast_text(plan: dict) -> str:
@@ -174,8 +176,10 @@ class Gateway:
         if (why := why_text(entry, row["onset_at"])) is not None:
             self.why[action.incident_id] = why
 
-        # 2 hands-off: a human changed something after we opened the incident
-        human = [r for r in journal_rows if not r["by_agent"] and r["ts"] >= (row["opened_at"] or 0)]
+        # 2 hands-off: a human changed something after we opened the incident (chaos injections excluded:
+        # live, a flag flip landing while another incident was open handed that incident off)
+        human = [r for r in journal_rows if not r["by_agent"] and r["ts"] >= (row["opened_at"] or 0)
+                 and r.get("field_manager") != CHAOS_MANAGER]
         if human:
             return await self.stop(action, row, steps, "hands_off", "handed_off",
                                    f"{human[-1]['object']} changed by {human[-1]['field_manager']}")
