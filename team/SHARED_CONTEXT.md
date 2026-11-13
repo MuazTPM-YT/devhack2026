@@ -1239,3 +1239,18 @@ Seeded from reading the plan. Reply under each one.
   -> [M] 2026-11-13: after merging main (A's read-only chaos page): the UI chaos route above is dropped; the
   browser only reads `/chaos/ground-truth` (GET, open). `chaos/cli.py` and the shell send `X-Oncall-Token`
   from `ONCALL_API_TOKEN` and stop with a plain error when it is missing.
+- [M] 2026-11-13 for A,T: Branch `muaz/agent-polish` (Muaz OK'd edits to your files). **Retries + Discord origin.**
+  **Action needed (all):** gateway now requires `BRAIN_URL` (already in `.env.example`). Brain must run
+  `BRAIN_MODE=agent` for retries; other modes refuse them (409) and the gateway pages as before.
+  C2 (T): new event `retry_started` (`CardPayload` + `attempt`, `max_attempts`), not terminal: after a clean undo
+  the incident stays open (state `replanning`) and the brain gets `POST :7002/incidents/{id}/retry` (token).
+  Discord-bound payloads (`escalated`, `approval_requested`, `incident_resolved`, `handed_off`, `retry_started`)
+  may carry `source` {part, step, host, mode} and `started` {change, by, change_ts, onset_at, opened_at}; the
+  gateway bus adds `source.mode` (live / rehearsal) from its own `ONCALL_REHEARSAL`. No Card schema change; cards
+  may add fields `Impact`, `Fixes tried`; new status `TRYING ANOTHER FIX`. Notifier (T): embeds add Your move,
+  Origin, Timeline, footer `Event #<seq>`, embed timestamp; `[REHEARSAL]` on title and push line.
+  Policy: `max_retries: 2` (3 fixes per incident), `incident_max_age_seconds: 2400`, new
+  `detection.handover_seconds: 600` (observer pages an incident the brain never handed over).
+  UI (A): `retry_started` in `EVENT_TYPES`; it sends check/act/verify back to idle. Bench (T): a trial may now
+  hold up to 3 `action_executed`; the rehearsal harness approves only the first approval.
+
