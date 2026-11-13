@@ -717,6 +717,19 @@ class Gateway:
             inverse, gate = json.loads(r["inverse_json"]), json.loads(r["trust_json"] or "{}")
             row = self.incident(r["incident_id"]) or {"id": r["incident_id"]}
             reason = f"watchdog: verifier silent for receipt #{r['id']}"
+            if inverse.get("op") == "none":
+                # nothing safe to undo (a store scaled back from 0): keep the fix, page, don't block (Muaz chose);
+                # losing track says nothing about the fix, so no trust failure
+                view = self.receipts.get(r["id"])
+                lost = ActionRequest(incident_id=r["incident_id"], tool=r["tool"], target=r["target"],
+                                     pattern=gate.get("pattern") or "unknown",
+                                     evidence_ids=view.evidence_ids if view else [])
+                await self.keep_and_page(r["id"], lost, row, view or Receipt(
+                    incident_id=r["incident_id"], tool=r["tool"], target=r["target"], diff={}, inverse=inverse,
+                    evidence_ids=[]), f"{reason}; no safe undo, fix kept", failure=False)
+                self.set_state(r["incident_id"], "escalated")
+                done += 1
+                continue
             try:
                 await asyncio.to_thread(self.undo, r["target"], inverse, inverse["op"] == "restore_template")
                 outcome = "undone"

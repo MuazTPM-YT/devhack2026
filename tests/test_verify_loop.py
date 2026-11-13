@@ -308,14 +308,17 @@ async def test_fix_with_no_safe_undo_that_never_recovers_is_kept_and_pages(tmp_p
     assert ledger(w) == [("real", 0, 1)]  # an unproven fix counts against trust, kept or not
 
 
-# the watchdog undoes a silent verifier's fix; a receipt with no safe undo must not crash it (KeyError)
+# the watchdog undoes a silent verifier's fix; a receipt with no safe undo must not crash it (KeyError).
+# It used to end watchdog_failed and block every later action; now it keeps the fix and frees the slot (Muaz chose)
 async def test_watchdog_on_a_fix_with_no_safe_undo_fails_closed(tmp_path):
+    from gateway import policy
     from test_phase3 import executed_and_parked
     w, d = await executed_and_parked(tmp_path)
     w.conn.execute("UPDATE receipts SET inverse_json=?", (json.dumps({"op": "none", "why": "would scale to 0"}),))
     w.now[0] += 200
     assert await w.gw.watchdog() == 1
-    assert w.conn.execute("SELECT outcome FROM receipts").fetchone()[0] == "watchdog_failed"
+    assert w.conn.execute("SELECT outcome FROM receipts").fetchone()[0] == "handed_off"
+    assert policy.usage(w.conn, "inc-1", w.now[0])["in_flight"] == 0
     assert w.apps.dep["spec"]["template"]["spec"]["containers"][0]["image"] == GOOD  # fix left in place
 
 

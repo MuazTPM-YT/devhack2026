@@ -184,3 +184,21 @@ async def test_restart_success_card_says_mitigated(tmp_path):
     await asyncio.wait_for(next(iter(w.gw.tasks)), 5)
     assert w.events[-1]["type"] == "incident_resolved"
     assert w.events[-1]["payload"]["card"]["status"] == "MITIGATED, NOT FIXED"
+
+
+# e2e: gateway restart while verifying valkey-cart 0 -> 1 (inverse "none"). The watchdog tried an undo that
+# cannot exist, marked watchdog_failed and blocked every later action. Now: keep the fix, page, don't block
+async def test_watchdog_keeps_fix_with_no_safe_undo_and_does_not_block(tmp_path):
+    w, d = await executed_and_parked(tmp_path)
+    w.conn.execute("UPDATE receipts SET inverse_json=? WHERE id=?",
+                   (json.dumps({"op": "none", "target": "payment", "why": "undo would scale to 0"}), d.receipt_id))
+    writes = len(w.apps.patches)
+    w.now[0] += 200
+    assert await w.gw.watchdog() == 1
+    assert len(w.apps.patches) == writes  # no undo attempted
+    assert w.conn.execute("SELECT outcome FROM receipts").fetchone()[0] == "handed_off"
+    assert w.types()[-1] == "escalated" and "fix kept" in w.events[-1]["payload"]["briefing"]
+    assert "action_undone" not in w.types()
+    assert [tuple(r) for r in w.conn.execute("SELECT source, failures FROM ledger")] == []
+    from gateway import policy
+    assert policy.usage(w.conn, "inc-1", w.now[0])["in_flight"] == 0  # nothing left blocking
