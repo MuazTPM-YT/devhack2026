@@ -150,10 +150,12 @@ def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
     causes = diagnosis.causes if diagnosis else []
     ids = list(dict.fromkeys((receipt.evidence_ids if receipt else []) + [v for c in causes for v in c.evidence_ids]))
     refs = " ".join(f"[{one_line(v)}]" for v in ids)
-    # the model's own sentence when we have one; the pattern template otherwise
+    # our fixed sentence first; the model read untrusted evidence, so its sentence is labelled, never alone
     said = one_line(causes[0].explanation if causes else (why or ""))
     reason = causes[0].cause_class if causes else (pattern or "unknown")
-    why = shorten(said) if said else WHY.get(reason, WHY["unknown"]).format(svc=svc)
+    why = WHY.get(reason, WHY["unknown"]).format(svc=svc)
+    if said:
+        why += f". Model says: {shorten(said)}"
     if receipt and receipt_id is not None:
         target = one_line(receipt.target)
         did = f"{DID.get(receipt.tool, receipt.tool).format(svc=target)} (receipt #{receipt_id})"
