@@ -159,7 +159,10 @@ export function incidentFor(exp: Experiment | null, incidents: Record<string, In
   const from = exp.applied_at;
   const until = exp.ended_at == null ? Infinity : exp.ended_at + 120;
   const hits = order.map((id) => incidents[id]).filter((i) => i && i.openedAt != null && i.openedAt >= from && i.openedAt <= until);
-  return hits.sort((a, b) => (a.openedAt ?? 0) - (b.openedAt ?? 0))[0] ?? null;
+  // two faults at once open two incidents: the one about this target wins, else the earliest
+  const about = (i: Incident) => exp.target != null && (i.culprit === exp.target || i.unhealthy.includes(exp.target)
+    || (i.orch?.services ?? []).includes(exp.target));
+  return hits.sort((a, b) => Number(about(b)) - Number(about(a)) || (a.openedAt ?? 0) - (b.openedAt ?? 0))[0] ?? null;
 }
 
 // first breach of any service after the fault landed: the symptom, before Akira calls it an incident

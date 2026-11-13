@@ -20,11 +20,14 @@ def approvers_from_env() -> set[str]:
     return ids
 
 
-def create(conn: sqlite3.Connection, incident_id: str, action: dict, now: float, expiry_s: float) -> dict:
+# intent_id only with orchestration (migration v2 adds the column); legacy rows never name one
+def create(conn: sqlite3.Connection, incident_id: str, action: dict, now: float, expiry_s: float,
+           intent_id: str | None = None) -> dict:
     row = {"id": uuid.uuid4().hex[:12], "incident_id": incident_id, "action_json": json.dumps(action),
            "created_at": now, "expires_at": now + expiry_s, "state": "pending", "decided_by": None}
-    conn.execute("INSERT INTO approvals (id, incident_id, action_json, created_at, expires_at, state, decided_by) "
-                 "VALUES (:id, :incident_id, :action_json, :created_at, :expires_at, :state, :decided_by)", row)
+    if intent_id is not None:
+        row["intent_id"] = intent_id
+    conn.execute(f"INSERT INTO approvals ({', '.join(row)}) VALUES ({', '.join(':' + k for k in row)})", row)
     conn.commit()
     return row
 

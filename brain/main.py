@@ -19,15 +19,21 @@ from brain import capabilities, rules
 from brain.bundle import build_bundle, collect_k8s, why_text
 from brain import major, memory, runbooks
 from brain.agent import AgentDiagnosisService, model_from_env
+from brain.budget import BudgetedModel
+from brain.coordinator import Coordinator, ModeMismatch
+from brain.delegation import Delegation
+from brain.evidence import EvidenceCache
 from brain.culprit import dependency_change, fetch_error_traces, find_culprit
 from brain.gateway_client import call_tool
 from brain.graph import DependencyGraph
 from brain.llm import DiagnosisService
 from brain.redact import redact
 from brain.tools import KubeReader, ToolBox
-from schemas import auth, config
+from schemas import auth, config, migrations
 from schemas.db import DEFAULT_PATH, connect
 from schemas.models import ActionRequest, GatewayDecision, Incident, Pattern
+from schemas.orchestration import OrchestrationPolicy, SignalBatch, load_policy
+from schemas.workspace import Workspace
 from schemas import logs
 
 logs.setup()
@@ -63,8 +69,15 @@ class Brain:
         self.kube: Any = None  # brain.tools.KubeReader
         self.lock = threading.Lock()
         self.submit = submit or (lambda a: call_tool(self.gateway_url, a))
+        # orchestration (config/orchestration.yaml); disabled = observer POSTs /incidents as before
+        self.orch = OrchestrationPolicy()
+        self.coordinator: Coordinator | None = None
+        self.evidence_cache: EvidenceCache | None = None
 
     async def publish(self, kind: str, incident_id: str | None, payload: dict) -> None:
+        if self.coordinator is not None and self.orch.mode == "coordinated":
+            await self.coordinator.emit(kind, incident_id, payload)  # durable: outbox, then the bus
+            return
         try:
             r = await self.http.post(f"{self.gateway_url}/events/publish", timeout=5, headers=auth.headers(),
                                      json={"type": kind, "incident_id": incident_id, "payload": payload})
@@ -81,8 +94,11 @@ class Brain:
             log.warning("GET %s failed: %s", url, type(e).__name__)
             return default
 
-    # one incident end to end; every upstream failure degrades evidence, never stops the rules
-    async def handle(self, incident: Incident) -> dict:
+    # one incident end to end; every upstream failure degrades evidence, never stops the rules.
+    # still_current: coordinated mode's scope check right before hand-over; timeout_s: what is left of a
+    # persisted investigation deadline
+    async def handle(self, incident: Incident, still_current: Callable[[], bool] | None = None,
+                     timeout_s: float | None = None, run_id: str | None = None) -> dict:
         now = self.clock()
         window_s = self.policy["change_window_minutes"] * 60
         health = await self._get_json(f"{self.observer_url}/health/now", {"ts": now, "services": {}})
@@ -159,12 +175,25 @@ class Brain:
                                                                         for c in cands]})
 
         guide = {"runbooks": [runbooks.brief(rb) for rb in matched[:3]], "past_incidents": past}
+        if self.coordinator is not None and self.orch.mode == "coordinated":
+            with self.lock:
+                if lessons := memory.experience(self.conn, pattern, culprit):
+                    guide["experience"] = lessons
         if self.agent is not None:  # agent mode: the model reads telemetry through tools, not the bundle
             box = ToolBox(incident, now, self.http, self.observer_url, self.prom_url, self.jaeger_url, self.graph,
                           self.kube, self.conn, self.lock, list(self.services), self.queries, self.publish,
-                          edges=list(edges))
+                          edges=list(edges), cache=self.evidence_cache,
+                          workspace=self.coordinator.ws if self.coordinator else None, run_id=run_id)
+            model = None
+            if self.coordinator is not None and self.evidence_cache is not None:  # coordinated: durable budget
+                model = BudgetedModel(self.agent.model, self.coordinator.ws, incident.id, run_id or incident.id,
+                                      "commander", publish=self.publish, clock=self.clock)
+                if self.coordinator.delegation is not None:
+                    scope = sorted({*incident.unhealthy, *([culprit] if culprit else [])})
+                    box.orch = await self.coordinator.delegation.context(incident.id, cands, scope)
             result = await self.agent.diagnose(box, cast(Pattern, pattern), rule_action, guide, cands,
-                                               capabilities.available(self.policy, self.services))
+                                               capabilities.available(self.policy, self.services), timeout_s=timeout_s,
+                                               model=model)
         else:
             result = await self.diagnoser.diagnose(bundle, pattern, rule_action, guide)
         for ev in result.events:
@@ -201,6 +230,9 @@ class Brain:
         self.results[incident.id] = record
         entry = next((j for j in journal_rows if action and j["id"] == action.journal_entry), None)
         why = why_text(entry, incident.onset_at)
+        if still_current is not None and not still_current():  # scope moved while we looked: replan, never send
+            record["superseded"] = True
+            return record
         record["gateway"] = await self.hand_over(incident, action, result.diagnosis, pattern, why, health,
                                                  declined=declined, rule_action=rule_action)
         # resource case: restart first, then ask for more memory (never automatic; §6.3.6 special case 1).
@@ -244,9 +276,9 @@ class Brain:
 
     # a crash must still end the incident: without a terminal event the observer keeps it open and opens
     # no other incident, ever
-    async def handle_safely(self, incident: Incident) -> dict:
+    async def handle_safely(self, incident: Incident, **kw: Any) -> dict:
         try:
-            return await self.handle(incident)
+            return await self.handle(incident, **kw)
         except Exception as e:
             log.error("incident %s failed in the brain: %r", incident.id, e)
             decision = GatewayDecision(decision="escalated", failed_step="brain", reason=type(e).__name__)
@@ -323,9 +355,25 @@ def build_from_env() -> Brain:
                   connect(DEFAULT_PATH, shared=True), services, config.load("policy"))
     brain.flag_map = services_cfg.get("flags") or {}
     brain.runbooks = runbooks.load()
+    brain.orch = load_policy()
+    coordinated = brain.orch.mode == "coordinated"
     if mode != "bundle":
-        brain.agent = AgentDiagnosisService(model_from_env(http), choose=mode == "agent")
+        brain.agent = AgentDiagnosisService(model_from_env(http, max_retries=0 if coordinated else None),
+                                            choose=mode == "agent",
+                                            delegation=brain.orch.delegation_enabled and mode == "agent")
         brain.prom_url, brain.queries, brain.kube = prom, config.load("queries"), KubeReader(core, custom, "shop")
+    if brain.orch.mode != "disabled":
+        wconn = connect(DEFAULT_PATH, shared=True)  # own connection: the workspace runs its own transactions
+        migrations.require(wconn)
+        workspace = Workspace(wconn, brain.orch)
+        brain.coordinator = Coordinator(brain, workspace, brain.orch)
+        if coordinated:
+            brain.evidence_cache = EvidenceCache(workspace)
+            brain.submit = brain.coordinator.submit  # fixes go as durable intents, not legacy MCP calls
+            # specialists only for the tool-using agent that chooses the fix (handoff §7.3)
+            if brain.orch.delegation_enabled and brain.agent is not None and brain.agent.choose:
+                brain.coordinator.delegation = Delegation(workspace, brain.orch, brain.agent.model, brain.publish,
+                                                          owner=brain.coordinator.owner)
     return brain
 
 
@@ -336,9 +384,17 @@ def create_app(brain: Brain | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         auth.agent_start()  # fail at start, not on the first incident
         app.state.brain = brain or build_from_env()
+        coordinator = getattr(app.state.brain, "coordinator", None)
+        if coordinator is not None and coordinator.policy.mode == "coordinated":
+            await coordinator.start()  # lease + restart recovery before taking new signals
+            if brain is None:  # tests drive the loops by hand
+                tasks.update({asyncio.create_task(coordinator.run(), name="coordinator"),
+                              asyncio.create_task(coordinator.follow_terminal_events(), name="terminal-events")})
         yield
         for t in tasks:
             t.cancel()
+        if coordinator is not None:
+            coordinator.stop()
         if brain is None:
             await app.state.brain.http.aclose()
 
@@ -354,6 +410,9 @@ def create_app(brain: Brain | None = None) -> FastAPI:
     @app.post("/incidents", status_code=202)
     async def incidents(incident: Incident) -> dict:
         b = app.state.brain
+        if b.orch.mode == "coordinated":  # two owners for one fault is worse than a loud refusal
+            log.error("legacy incident %s refused: brain is in coordinated mode, observer is not", incident.id)
+            raise HTTPException(409, "brain is in coordinated mode: observer must send /signals")
         if incident.id in b.results or any(t.get_name() == incident.id for t in tasks):
             # a re-POST is alert grouping: re-check for a major incident, never diagnose twice
             regroup = asyncio.create_task(b.regroup(incident), name=f"{incident.id}:regroup")
@@ -364,6 +423,19 @@ def create_app(brain: Brain | None = None) -> FastAPI:
         tasks.add(task)
         task.add_done_callback(_finished)
         return {"incident_id": incident.id, "status": "accepted"}
+
+    # observer episodes (orchestration shadow/coordinated); a redelivery returns the stored acknowledgement
+    @app.post("/signals")
+    async def signals(batch: SignalBatch) -> dict:
+        coordinator = app.state.brain.coordinator
+        if coordinator is None:
+            log.error("signals %s refused: orchestration is disabled in the brain", batch.delivery_id)
+            raise HTTPException(409, "orchestration disabled in the brain: observer must POST /incidents")
+        try:
+            return (await coordinator.on_signals(batch)).model_dump(mode="json")
+        except ModeMismatch as e:
+            log.error("signals %s refused: %s", batch.delivery_id, e)
+            raise HTTPException(409, str(e)) from None
 
     @app.get("/health")
     def health() -> dict:

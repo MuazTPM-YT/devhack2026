@@ -236,3 +236,69 @@ async def test_restart_takes_back_the_open_incident():
         await obs.step()
         clock[0] += 5
     assert not [p for p in backend.posts if p[0] == "/events/publish" and p[1]["type"] == "incident_opened"]
+
+
+def orch_observer(backend, clock, tmp_path, mode):
+    from schemas import migrations
+    from schemas.orchestration import OrchestrationPolicy
+    from schemas.workspace import Workspace
+
+    conn = connect(":memory:", shared=True)
+    wconn = connect(str(tmp_path / "ws.db"), shared=True)
+    migrations.migrate(wconn)
+    policy = OrchestrationPolicy(mode=mode)
+    http = httpx.AsyncClient(transport=httpx.MockTransport(backend))
+    return Observer(conn, Tracker(conn, "flagd-config"), http, "http://prom", "http://brain", "http://gw",
+                    POLICY, QUERIES, ["payment", "cart"], clock=lambda: clock[0], orch=policy,
+                    workspace=Workspace(wconn, policy, clock=lambda: clock[0]))
+
+
+async def test_shadow_keeps_legacy_path_and_adds_signals(tmp_path):
+    clock = [1000.0]
+    backend = Backend({"payment": 0.4}, {"payment": 120.0, "cart": 30.0})
+    obs = orch_observer(backend, clock, tmp_path, "shadow")
+    await obs.step()
+    clock[0] = 1030.0
+    kind, _ = await obs.step()
+    assert kind == "incident_opened"
+    assert [p for p, _ in backend.posts] == ["/events/publish", "/incidents", "/signals"]
+    body = backend.posts[2][1]
+    assert body["shadow"] is True and [e["service"] for e in body["episodes"]] == ["payment"]
+
+
+async def test_coordinated_sends_only_signals_and_keeps_order_on_failure(tmp_path):
+    clock = [1000.0]
+    backend = Backend({"payment": 0.4}, {"payment": 120.0, "cart": 30.0})
+    obs = orch_observer(backend, clock, tmp_path, "coordinated")
+    await obs.step()
+    clock[0] = 1030.0
+    real = backend.__call__
+    backend_down = {"on": True}
+
+    def flaky(request):
+        if request.url.path == "/signals" and backend_down["on"]:
+            return httpx.Response(503)
+        return real(request)
+
+    obs.http = httpx.AsyncClient(transport=httpx.MockTransport(flaky))
+    assert await obs.step() is None
+    assert obs.detector.incident is None and backend.posts == []
+    assert obs.workspace.pending_count("brain") == 1
+    backend_down["on"] = False
+    clock[0] = 1040.0  # past the 1 s backoff
+    await obs.step()
+    assert [p for p, _ in backend.posts] == ["/signals"]
+    assert backend.posts[0][1]["shadow"] is False and obs.workspace.pending_count("brain") == 0
+
+
+async def test_coordinated_restart_restores_open_episodes(tmp_path):
+    clock = [1000.0]
+    backend = Backend({"payment": 0.4}, {"payment": 120.0, "cart": 30.0})
+    obs = orch_observer(backend, clock, tmp_path, "coordinated")
+    await obs.step()
+    clock[0] = 1030.0
+    await obs.step()
+    again = Observer(obs.conn, obs.tracker, obs.http, "http://prom", "http://brain", "http://gw", POLICY, QUERIES,
+                     ["payment", "cart"], clock=lambda: clock[0], orch=obs.workspace.policy, workspace=obs.workspace)
+    assert set(again.episodes.open) == {"payment"}
+    assert again.episodes.revision == obs.episodes.revision

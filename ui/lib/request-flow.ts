@@ -3,7 +3,7 @@
 
 import { type IncidentEvent, STAGE_OF, STAGES, type Stage } from "./live.ts";
 
-export type NodeId = "shop" | "observer" | "brain" | "llm" | "gateway" | "notifier" | "k8s" | "verifier";
+export type NodeId = "shop" | "observer" | "brain" | "specialist" | "llm" | "gateway" | "notifier" | "k8s" | "verifier";
 export type NodeState = "idle" | "done" | "active" | "failed";
 export type Tone = "info" | "ok" | "warn" | "bad";
 
@@ -11,6 +11,7 @@ export const NODES: Record<NodeId, { title: string; sub: string }> = {
   shop: { title: "Shop telemetry", sub: "Prometheus · Jaeger" },
   observer: { title: "Observer", sub: ":7001 · detect" },
   brain: { title: "Brain", sub: ":7002 · diagnose" },
+  specialist: { title: "Specialist", sub: "read-only · gated" },
   llm: { title: "Model", sub: "OpenCode Go" },
   gateway: { title: "Gateway", sub: ":7003 · checklist" },
   notifier: { title: "Notifier", sub: "Discord · humans" },
@@ -24,8 +25,10 @@ export const EDGE_LABEL: Record<string, string> = {
   "observer>brain": "POST /incidents",
   "shop>brain": "Jaeger traces + dependency graph",
   "brain>llm": "redacted evidence bundle",
+  "brain>specialist": "one question code found (gated)",
+  "specialist>llm": "scoped reads, typed finding",
   "llm>brain": "diagnosis + prediction",
-  "brain>gateway": "MCP tool call (/mcp)",
+  "brain>gateway": "fix request: MCP tool call, or an intent (/orchestration/actions) when coordinated",
   "gateway>notifier": "event bus → Discord card",
   "notifier>gateway": "POST /approvals/{id}/decide",
   "gateway>k8s": "patch as agent (dry run first)",
@@ -36,7 +39,7 @@ export const EDGE_LABEL: Record<string, string> = {
 };
 
 const TERMINAL = new Set(["incident_resolved", "escalated", "handed_off"]);
-const BRAIN_SIDE = new Set<NodeId>(["brain", "llm"]);
+const BRAIN_SIDE = new Set<NodeId>(["brain", "llm", "specialist"]);
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -77,10 +80,22 @@ export function pathOf(ev: IncidentEvent, prev: IncidentEvent | null): NodeId[] 
     case "culprit_found":
       return ["shop", "brain"];
     case "tool_called":
-      return ["brain"];
+      return str(p.task_id) ? ["specialist"] : ["brain"];
     case "llm_called":
-      // a read tool runs in the brain; only a real model request travels to the model
-      return p.cached === true || str(p.tool) ? ["brain"] : ["brain", "llm", "brain"];
+      // a read tool runs in the brain; only a real model request travels to the model; a run summary
+      // after per-call events went nowhere new
+      if (p.cached === true || str(p.tool) || p.kind === "summary") return ["brain"];
+      return str(p.task_id) ? ["specialist", "llm", "specialist"] : ["brain", "llm", "brain"];
+    case "delegation_decided":
+      return p.status === "admitted" ? ["brain", "specialist"] : ["brain"];
+    case "investigation_task_changed":
+      return ["specialist"];
+    case "finding_recorded":
+      return ["specialist", "brain"];
+    case "incident_scope_changed":
+      return ["observer", "brain"];
+    case "action_intent_changed":
+      return p.status === "queued" || p.status === "superseded" ? ["gateway"] : ["brain", "gateway"];
     case "checklist_step":
       if (p.name === "dry_run") return ["gateway", "k8s", "gateway"];
       return prev?.type === "checklist_step" ? ["gateway"] : ["brain", "gateway"];
@@ -122,6 +137,8 @@ export function failedAt(ev: IncidentEvent, next: IncidentEvent | null = null): 
   if (ev.type === "early_abort" || ev.type === "action_undone") return "verifier";
   if (ev.type === "llm_called" && str(p.error)) return "llm";
   if (ev.type === "harm_check" && p.clean === false) return "verifier";
+  if (ev.type === "investigation_task_changed" && (p.state === "failed" || p.state === "timed_out")) return "specialist";
+  if (ev.type === "action_intent_changed" && p.status === "execution_unknown") return "k8s";
   return null;
 }
 
@@ -171,6 +188,12 @@ export function describe(ev: IncidentEvent, next: IncidentEvent | null = null): 
       if (str(p.error)) return line("Model call failed", words(str(p.error)!), "bad");
       if (p.cached === true) return line("Used cached diagnosis", "same evidence seen before");
       const usage = (p.usage ?? {}) as Record<string, unknown>;
+      if (p.kind === "call") {
+        const tokens = (num(usage.prompt_tokens) ?? 0) + (num(usage.completion_tokens) ?? 0);
+        return line(str(p.task_id) ? "Specialist model request" : "Model request",
+          [str(p.model), tokens ? `${tokens} tokens` : null, num(p.ms) != null ? `${Math.round(num(p.ms)!)} ms` : null]
+            .filter(Boolean).join(" · ") || null);
+      }
       const split = (num(usage.prompt_tokens) ?? 0) + (num(usage.completion_tokens) ?? 0);
       const tokens = num(usage.total_tokens) ?? (split || null);
       const requests = num(usage.requests);
@@ -218,6 +241,28 @@ export function describe(ev: IncidentEvent, next: IncidentEvent | null = null): 
     case "harm_check":
       return p.clean === true ? line("Harm check clean", "nothing else changed or got worse", "ok")
         : line("Harm check found side effects", null, "bad");
+    case "incident_scope_changed":
+      return line(`Investigation scope${num(p.scope_revision) ? ` r${num(p.scope_revision)}` : ""}: ${list(p.services).join(", ")}`,
+        list(p.reasons).map(words).join(" · ") || null, "warn");
+    case "delegation_decided":
+      return line(str(p.explanation) ?? "Delegation decided", str(p.reason) ? words(str(p.reason)!) : null,
+        p.status === "admitted" ? "warn" : "info");
+    case "investigation_task_changed": {
+      const state = str(p.state) ?? "?";
+      return line(`Specialist ${words(state)}`, str(p.task_id),
+        state === "succeeded" ? "ok" : state === "failed" || state === "timed_out" ? "bad" : "info");
+    }
+    case "finding_recorded":
+      return line(`Finding: ${words(str(p.verdict) ?? "?")}`, str(p.summary), "ok");
+    case "evidence_reused":
+      return line("Reused a read", [str(p.source), num(p.age_s) != null ? `${num(p.age_s)} s old` : null].filter(Boolean).join(" · ") || null);
+    case "orchestration_budget_changed":
+      return line(`Model requests ${num(p.requests_used) ?? "?"} of ${num(p.requests_limit) ?? "?"}`);
+    case "action_intent_changed": {
+      const status = str(p.status) ?? "?";
+      const tone: Tone = status === "execution_unknown" ? "bad" : status === "superseded" || status === "queued" ? "warn" : "info";
+      return line(`Fix ${words(status)}`, [str(p.intent_id), str(p.reason)].filter(Boolean).join(" · ") || null, tone);
+    }
     case "incident_resolved":
       return line("Resolved", str(p.briefing), "ok");
     case "escalated":

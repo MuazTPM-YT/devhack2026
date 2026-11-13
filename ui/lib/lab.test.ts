@@ -135,3 +135,12 @@ test("reveal puts the injected cause next to what Akira concluded, also when it 
   const decoy = revealRows(exp({ mutations: [...exp().mutations!, { role: "decoy", place: "deployment/payment env PROMO_BANNER", before: null, injected: "autumn", state: "planned", after_s: 15 }] }), null);
   assert.equal(decoy[1].value, "deployment/payment env PROMO_BANNER: not set -> autumn (never applied)");
 });
+
+test("two faults at once: each run takes the incident about its own target", () => {
+  const ad = { ...incident(150), id: "inc-ad", unhealthy: ["ad"] };
+  const pay = { ...incident(170), id: "inc-pay" };
+  const all = { [ad.id]: ad, [pay.id]: pay };
+  assert.equal(incidentFor(exp(), all, [pay.id, ad.id])?.id, "inc-pay");  // payment run, not the earlier ad incident
+  assert.equal(incidentFor(exp({ target: "ad" }), all, [pay.id, ad.id])?.id, "inc-ad");
+  assert.equal(incidentFor(exp({ target: "email" }), all, [pay.id, ad.id])?.id, "inc-ad");  // no match: earliest
+});

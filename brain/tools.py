@@ -10,6 +10,7 @@ import threading
 import time
 from collections import Counter
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Annotated, Any, Literal
 
@@ -19,9 +20,11 @@ from pydantic_ai import RunContext, Tool
 from pydantic_ai.tools import ToolDefinition
 
 from brain.bundle import change_evidence, k8s_evidence, log_evidence, memory_ratio, metric_evidence, trace_evidence
+from brain import evidence as cache_ids
 from brain.culprit import fetch_error_traces, from_traces, is_error
+from brain.evidence import CacheRead, EvidenceCache
 from brain.graph import DependencyGraph
-from brain.redact import quarantine, redact_value
+from brain.redact import quarantine, redact, redact_value
 from observer.kube_watch import service_of
 from schemas import auth
 from schemas.models import Evidence, EvidenceBundle, Incident, Tool as FixTool
@@ -30,6 +33,8 @@ log = logging.getLogger("brain.tools")
 
 CAP = 2000  # chars per tool result: history is resent every round
 MAX_POINTS = 40
+# cache reads made by the tool call running in this task (parallel tool calls run in separate tasks)
+_reads: ContextVar[list[CacheRead] | None] = ContextVar("tool_reads", default=None)
 
 
 # blocking reads with the reader identity (same RBAC as collect_k8s); tools run these in a thread
@@ -76,6 +81,12 @@ class ToolBox:
     choose: bool = False
     candidates: list[dict] = field(default_factory=list)
     tools_ok: set[str] = field(default_factory=set)
+    # orchestration (mode != disabled): shared read cache, and who this run is for the delivered ledger
+    cache: EvidenceCache | None = None
+    workspace: Any = None  # schemas.workspace.Workspace
+    run_id: str | None = None
+    orch: Any = None  # brain.delegation.DelegationContext: what the commander may ask a specialist
+    question: Any = None  # schemas.orchestration.EligibleQuestion: the one a specialist works on
 
     # what the model was shown, in the shape llm.check validates against
     def bundle(self) -> EvidenceBundle:
@@ -96,28 +107,78 @@ class ToolBox:
     # the API token goes to our observer only (GET /journal needs it), never to Prometheus or Jaeger
     async def get_json(self, url: str, **params: Any) -> Any:
         headers = auth.headers() if url.startswith(self.observer_url) else None
-        r = await self.http.get(url, params=params, timeout=10, headers=headers)
-        r.raise_for_status()
-        return r.json()
+        if self.cache is not None:
+            params = cache_ids.bucket_range(params)
+
+        async def fetch() -> Any:
+            r = await self.http.get(url, params=params, timeout=10, headers=headers)
+            r.raise_for_status()
+            return r.json()
+
+        if self.cache is None:
+            return await fetch()
+        return await self.cached(cache_ids.http_key(url, params), cache_ids.kind_of(url), fetch)
+
+    # a blocking kube read in a thread; through the shared cache when there is one
+    async def kread(self, kind: str, fn: Callable[..., Any], *args: Any) -> Any:
+        if self.cache is None:
+            return await asyncio.to_thread(fn, *args)
+        key = f"kube:{getattr(self.kube, 'namespace', '')}:{kind}:{json.dumps(args, default=str)}"
+        return await self.cached(key, kind, lambda: asyncio.to_thread(fn, *args))
+
+    async def cached(self, key: str, kind: str, fetch: Callable[[], Awaitable[Any]]) -> Any:
+        assert self.cache is not None
+        got = await self.cache.read(key, kind, fetch)
+        reads = _reads.get()
+        if reads is not None:
+            reads.append(got)
+        return got.value
 
     # one tool call: run, never raise, redact, cap, record cited ids, tell the bus
     async def call(self, name: str, args: dict, work: Awaitable[tuple[Any, list[Evidence]]]) -> str:
         started = time.monotonic()
         self.calls += 1
+        token = _reads.set([])
         try:
             payload, evidence = await work
         except Exception as e:  # upstream down, RBAC, pod gone: the model hears it and moves on
             log.warning("tool %s failed: %s", name, type(e).__name__)
             payload, evidence = {"error": f"{name} unavailable ({type(e).__name__})"}, []
+        finally:
+            reads = _reads.get() or []
+            _reads.reset(token)
         text = json.dumps(redact_value(payload), separators=(",", ":"), default=str)
+        snapshots = [r.snapshot_id for r in reads]
+        if self.cache is not None:  # one metric id must never mean two readings: pin it to its snapshot
+            pinned: list[Evidence] = []
+            for item in evidence:
+                new = cache_ids.pin(item.id, snapshots)
+                if new != item.id:
+                    text = text.replace(json.dumps(item.id), json.dumps(new))
+                    item = item.model_copy(update={"id": new})
+                pinned.append(item)
+            evidence = pinned
         if len(text) > CAP:
             text = text[:CAP] + " ...[cut]"
         shown = [Evidence.model_validate(redact_value(e.model_dump())) for e in evidence]
         shown = [e for e in shown if e.id in text]
         self.ledger.update((e.id, e) for e in shown)
-        await self.publish("tool_called", self.incident.id, {
-            "tool": name, "args": redact_value(args), "ms": round((time.monotonic() - started) * 1000),
-            "evidence_ids": [e.id for e in shown]})
+        if self.workspace is not None and self.run_id:
+            self.workspace.count_tool_call(self.incident.id)
+            joined = ",".join(snapshots) or None
+            self.workspace.deliver(self.run_id, self.incident.id, [(e.id, joined) for e in shown])
+        event: dict[str, Any] = {"tool": name, "args": redact_value(args),
+                                 "ms": round((time.monotonic() - started) * 1000), "evidence_ids": [e.id for e in shown]}
+        if self.cache is not None:
+            event["cached"] = bool(reads) and all(r.cached for r in reads)
+        if self.question is not None:  # a specialist's read: the UI draws it on the specialist, not the brain
+            event["task_id"] = self.run_id
+        await self.publish("tool_called", self.incident.id, event)
+        for r in reads:
+            if r.cached:
+                await self.publish("evidence_reused", self.incident.id, {
+                    "query_key": redact(r.key)[:200], "source": r.source, "age_s": round(r.age_s, 3),
+                    "evidence_ids": [e.id for e in shown]})
         return text
 
     async def health(self, services: list[str] | None) -> tuple[Any, list[Evidence]]:
@@ -206,13 +267,13 @@ class ToolBox:
     async def pods(self, service: str) -> tuple[Any, list[Evidence]]:
         if err := self.unknown(service):
             return err, []
-        pods = await asyncio.to_thread(self.kube.pods, service)
+        pods = await self.kread("pods", self.kube.pods, service)
         evidence = k8s_evidence(pods, [], self.now)
         rows = []
         for p in pods[:6]:
             name = p["metadata"]["name"]
             try:
-                used = await asyncio.to_thread(self.kube.usage, name)
+                used = await self.kread("usage", self.kube.usage, name)
             except Exception:  # metrics-server lag or pod gone
                 used = {}
             ratio, limit = memory_ratio([p], {name: used})
@@ -233,8 +294,8 @@ class ToolBox:
     async def events(self, service: str, limit: int) -> tuple[Any, list[Evidence]]:
         if err := self.unknown(service):
             return err, []
-        pods = await asyncio.to_thread(self.kube.pods, service)
-        events = await asyncio.to_thread(self.kube.events)
+        pods = await self.kread("pods", self.kube.pods, service)
+        events = await self.kread("events", self.kube.events)
         evidence = [e for e in k8s_evidence(pods, events, self.now, limit) if not e.id.endswith(":last")]
         return [{"evidence_id": e.id, "summary": e.summary} for e in reversed(evidence)] or \
             {"service": service, "note": "no events"}, evidence
@@ -242,12 +303,12 @@ class ToolBox:
     async def logs(self, service: str, minutes: int, previous: bool, contains: str | None) -> tuple[Any, list[Evidence]]:
         if err := self.unknown(service):
             return err, []
-        pods = await asyncio.to_thread(self.kube.pods, service)
+        pods = await self.kread("pods", self.kube.pods, service)
         rows, evidence = [], []
         for p in pods[:3]:
             name = p["metadata"]["name"]
             try:
-                text = await asyncio.to_thread(self.kube.log, name, minutes * 60, previous)
+                text = await self.kread("logs", self.kube.log, name, minutes * 60, previous)
             except Exception as e:  # no previous container, pod gone
                 rows.append({"pod": name, "error": type(e).__name__})
                 continue

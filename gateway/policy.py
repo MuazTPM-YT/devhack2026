@@ -11,6 +11,12 @@ def usage(conn: sqlite3.Connection, incident_id: str, now: float | None = None) 
     hour = conn.execute("SELECT COUNT(*) FROM receipts WHERE ts >= ?", (now - 3600,)).fetchone()[0]
     # a failed watchdog undo keeps blocking new actions until a human clears it
     flight = conn.execute("SELECT COUNT(*) FROM receipts WHERE outcome IN ('pending', 'watchdog_failed')").fetchone()[0]
+    # orchestration: a write started but not yet receipted, or one whose outcome is unknown, holds the slot too
+    try:
+        flight += conn.execute("SELECT COUNT(*) FROM action_intents WHERE status IN "
+                               "('executing', 'execution_unknown')").fetchone()[0]
+    except sqlite3.OperationalError:  # no orchestration tables: legacy database
+        pass
     return {"incident": one, "hour": hour, "in_flight": flight}
 
 
