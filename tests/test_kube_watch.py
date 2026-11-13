@@ -1,3 +1,4 @@
+import json
 import threading
 from datetime import datetime, timezone
 
@@ -102,3 +103,31 @@ def test_run_watch_relists_after_error(monkeypatch):
     t = Tracker(connect(":memory:"), "flagd-config")
     run_watch(list_fn, "pod", t, "shop", stop, sleep=lambda s: None)
     assert len(calls) == 2 and t.pods == {}
+
+
+# a crash-looping pod deleted while the watch was down (rollback replaced it) stayed in the tracker
+# after the relist: its service read unhealthy forever
+def test_relist_drops_pods_deleted_during_outage(monkeypatch):
+    stop = threading.Event()
+    sick = pod(name="payment-7d9f-old", containers=[{"name": "app", "state": {"waiting": {"reason": "CrashLoopBackOff"}}}])
+    lists = [[sick], [pod(name="payment-8e0a-new", rs="payment-8e0a")]]
+
+    def list_fn(namespace, **kwargs):
+        items = lists.pop(0)
+        if not lists:
+            stop.set()
+        return FakeResp(json.dumps({"metadata": {"resourceVersion": "9"}, "items": items}).encode())
+
+    class DeadWatch:
+        def stream(self, fn, namespace, **kwargs):
+            raise ConnectionError("api restarted")
+            yield
+
+        def stop(self):
+            pass
+
+    import kubernetes.watch
+    monkeypatch.setattr(kubernetes.watch, "Watch", DeadWatch)
+    t = Tracker(connect(":memory:"), "flagd-config")
+    run_watch(list_fn, "pod", t, "shop", stop, sleep=lambda s: None)
+    assert set(t.pods) == {"payment-8e0a-new"} and t.bad_pods(NOW) == {}
