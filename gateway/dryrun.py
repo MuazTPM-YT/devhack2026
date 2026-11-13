@@ -52,8 +52,9 @@ def previous_template(deployment: dict, replicasets: list[dict]) -> tuple[dict, 
     return template, str(rev)
 
 
-def rollback_patch(resource_version: str, template: dict) -> list[dict]:
-    return [{"op": "test", "path": "/metadata/resourceVersion", "value": resource_version},
+# test generation, not resourceVersion: rollout status writes bump resourceVersion many times a second
+def rollback_patch(generation: int, template: dict) -> list[dict]:
+    return [{"op": "test", "path": "/metadata/generation", "value": generation},
             {"op": "replace", "path": "/spec/template", "value": template}]
 
 
@@ -96,7 +97,7 @@ def build_patch(tool: str, live: dict, params: dict, entry: dict | None, replica
         if prev is None:
             raise WriteRefused("escalated", f"{name} has no earlier revision to roll back to")
         template, rev = prev
-        return {"kind": "deployment", "content_type": JSON_PATCH, "body": rollback_patch(rv, template),
+        return {"kind": "deployment", "content_type": JSON_PATCH, "body": rollback_patch(live["metadata"]["generation"], template),
                 "allowed": "template", "summary": f"back to revision {rev}"}
     if tool == "revert_config":
         if entry is None or entry["object"] != f"deployment/{name}" or entry["kind"] != "env":

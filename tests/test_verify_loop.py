@@ -38,7 +38,7 @@ class Script:
         return self.inner(request)
 
 
-async def executed(tmp_path, healths, decided_by="u1", journal_during=None):
+async def executed(tmp_path, healths, decided_by="u1", journal_during=None, setup=None):
     w = World(tmp_path)
     script = Script(w, healths, journal_during)
     w.gw.http = httpx.AsyncClient(transport=httpx.MockTransport(script))
@@ -48,6 +48,8 @@ async def executed(tmp_path, healths, decided_by="u1", journal_during=None):
         w.gw.approvers.add(REHEARSAL_APPROVER)
     d = await w.gw.decide(d.approval_id, "approved", decided_by)
     assert d.decision == "executed"
+    if setup:
+        setup(w)
     script.active = True  # verify task has not run a tick yet; from here health follows the script
     task = next(iter(w.gw.tasks))
     return w, d, await asyncio.wait_for(task, 5)
@@ -89,6 +91,32 @@ async def test_early_abort_pauses_undoes_resumes(tmp_path):
     assert ops[0] == {"op": "add", "path": "/spec/paused", "value": True}
     assert ops[1]["path"] == "/spec/template" and ops[2]["value"] is False
     assert w.apps.dep["spec"]["paused"] is False
+
+
+# live run 2026-11-13: checkout turned sick 5 s after the right rollback, severity 7 -> 8, early abort undid it
+async def test_lagging_victim_inside_grace_does_not_abort(tmp_path):
+    w, d, outcome = await executed(tmp_path, [sick(severity=9)] * 6 + [healthy()])
+    assert outcome == "success" and "early_abort" not in w.types()
+
+
+# live run 2026-11-13: rollout status bumped resourceVersion between read and patch -> 422 on undo
+async def test_undo_survives_status_churn(tmp_path):
+    w, d, outcome = await executed(tmp_path, [sick(severity=9)], setup=lambda w: setattr(w.apps, "status_churn", True))
+    assert outcome == "undone" and w.apps.dep["spec"]["paused"] is False
+
+
+# live run 2026-11-13: failed undo left payment paused and its receipt pending, blocking every later action
+async def test_failed_undo_unpauses_and_frees_the_slot(tmp_path, caplog):
+    from kubernetes.client.rest import ApiException
+
+    def broken(w):
+        w.apps.fail_template = ApiException(status=422, reason="Invalid")
+
+    w, d, outcome = await executed(tmp_path, [sick(severity=9)], setup=broken)
+    assert outcome == "undo_failed" and w.apps.dep["spec"]["paused"] is False
+    assert w.conn.execute("SELECT outcome FROM receipts WHERE id=?", (d.receipt_id,)).fetchone()[0] == "undo_failed"
+    assert w.gw.receipts.get(d.receipt_id).outcome == "undo_failed"
+    assert d.receipt_id not in w.gw.verifying and "UNDO FAILED" in caplog.text
 
 
 async def test_human_change_during_verify_hands_off_without_undo(tmp_path):

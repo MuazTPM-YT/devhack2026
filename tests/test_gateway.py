@@ -55,13 +55,14 @@ def merge(dst, src):
 
 class FakeApps:
     def __init__(self):
-        self.dep = {"metadata": {"name": "payment", "resourceVersion": "100",
+        self.dep = {"metadata": {"name": "payment", "resourceVersion": "100", "generation": 7,
                                  "annotations": {"deployment.kubernetes.io/revision": "2"}},
                     "spec": {"replicas": 2, "template": template(BAD),  # strategy as scripts/install_shop.sh sets it
                              "strategy": {"type": "RollingUpdate",
                                           "rollingUpdate": {"maxUnavailable": 0, "maxSurge": 1}}}}
         self.rss = [rs(1, GOOD), rs(2, BAD)]
         self.patches, self.fail_real, self.fail_dry, self.dry_extra = [], None, None, False
+        self.status_churn, self.fail_template = False, None
 
     def read_namespaced_deployment(self, name, ns, **kw):
         return Resp(self.dep)
@@ -89,13 +90,22 @@ class FakeApps:
         fail = self.fail_dry if dry_run else self.fail_real
         if fail:
             raise fail
+        if self.status_churn:  # rollout controller wrote status between our read and this patch, as live
+            self.dep["metadata"]["resourceVersion"] = str(int(self.dep["metadata"]["resourceVersion"]) + 1)
         new = copy.deepcopy(self.dep)
         if isinstance(patch, dict):  # strategic merge: maps merge, containers merge by name
             assert patch["metadata"]["resourceVersion"] == self.dep["metadata"]["resourceVersion"]
             merge(new, {k: v for k, v in patch.items() if k != "metadata"})
         else:
+            key = patch[0]["path"].rsplit("/", 1)[1]
+            if patch[0]["op"] == "test" and self.dep["metadata"].get(key) != patch[0]["value"]:
+                raise ApiException(status=422, reason="Invalid")  # what the API server sends for a failed test
+            if self.fail_template and not dry_run and any(op["path"] == "/spec/template" for op in patch):
+                raise self.fail_template
             for op in patch[1:]:
                 new["spec"][op["path"].rsplit("/", 1)[1]] = op["value"]
+            if not dry_run:
+                new["metadata"]["generation"] += 1
         if self.dry_extra:
             new["spec"]["replicas"] = 9
         if not dry_run:
@@ -167,7 +177,7 @@ async def test_bad_deploy_asks_then_rolls_back_on_approval(tmp_path):
     real = w.apps.patches[-1]
     assert real["dry_run"] is None and real["field_manager"] == "oncall-agent"
     assert real["content_type"] == "application/json-patch+json"
-    assert real["patch"][0] == {"op": "test", "path": "/metadata/resourceVersion", "value": "100"}
+    assert real["patch"][0] == {"op": "test", "path": "/metadata/generation", "value": 7}
     assert real["patch"][1]["value"]["spec"]["containers"][0]["image"] == GOOD
     assert "pod-template-hash" not in real["patch"][1]["value"]["metadata"]["labels"]
     row = w.conn.execute("SELECT outcome, inverse_json, pods_touched_json FROM receipts WHERE id=?",
