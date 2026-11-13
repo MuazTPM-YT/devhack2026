@@ -73,6 +73,10 @@ def one_line(text: object) -> str:
     return " ".join(redact_value(str(text)).split())
 
 
+def shorten(text: str, limit: int = 220) -> str:
+    return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + "..."
+
+
 def duration(seconds: float) -> str:
     m, s = divmod(int(seconds), 60)
     return f"{m}m {s}s" if m else f"{s}s"
@@ -135,7 +139,7 @@ def create_receipts_router(store: ReceiptStore) -> APIRouter:
 def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
                         decision: GatewayDecision | None = None, receipt: Receipt | None = None,
                         receipt_id: int | None = None, mitigated: bool = False,
-                        pattern: str | None = None) -> Card:
+                        pattern: str | None = None, why: str | None = None) -> Card:
     status = status_of(receipt) if receipt else "WOKE YOU BECAUSE"
     if decision:
         status = {"awaiting_approval": "NEEDS APPROVAL", "handed_off": "HANDED OFF",
@@ -146,10 +150,10 @@ def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
     causes = diagnosis.causes if diagnosis else []
     ids = list(dict.fromkeys((receipt.evidence_ids if receipt else []) + [v for c in causes for v in c.evidence_ids]))
     refs = " ".join(f"[{one_line(v)}]" for v in ids)
+    # the model's own sentence when we have one; the pattern template otherwise
+    said = one_line(causes[0].explanation if causes else (why or ""))
     reason = causes[0].cause_class if causes else (pattern or "unknown")
-    why = WHY.get(reason, WHY["unknown"]).format(svc=svc)
-    if causes and causes[0].explanation.strip():
-        why += f"; {one_line(causes[0].explanation)[:200]}"
+    why = shorten(said) if said else WHY.get(reason, WHY["unknown"]).format(svc=svc)
     if receipt and receipt_id is not None:
         target = one_line(receipt.target)
         did = f"{DID.get(receipt.tool, receipt.tool).format(svc=target)} (receipt #{receipt_id})"

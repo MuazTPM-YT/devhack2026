@@ -19,3 +19,19 @@ class DbTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# DBs made before the LLM "why" column must gain it on open, keeping their rows
+def test_old_incidents_table_gains_why_column(tmp_path):
+    import sqlite3
+    path = str(tmp_path / "old.db")
+    old = sqlite3.connect(path)
+    old.execute("CREATE TABLE incidents (id TEXT PRIMARY KEY, opened_at REAL, onset_at REAL, culprit TEXT, "
+                "victims_json TEXT, pattern TEXT, major INTEGER DEFAULT 0, tier TEXT, state TEXT, "
+                "resolved_at REAL, severity_at_open REAL)")
+    old.execute("INSERT INTO incidents (id) VALUES ('inc-old')")
+    old.commit()
+    old.close()
+    conn = connect(path)
+    assert conn.execute("SELECT id, why FROM incidents").fetchone()[:] == ("inc-old", None)
+    connect(path).close()  # second open must not try to add it again

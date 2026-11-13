@@ -65,7 +65,8 @@ class Gateway:
 
     # card with the incident's pattern, so "Why" has words even without the LLM diagnosis
     def card(self, row: dict, target: str | None, pattern: str | None = None, **kw: Any) -> Card:
-        return build_incident_card(self.card_incident(row, target), pattern=pattern or row.get("pattern"), **kw)
+        return build_incident_card(self.card_incident(row, target), pattern=pattern or row.get("pattern"),
+                                   why=row.get("why"), **kw)
 
     async def step(self, incident_id: str, steps: list[dict], name: str, passed: bool, reason: str | None = None):
         steps.append({"name": name, "passed": passed, "reason": reason})

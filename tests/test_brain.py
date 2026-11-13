@@ -100,9 +100,14 @@ def make(world, responses, tmp_path):
 INC = Incident(id="inc-1", opened_at=990, onset_at=960, unhealthy=["checkout", "payment"], severity=6)
 
 
+def brain_why(world):
+    return world.brain.conn.execute("SELECT why FROM incidents WHERE id='inc-1'").fetchone()[0]
+
+
 async def test_bad_deploy_end_to_end(tmp_path):
     world = World()
-    record = await make(world, [diagnosis_json()], tmp_path).handle(INC)
+    world.brain = make(world, [diagnosis_json()], tmp_path)
+    record = await world.brain.handle(INC)
     assert record["incident"]["culprit"] == "payment" and record["incident"]["victims"] == ["checkout"]
     assert record["pattern"] == "recent_change"
     action = record["action"]
@@ -111,6 +116,8 @@ async def test_bad_deploy_end_to_end(tmp_path):
     types = [e["type"] for e in world.published]
     assert types[:3] == ["culprit_found", "bundle_built", "rule_matched"] and types[-1] == "diagnosis_ready"
     assert "llm_called" in types
+    # the model's own words reach the card the gateway builds later
+    assert brain_why(world) == "Bad image."
 
 
 async def test_llm_failure_keeps_rule_action(tmp_path):

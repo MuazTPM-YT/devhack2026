@@ -50,7 +50,7 @@ def test_llm_explanation_joins_the_why_line_on_one_line():
                   explanation="image changed to v2-bad\n30 s before errors")
     text = build_incident_card(INC, Diagnosis(causes=[cause], confidence=0.8),
                                decision=GatewayDecision(decision="escalated")).text
-    assert "Why: a change to payment landed just before it started failing; image changed to v2-bad 30 s" in text
+    assert "Why: image changed to v2-bad 30 s before errors [journal:7]" in text
     assert len(text.splitlines()) == 5
 
 
@@ -83,3 +83,13 @@ def test_did_and_undo_name_the_action_target_not_the_culprit():
 def test_odd_target_name_never_becomes_a_command():
     lines = build_incident_card(INC, receipt=receipt(target="pay;rm -rf"), receipt_id=5).text.splitlines()
     assert "kubectl" not in lines[4]
+
+
+# the LLM's sentence beats the template; gateway reads it from the incident row
+def test_llm_why_replaces_template_on_gateway_cards(tmp_path):
+    from test_gateway import World
+    w = World(tmp_path)
+    w.conn.execute("UPDATE incidents SET why='payment image changed to v2-bad, errors began 40 s later.'")
+    row = dict(w.conn.execute("SELECT * FROM incidents").fetchone())
+    line = w.gw.card(row, "payment", "recent_change", receipt=receipt(), receipt_id=2).text.splitlines()[1]
+    assert line == "Why: payment image changed to v2-bad, errors began 40 s later. [journal:7]"
