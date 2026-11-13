@@ -22,9 +22,11 @@ Phases 0-4 merged.
   handshakes, lists 14 read tools; `get_akira_status`, `get_service_health`,
   `verify_audit_log` (195 records) answered from the running stack.
   `claude mcp list` shows `akira` pending approval from `.mcp.json`.
-  **Not verified live:** new gateway/brain/notifier routes (running services
-  predate the branch: `/incidents` and brain `/health` 404 until restart);
-  chaos and approval tools not run live (they break the shop / page Discord).
+  Live, all 24 tools via the Claude Desktop config (stdio): drill injected
+  paymentFailure 50% (`exp-c8c1060f96`), approved Akira's revert_config from
+  MCP (receipt #4), `FIXED in 1m 59s: payment errors 53.5% -> 0.0%`, acked an
+  old page, reset healthy in 30.4 s. Results in `akira_mcp/README.md` §9.
+  Gateway, brain, notifier, chaos restarted by me on branch code (detached).
 
 - UI revamp + emil-design-eng audit, 2026-11-13 (df70108). Skill pack
   `emilkowalski/skills` installed project-scoped in `.claude/skills/` +
