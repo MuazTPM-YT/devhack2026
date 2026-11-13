@@ -16,7 +16,7 @@ const NAV: { href: string; label: string; icon: IconName }[] = [
   { href: "/", label: "Overview", icon: "grid" },
   { href: "/live", label: "Live incident", icon: "live" },
   { href: "/flow", label: "Flow", icon: "flow" },
-  { href: "/chaos", label: "Chaos monitor", icon: "chaos" },
+  { href: "/chaos", label: "Chaos Lab", icon: "chaos" },
   { href: "/trust", label: "Trust", icon: "trust" },
   { href: "/receipts", label: "Receipts", icon: "receipts" },
   { href: "/benchmark", label: "Benchmark", icon: "bench" },
