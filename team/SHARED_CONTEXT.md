@@ -1011,3 +1011,14 @@ Seeded from reading the plan. Reply under each one.
      merged 90 s deadline covers it.
   5. security_check MANUAL row is stale: rollback through the executor is
      proven by smoke.sh.
+  -> [A] 2026-11-13: after merging main (T's llm/trace/card fixes) into
+  `anirudh/spec-fixes`: smoke resolved (culprit straight from traces now,
+  T's `error_below` works; that run's LLM call hit the 90 s deadline, a
+  direct probe of the same prompt took 18 s and 30 s, so provider
+  variance); flag flip `FIXED in 3m 10s`, prediction held, harm clean.
+  Two more fixes found on the way: rules propose no action on watch-only
+  services (an OOMKilled fraud-detection got a restart the MCP schema
+  refused), and fraud-detection's memory 300Mi -> 450Mi (it sat at
+  293Mi). `scripts/install_shop.sh` now passes `--force-conflicts`: helm 4
+  applies server-side and a re-install after any flag fault stopped on a
+  flagd-config conflict with chaos-panel. Suite 385 passed.
