@@ -8,6 +8,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { LiveProvider, useLiveContext } from "@/lib/live-context";
 import { incidentStatus, type Policy } from "@/lib/overview";
 import { useNow } from "@/lib/use-now";
+import { usePref } from "@/lib/use-prefs";
 import type { Link as LinkState } from "@/lib/use-live";
 
 import { Icon, type IconName } from "./icon";
@@ -48,7 +49,9 @@ function Status() {
   );
 }
 
-function Sidebar({ open, instant, onClose }: { open: boolean; instant: boolean; onClose: () => void }) {
+function Sidebar({ open, instant, onClose, rail, onRail }: {
+  open: boolean; instant: boolean; onClose: () => void; rail: boolean; onRail: () => void;
+}) {
   const path = usePathname();
   const { state, policy } = useLiveContext();
   const now = useNow(true, 5000);
@@ -81,7 +84,14 @@ function Sidebar({ open, instant, onClose }: { open: boolean; instant: boolean; 
         })}
       </nav>
 
-      <Status />
+      <div className={styles.foot}>
+        <button type="button" className={styles.railBtn} onClick={onRail} aria-expanded={!rail} aria-controls="sidebar"
+          title={rail ? "Show the menu labels" : "Fold the menu to icons"}>
+          <Icon name="fold" size={18} />
+          <span className={styles.linkText}>Fold menu</span>
+        </button>
+        <Status />
+      </div>
     </aside>
   );
 }
@@ -90,6 +100,7 @@ export function Shell({ children, policy }: { children: ReactNode; policy: Polic
   const [open, setOpen] = useState(false);
   // Escape closes without animation: keyboard actions never animate
   const [instant, setInstant] = useState(false);
+  const [rail, toggleRail] = usePref("nav");
   const path = usePathname();
 
   useEffect(() => setOpen(false), [path]);
@@ -109,7 +120,7 @@ export function Shell({ children, policy }: { children: ReactNode; policy: Polic
   return (
     <LiveProvider policy={policy}>
       <a href="#main" className={styles.skip}>Skip to content</a>
-      <div className={styles.app}>
+      <div className={styles.app} data-rail={rail}>
         <header className={styles.top}>
           <button type="button" className={styles.menuBtn} onClick={show}
             aria-expanded={open} aria-controls="sidebar" aria-label="Open menu">
@@ -117,7 +128,7 @@ export function Shell({ children, policy }: { children: ReactNode; policy: Polic
           </button>
           <span className={styles.topBrand}><Mark size={20} /> Akira</span>
         </header>
-        <Sidebar open={open} instant={instant} onClose={() => setOpen(false)} />
+        <Sidebar open={open} instant={instant} onClose={() => setOpen(false)} rail={rail} onRail={toggleRail} />
         {open && <div className={styles.scrim} onClick={() => setOpen(false)} aria-hidden="true" />}
         <main id="main" className={styles.main}>{children}</main>
       </div>

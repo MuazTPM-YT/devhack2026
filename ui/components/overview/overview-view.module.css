@@ -1,4 +1,4 @@
-.page { display: flex; flex-direction: column; gap: 18px; max-width: 1240px; }
+.page { display: flex; flex-direction: column; gap: 18px; max-width: 1320px; margin-inline: auto; }
 
 .lede { max-width: 72ch; display: flex; flex-direction: column; gap: 6px; }
 .lede p { margin: 0; font-size: 14px; }

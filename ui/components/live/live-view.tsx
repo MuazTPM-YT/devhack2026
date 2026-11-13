@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { type ReactNode, useState } from "react";
 
+import { Icon } from "@/components/icon";
 import { Kpis } from "@/components/ui/kpis";
 import { PageHead } from "@/components/ui/page-head";
 import { Tag } from "@/components/ui/tag";
@@ -13,6 +14,7 @@ import { useLiveContext } from "@/lib/live-context";
 import { modeLabel } from "@/lib/orchestration";
 import { incidentStatus, verdict } from "@/lib/overview";
 import { useOrchestrationStatus } from "@/lib/use-orchestration";
+import { usePref } from "@/lib/use-prefs";
 import { useNow } from "@/lib/use-now";
 import { useReceipt } from "@/lib/use-receipt";
 
@@ -45,10 +47,22 @@ function headline(inc: Incident | null, elapsed: number | null): string {
   return `Working on ${name}`;
 }
 
+// folds a side pane away, or brings it back from its tab
+function Fold({ pane, closed, side, onClick }: { pane: string; closed: boolean; side: "left" | "right"; onClick: () => void }) {
+  return (
+    <button type="button" className={closed ? styles.tab : styles.foldBtn} data-side={side} onClick={onClick}
+      aria-expanded={!closed} title={closed ? `Show ${pane.toLowerCase()}` : `Hide ${pane.toLowerCase()}`}>
+      <Icon name="fold" size={16} />
+      {closed ? <span>{pane}</span> : <span className="sr-only">Hide {pane.toLowerCase()}</span>}
+    </button>
+  );
+}
+
 // one incident: figures, stages, flow and timeline in the middle, the decision sheet on the right
-function IncidentBody({ incident, demo, list, picker }: {
-  incident: Incident | null; demo: boolean; list: ReactNode; picker: ReactNode;
+function IncidentBody({ incident, demo, list, picker, listClosed, onList }: {
+  incident: Incident | null; demo: boolean; list: ReactNode; picker: ReactNode; listClosed: boolean; onList: () => void;
 }) {
+  const [sheetClosed, toggleSheet] = usePref("sheet");
   const { policy, link, replay } = useLiveContext();
   const polled = useOrchestrationStatus(link !== "demo");
   // the replay has no gateway to ask: its coordinated run brings its own answer
@@ -69,7 +83,7 @@ function IncidentBody({ incident, demo, list, picker }: {
         title={headline(incident, elapsed)}
         meta={incident ? <><span className="mono">{incident.id}</span> · opened {clock(incident.openedAt)}</> : undefined}
         aside={<>
-          <span className={styles.picker}>{picker}</span>
+          <span className={styles.picker} data-on={listClosed}>{picker}</span>
           {mode && <Tag tone={mode.tone} title={mode.title}>{mode.label}</Tag>}
           {status && <Tag tone={statusTag(incident, status).tone}>{statusTag(incident, status).label}</Tag>}
           {link === "demo" && <button type="button" className="btn" onClick={replay}>Replay demo</button>}
@@ -87,8 +101,10 @@ function IncidentBody({ incident, demo, list, picker }: {
         ]} />
       )}
 
-      <div className={styles.layout}>
-        <div className={styles.list}>{list}</div>
+      <div className={styles.layout} data-list={listClosed ? "closed" : "open"} data-sheet={!incident ? "none" : sheetClosed ? "closed" : "open"}>
+        <div className={styles.list}>
+          {listClosed ? <Fold pane="Incidents" closed side="left" onClick={onList} /> : list}
+        </div>
         <div className={styles.center}>
           <StageStrip incident={incident} now={now} />
           {incident && (
@@ -98,8 +114,15 @@ function IncidentBody({ incident, demo, list, picker }: {
           <FlowMap incident={incident} upto={selected} />
           <Timeline incident={incident} selected={selected} onSelect={setSelected} now={now} />
         </div>
-        {incident && (
+        {incident && sheetClosed && (
+          <div className={styles.sheet}><Fold pane="Details" closed side="right" onClick={toggleSheet} /></div>
+        )}
+        {incident && !sheetClosed && (
           <aside className={`${sheet.sheet} ${styles.sheet}`} aria-label="Incident details">
+            <div className={styles.sheetBar}>
+              <span className="label">Details</span>
+              <Fold pane="Details" closed={false} side="right" onClick={toggleSheet} />
+            </div>
             <Outcome incident={incident} receipt={receipt} />
             <Approval incident={incident} now={now} />
             <Investigation incident={incident} />
@@ -118,6 +141,7 @@ export function LiveView() {
   const { state, link, policy } = useLiveContext();
   const asked = useSearchParams().get("incident");
   const now = useNow(true, 5000);
+  const [listClosed, toggleList] = usePref("list");
   const id = asked && state.incidents[asked] ? asked : state.current;
   const incident = id ? state.incidents[id] : null;
 
@@ -127,7 +151,9 @@ export function LiveView() {
         <p className={styles.note}>Incident <span className="mono">{asked}</span> is not on the bus; showing the latest one.</p>
       )}
       <IncidentBody key={incident?.id ?? "none"} incident={incident} demo={link === "demo"}
-        list={<IncidentList state={state} picked={id} now={now} maxAgeS={policy.maxAgeS} />}
+        listClosed={listClosed} onList={toggleList}
+        list={<IncidentList state={state} picked={id} now={now} maxAgeS={policy.maxAgeS}
+          action={<Fold pane="Incidents" closed={false} side="left" onClick={toggleList} />} />}
         picker={<IncidentSelect state={state} picked={id} />} />
     </div>
   );

@@ -1,5 +1,5 @@
 /* page frame and data table shared by /receipts, /chaos and the overview map */
-.page { display: flex; flex-direction: column; gap: 18px; max-width: 1320px; }
+.page { display: flex; flex-direction: column; gap: 18px; max-width: 1320px; margin-inline: auto; }
 
 .note {
   margin: 0;

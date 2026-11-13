@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { ReactNode } from "react";
 
 import { Tag, type Tone } from "@/components/ui/tag";
 import { clock, duration } from "@/lib/format";
@@ -31,13 +32,16 @@ const MAX = 60;
 export const who = (inc: Incident) => inc.culprit ?? inc.unhealthy[0] ?? "detecting…";
 
 // every incident the bus replayed, newest first; links keep the choice in the URL
-export function IncidentList({ state, picked, now, maxAgeS }: {
-  state: LiveState; picked: string | null; now: number; maxAgeS: number | null;
+export function IncidentList({ state, picked, now, maxAgeS, action }: {
+  state: LiveState; picked: string | null; now: number; maxAgeS: number | null; action?: ReactNode;
 }) {
   const ids = state.order.slice(0, MAX);
   return (
     <nav className={styles.pane} aria-label="Incidents">
-      <h2 className={styles.title}>Incidents <span className="num">{state.order.length}</span></h2>
+      <div className={styles.title}>
+        <h2>Incidents <span className="num">{state.order.length}</span></h2>
+        {action}
+      </div>
       {ids.length === 0 ? <p className={styles.none}>None yet. Quiet shift.</p> : (
         <ul className={styles.list}>
           {ids.map((id) => {
