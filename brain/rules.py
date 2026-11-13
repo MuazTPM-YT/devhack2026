@@ -1,4 +1,5 @@
-# deterministic rules (IMPLEMENTATION.md §6.3.6). The LLM never picks the action when a rule matches.
+# deterministic rules (IMPLEMENTATION.md §6.3.6). match() is the rule's own pick; candidates() lists every
+# fix the evidence supports, so the diagnosis agent can accept the pick, take another, or decline.
 # Works on plain dicts (journal rows, incident); actions follow the ActionRequest fields.
 
 # template-level changes undo by rollback; env by revert_config; replica count by scale
@@ -27,14 +28,43 @@ def flag_targets(entry: dict, flag_map: dict) -> set[str]:
     return {flag_map[n] for n in names if n in flag_map}
 
 
-# THE GENERAL RULE input: newest non-restart change on the culprit's Deployment, or on a flag that
-# config/services.yaml `flags:` maps to the culprit, inside the window
-def latest_change_before_onset(journal: list[dict], culprit: str, onset: float, window_s: float,
-                               flag_map: dict | None = None) -> dict | None:
+# non-restart changes on the culprit's Deployment, or on a flag that config/services.yaml `flags:` maps
+# to the culprit, inside the window; newest first
+def changes_before_onset(journal: list[dict], culprit: str, onset: float, window_s: float,
+                         flag_map: dict | None = None) -> list[dict]:
     hits = [j for j in journal if onset - window_s <= j["ts"] <= onset and j["kind"] != "restart"
             and (j["object"] == f"deployment/{culprit}"
                  or (j["kind"] == "flag" and culprit in flag_targets(j, flag_map or {})))]
-    return max(hits, key=lambda j: (j["ts"], j["id"]), default=None)
+    return sorted(hits, key=lambda j: (j["ts"], j["id"]), reverse=True)
+
+
+# THE GENERAL RULE input: the newest of them
+def latest_change_before_onset(journal: list[dict], culprit: str, onset: float, window_s: float,
+                               flag_map: dict | None = None) -> dict | None:
+    return next(iter(changes_before_onset(journal, culprit, onset, window_s, flag_map)), None)
+
+
+# the inverse of one recorded change, as an action
+def _undo(incident: dict, change: dict, culprit: str, pattern: str) -> dict:
+    tool = TOOL_FOR_KIND[change["kind"]]
+    params = {"replicas": change["diff"]["replicas"]["old"]} if tool == "scale" else {}
+    return _action(incident, tool, culprit, pattern, [f"journal:{change['id']}"], params, change["id"])
+
+
+def _resource(incident: dict, culprit: str, events: list[dict], policy: dict, memory_ratio: float | None,
+              memory_limit: str | None) -> list[dict]:
+    oom = [e["id"] for e in events if "OOMKilled" in e.get("summary", "")]
+    if not oom and (memory_ratio is None or memory_ratio < 0.9):
+        return []
+    evidence = oom or [f"query:memory_ratio:service={culprit}"]
+    actions = [_action(incident, "restart_service", culprit, "resource", evidence)]
+    if memory_limit:
+        cap = to_bytes(policy["tools"]["raise_limit"]["max_memory"])
+        new = min(2 * to_bytes(memory_limit), cap)
+        if new > to_bytes(memory_limit):
+            actions.append(_action(incident, "raise_limit", culprit, "resource", evidence,
+                                   {"memory": f"{new // 2**20}Mi"}))
+    return actions
 
 
 # -> (pattern, actions). pattern: recent_change | resource | protected | unknown.
@@ -63,27 +93,49 @@ def _match(incident: dict, journal: list[dict], events: list[dict], services: di
     if services[culprit].get("protected"):
         # propose the obvious inverse anyway; the gateway always escalates protected targets
         if change and change["kind"] == "replicas":
-            old = change["diff"]["replicas"]["old"]
-            return "protected", [_action(incident, "scale", culprit, "protected", [f"journal:{change['id']}"],
-                                         {"replicas": old}, change["id"])]
+            return "protected", [_undo(incident, change, culprit, "protected")]
         return "protected", []
 
     if change and not change["by_agent"] and change["kind"] in TOOL_FOR_KIND:
-        tool = TOOL_FOR_KIND[change["kind"]]
-        params = {"replicas": change["diff"]["replicas"]["old"]} if tool == "scale" else {}
-        return "recent_change", [_action(incident, tool, culprit, "recent_change", [f"journal:{change['id']}"],
-                                         params, change["id"])]
+        return "recent_change", [_undo(incident, change, culprit, "recent_change")]
 
-    oom = [e["id"] for e in events if "OOMKilled" in e.get("summary", "")]
-    if oom or (memory_ratio is not None and memory_ratio >= 0.9):
-        evidence = oom or [f"query:memory_ratio:service={culprit}"]
-        actions = [_action(incident, "restart_service", culprit, "resource", evidence)]
-        if memory_limit:
-            cap = to_bytes(policy["tools"]["raise_limit"]["max_memory"])
-            new = min(2 * to_bytes(memory_limit), cap)
-            if new > to_bytes(memory_limit):
-                actions.append(_action(incident, "raise_limit", culprit, "resource", evidence,
-                                       {"memory": f"{new // 2**20}Mi"}))
-        return "resource", actions
+    actions = _resource(incident, culprit, events, policy, memory_ratio, memory_limit)
+    return ("resource", actions) if actions else ("unknown", [])
 
-    return "unknown", []
+
+MAX_CANDIDATES = 4
+
+
+def _basis(action: dict, journal: list[dict], onset: float, first: bool) -> str:
+    entry = next((j for j in journal if j["id"] == action["journal_entry"]), None)
+    if entry is None:
+        return {"restart_service": "pod was OOMKilled or memory is at its limit",
+                "raise_limit": "more memory, after a restart"}.get(action["tool"], "rule")
+    newest = "newest change, " if first else "older change, "
+    return f"{newest}{entry['kind']} on {entry['object']} {onset - entry['ts']:.0f} s before errors began"
+
+
+# -> (pattern, candidates). Every fix the evidence supports, the rule's own pick first (c1 == match()[1][0]),
+# then older changes on the culprit and the resource fixes the rule stopped short of.
+# Each candidate: {"id": "c1", "basis": why it is on the list, "action": ActionRequest fields}
+def candidates(incident: dict, journal: list[dict], events: list[dict], services: dict, policy: dict,
+               memory_ratio: float | None = None, memory_limit: str | None = None,
+               flag_map: dict | None = None) -> tuple[str, list[dict]]:
+    pattern, actions = match(incident, journal, events, services, policy, memory_ratio, memory_limit, flag_map)
+    culprit = incident.get("culprit")
+    svc = services.get(culprit or "", {})
+    found = list(actions)
+    if culprit and svc.get("actable"):
+        window_s = policy["change_window_minutes"] * 60
+        for change in changes_before_onset(journal, culprit, incident["onset_at"], window_s, flag_map):
+            if not change["by_agent"] and change["kind"] in TOOL_FOR_KIND:
+                found.append(_undo(incident, change, culprit, "recent_change"))
+        found += _resource(incident, culprit, events, policy, memory_ratio, memory_limit)
+    unique: list[dict] = []
+    for action in found:
+        key = (action["tool"], action["target"], action["journal_entry"], str(action["params"]))
+        if key not in [(u["tool"], u["target"], u["journal_entry"], str(u["params"])) for u in unique]:
+            unique.append(action)
+    onset = incident.get("onset_at") or 0
+    return pattern, [{"id": f"c{i + 1}", "basis": _basis(a, journal, onset, i == 0), "action": a}
+                     for i, a in enumerate(unique[:MAX_CANDIDATES])]

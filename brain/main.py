@@ -15,7 +15,7 @@ from typing import Any, cast
 import httpx
 from fastapi import FastAPI, HTTPException
 
-from brain import rules
+from brain import capabilities, rules
 from brain.bundle import build_bundle, collect_k8s, why_text
 from brain import major, memory, runbooks
 from brain.agent import AgentDiagnosisService, model_from_env
@@ -134,6 +134,10 @@ class Brain:
                                        self.services, self.policy, k8s["memory_ratio"], k8s["memory_limit"],
                                        self.flag_map)
         rule_action = ActionRequest.model_validate(actions[0]) if actions else None
+        # everything else the evidence supports; the agent may take one of these instead of the rule's pick
+        _, cands = rules.candidates(incident.model_dump(), journal_rows, [e.model_dump() for e in bundle.events],
+                                    self.services, self.policy, k8s["memory_ratio"], k8s["memory_limit"],
+                                    self.flag_map)
         # company runbooks + verified past incidents: the model reads them, they never change the rule's fix
         fix_entry = next((j for j in journal_rows if rule_action and j["id"] == rule_action.journal_entry), None)
         # redacted first: a runbook can match "[REDACTED]" (secret in logs) and never sees the secret itself
@@ -147,23 +151,38 @@ class Brain:
                                     "seen_before": memory.summary(past)}
         await self.publish("rule_matched", incident.id, {"pattern": pattern, "tools": [a["tool"] for a in actions],
                                                          "runbooks": [rb["id"] for rb in matched],
-                                                         "similar_before": len(past)})
+                                                         "similar_before": len(past),
+                                                         "candidates": [{"id": c["id"], "basis": c["basis"],
+                                                                         "tool": c["action"]["tool"],
+                                                                         "target": c["action"]["target"]}
+                                                                        for c in cands]})
 
         guide = {"runbooks": [runbooks.brief(rb) for rb in matched[:3]], "past_incidents": past}
         if self.agent is not None:  # agent mode: the model reads telemetry through tools, not the bundle
             box = ToolBox(incident, now, self.http, self.observer_url, self.prom_url, self.jaeger_url, self.graph,
                           self.kube, self.conn, self.lock, list(self.services), self.queries, self.publish,
                           edges=list(edges))
-            result = await self.agent.diagnose(box, cast(Pattern, pattern), rule_action, guide)
+            result = await self.agent.diagnose(box, cast(Pattern, pattern), rule_action, guide, cands,
+                                               capabilities.available(self.policy, self.services))
         else:
             result = await self.diagnoser.diagnose(bundle, pattern, rule_action, guide)
         for ev in result.events:
             await self.publish(ev["type"], ev.get("incident_id"), ev.get("payload", {}))
         action = result.action
-        # the rule picks the fix; the model only adds the prediction the verifier checks
+        # the prediction the verifier checks is the model's, whoever picked the fix
         if action and action.prediction is None and result.diagnosis and result.diagnosis.prediction:
             action = action.model_copy(update={"prediction": result.diagnosis.prediction})
-        await self.publish("diagnosis_ready", incident.id, {"pattern": pattern, "culprit": culprit})
+        diag = result.diagnosis
+        declined = diag.reason or "no reason given" if diag and diag.decision == "decline" else None
+
+        def brief(a: ActionRequest | None) -> dict | None:
+            return {"tool": a.tool, "target": a.target} if a else None
+
+        # who chose what, and why: the UI shows the choice next to what the rule would have done
+        await self.publish("diagnosis_ready", incident.id, {
+            "pattern": pattern, "culprit": culprit, "decision": diag.decision if diag else None,
+            "origin": action.origin if action else None, "chosen": brief(action), "rule_choice": brief(rule_action),
+            "reason": diag.reason if diag else None, "alternative": diag.alternative if diag else None})
 
         causes = result.diagnosis.causes if result.diagnosis else []
         llm_why = " ".join(causes[0].explanation.split())[:300] if causes else None
@@ -181,9 +200,12 @@ class Brain:
         self.results[incident.id] = record
         entry = next((j for j in journal_rows if action and j["id"] == action.journal_entry), None)
         why = why_text(entry, incident.onset_at)
-        record["gateway"] = await self.hand_over(incident, action, result.diagnosis, pattern, why, health)
-        # resource case: restart first, then ask for more memory (never automatic; §6.3.6 special case 1)
-        if action is not None and record["gateway"].get("decision") in ("executed", "awaiting_approval"):
+        record["gateway"] = await self.hand_over(incident, action, result.diagnosis, pattern, why, health,
+                                                 declined=declined, rule_action=rule_action)
+        # resource case: restart first, then ask for more memory (never automatic; §6.3.6 special case 1).
+        # Only behind the rule's own pick: the follow-ups belong to it, not to a fix the model chose instead
+        if (action is not None and action.origin == "rule"
+                and record["gateway"].get("decision") in ("executed", "awaiting_approval")):
             record["followups_sent"] = []
             for extra in actions[1:]:
                 follow = ActionRequest.model_validate({**extra, "prediction": None})
@@ -236,10 +258,16 @@ class Brain:
             return record
 
     # the gateway decides from here; with nothing safe to do, wake a human ourselves
+    # declined: the agent's own reason for not acting; a human then gets it next to the rule's suggestion
     async def hand_over(self, incident: Incident, action: ActionRequest | None, diagnosis: Any,
-                        pattern: str, why: str | None = None, health: dict | None = None) -> dict:
+                        pattern: str, why: str | None = None, health: dict | None = None,
+                        declined: str | None = None, rule_action: ActionRequest | None = None) -> dict:
         if action is None:
-            decision = GatewayDecision(decision="escalated", failed_step="rules", reason=f"no safe action ({pattern})")
+            reason, step = f"no safe action ({pattern})", "rules"
+            if declined:
+                hint = f" The rule suggested {rule_action.tool} on {rule_action.target}." if rule_action else ""
+                reason, step = f"agent declined to act: {declined}{hint}", "agent"
+            decision = GatewayDecision(decision="escalated", failed_step=step, reason=reason)
             return await self.escalate(incident, diagnosis, decision, decision.reason or "", why, health)
         try:
             decision = await self.submit(action)
@@ -274,12 +302,14 @@ def build_from_env() -> Brain:
 
     from brain.providers.opencode_go import OpenCodeGoAdapter
 
+    # agent: the model reads through tools and chooses among the rule's candidates (the gateway still decides).
+    # advise: same tools, the rule's fix wins. bundle: one call over a prebuilt bundle, the rule's fix wins.
     mode = os.environ.get("BRAIN_MODE", "agent")
-    if mode not in ("agent", "bundle"):
-        raise RuntimeError(f"BRAIN_MODE must be agent or bundle, got {mode!r}")
+    if mode not in ("agent", "advise", "bundle"):
+        raise RuntimeError(f"BRAIN_MODE must be agent, advise or bundle, got {mode!r}")
     observer, gateway, jaeger, kubeconfig = require_env("OBSERVER_URL", "GATEWAY_URL", "JAEGER_URL",
                                                         "READER_KUBECONFIG")
-    prom = require_env("PROMETHEUS_URL")[0] if mode == "agent" else ""
+    prom = require_env("PROMETHEUS_URL")[0] if mode != "bundle" else ""
     http = httpx.AsyncClient()
     api = kube_config.new_client_from_config(config_file=kubeconfig)
     core, custom = client.CoreV1Api(api), client.CustomObjectsApi(api)
@@ -291,8 +321,8 @@ def build_from_env() -> Brain:
                   connect(DEFAULT_PATH, shared=True), services, config.load("policy"))
     brain.flag_map = services_cfg.get("flags") or {}
     brain.runbooks = runbooks.load()
-    if mode == "agent":
-        brain.agent = AgentDiagnosisService(model_from_env(http))
+    if mode != "bundle":
+        brain.agent = AgentDiagnosisService(model_from_env(http), choose=mode == "agent")
         brain.prom_url, brain.queries, brain.kube = prom, config.load("queries"), KubeReader(core, custom, "shop")
     return brain
 

@@ -105,7 +105,7 @@ async def test_health_defaults_to_incident_services_and_records_ids():
     assert pay["breach_s_after_onset"] == 2 and pay["baseline_p95_ms"] == 80.0
     assert "query:err_ratio:service=payment" in box.ledger
     kind, payload = box.published[-1]
-    assert kind == "llm_called" and payload["tool"] == "get_service_health"
+    assert kind == "tool_called" and payload["tool"] == "get_service_health"
     assert "query:p95_ms:service=payment" in payload["evidence_ids"]
 
 
@@ -213,3 +213,17 @@ async def test_output_is_capped_and_only_shown_ids_are_citable():
     assert len(text) <= CAP + len(" ...[cut]") and text.endswith("...[cut]")
     for eid in box.ledger:
         assert eid in text
+
+
+# a field manager name (chaos-panel, kubectl) would tell the model who broke it: it gets "us or not us" only
+async def test_change_author_is_masked_for_the_model_and_kept_for_the_card():
+    from brain.bundle import change_evidence, why_text
+    box = make_box()
+    out = await box.call("get_recent_changes", {}, box.changes(10, None))
+    assert json.loads(out)[0]["by"] == "other" and "kubectl" not in out
+    assert "change by another writer" in box.ledger["journal:41"].summary
+    row = {"id": 7, "object": "deployment/payment", "kind": "image", "ts": 950.0, "field_manager": "chaos-panel",
+           "by_agent": False, "diff": {"containers[payment].image": {"old": "a", "new": "b"}}}
+    assert "chaos-panel" not in change_evidence(row).summary
+    assert "change by the agent" in change_evidence({**row, "by_agent": True, "field_manager": "oncall-agent"}).summary
+    assert "change by chaos-panel" in why_text(row, 1000.0)

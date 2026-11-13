@@ -14,8 +14,10 @@ from schemas.models import Evidence, EvidenceBundle, Incident
 ERROR_LINE = re.compile(r"\b(error|fatal|exception|panic|failed)\b", re.I)
 
 
-# env values can be secrets: name the changed vars, never their values
-def change_evidence(row: dict) -> Evidence:
+# env values can be secrets: name the changed vars, never their values.
+# author: the field manager's name is for humans (the card). The model gets "the agent" or "another
+# writer" only: a name like chaos-panel would hand it the answer to a judge's experiment
+def change_evidence(row: dict, author: bool = False) -> Evidence:
     parts = []
     for path, d in row["diff"].items():
         if path.endswith(".env"):
@@ -24,7 +26,8 @@ def change_evidence(row: dict) -> Evidence:
             parts.append(f"{path} changed: {', '.join(names)}")
         else:
             parts.append(f"{path}: {json.dumps(d['old'])} -> {json.dumps(d['new'])}")
-    who = row.get("field_manager") or "unknown"
+    who = (row.get("field_manager") or "unknown") if author else (
+        "the agent" if row.get("by_agent") else "another writer")
     return Evidence(id=f"journal:{row['id']}", kind="journal", ts=row["ts"],
                     summary=f"{row['object']} {row['kind']} change by {who}: {'; '.join(parts)}"[:600])
 
@@ -34,7 +37,7 @@ def why_text(entry: dict | None, onset: float | None) -> str | None:
     if entry is None:
         return None
     lag = f"; errors began {onset - entry['ts']:.0f} s later" if onset and onset >= entry["ts"] else ""
-    return change_evidence(entry).summary + lag
+    return change_evidence(entry, author=True).summary + lag
 
 
 def metric_evidence(health: dict, services: list[str]) -> list[Evidence]:

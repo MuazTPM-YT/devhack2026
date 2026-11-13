@@ -51,7 +51,7 @@ async def test_agent_reads_then_explains_rule_fix():
     result = await service(script).diagnose(box, "recent_change", RULE)
     assert result.error is None and result.action == RULE
     assert result.diagnosis.prediction.below == 0.05
-    tools = [p["tool"] for kind, p in box.published if kind == "llm_called"]
+    tools = [p["tool"] for kind, p in box.published if kind == "tool_called"]
     assert tools == ["get_service_health", "get_recent_changes"]
     usage = result.events[-1]["payload"]
     assert usage["usage"]["tool_calls"] == 2 and usage["attempt"] == 3
@@ -134,3 +134,121 @@ async def test_known_pattern_ignores_agent_proposal():
     script = Script(lambda m, i: call("get_recent_changes"), lambda m, i: final(i, proposed=proposal))
     result = await service(script).diagnose(make_box(), "recent_change", RULE)
     assert result.action == RULE
+
+
+# ---- BRAIN_MODE=agent: the model chooses among candidates, code builds the action -------------------------
+OLDER = {"incident_id": "inc-1", "tool": "revert_config", "target": "payment", "params": {}, "pattern": "recent_change",
+         "evidence_ids": ["journal:40"], "prediction": None, "journal_entry": 40}
+CANDS = [{"id": "c1", "basis": "newest change, image on deployment/payment 50 s before errors began",
+          "action": RULE.model_dump(mode="json")},
+         {"id": "c2", "basis": "older change, flag on configmap/flagd-config 90 s before errors began", "action": OLDER}]
+CAPS = [{"tool": t} for t in ("rollback_deploy", "revert_config", "restart_service", "scale", "raise_limit")]
+
+
+def chosen(info: AgentInfo, decision, candidate=None, proposed=None, reason="The flag change fits the errors.",
+           alternative="The image change came later but its pods are healthy.", prediction=PREDICT) -> ModelResponse:
+    return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {
+        "causes": [{"cause_class": "recent_change", "culprit": "payment", "evidence_ids": ["journal:41"],
+                    "explanation": "payment env changed 10 s before errors began."}],
+        "prediction": prediction, "proposed": proposed, "confidence": 0.8, "decision": decision,
+        "candidate": candidate, "reason": reason, "alternative": alternative})])
+
+
+def sent_back(script, text) -> bool:
+    return any(text in str(getattr(p, "content", "")) for m, _ in script.seen for msg in m
+               for p in getattr(msg, "parts", []))
+
+
+async def choose(*steps, pattern="recent_change", rule=RULE, cands=CANDS):
+    script = Script(lambda m, i: call("get_recent_changes"), *steps)
+    result = await service(script, choose=True).diagnose(make_box(), pattern, rule, None, cands, CAPS)
+    return script, result
+
+
+async def test_accepting_the_rules_pick_keeps_the_rule_path():
+    script, result = await choose(lambda m, i: chosen(i, "accept", "c1"))
+    assert result.action == RULE and result.action.origin == "rule" and result.error is None
+    first_prompt = str(script.seen[0][0])
+    assert "candidates" in first_prompt and "capabilities" in first_prompt and "rule_action" not in first_prompt
+
+
+# the decoy case: the newest change is not the cause, the model takes the older one
+async def test_accepting_another_candidate_is_the_models_choice():
+    _, result = await choose(lambda m, i: chosen(i, "accept", "c2"))
+    assert (result.action.tool, result.action.journal_entry, result.action.origin) == ("revert_config", 40, "model")
+    assert result.diagnosis.reason and result.diagnosis.alternative
+
+
+async def test_proposing_another_built_tool_is_the_models_choice():
+    proposal = {"incident_id": "inc-1", "tool": "scale", "target": "payment", "pattern": "unknown",
+                "params": {"replicas": 3}, "evidence_ids": ["journal:41"], "origin": "rule"}
+    _, result = await choose(lambda m, i: chosen(i, "other", proposed=proposal))
+    # pattern and origin are set by code, whatever the model wrote
+    assert (result.action.tool, result.action.pattern, result.action.origin) == ("scale", "recent_change", "model")
+
+
+async def test_candidate_written_out_by_hand_becomes_the_code_built_one():
+    by_hand = {**RULE.model_dump(mode="json"), "evidence_ids": ["journal:41"], "prediction": PREDICT}
+    _, result = await choose(lambda m, i: chosen(i, "other", proposed=by_hand))
+    assert result.action.origin == "rule" and result.action.journal_entry == 41
+
+
+async def test_decline_sends_no_action_and_keeps_the_reason():
+    _, result = await choose(lambda m, i: chosen(i, "decline", reason="Evidence is too thin; check the payment "
+                                                                       "provider status page.", prediction=None))
+    assert result.action is None and result.error is None
+    assert result.diagnosis.decision == "decline" and "too thin" in result.diagnosis.reason
+
+
+async def test_unusable_choices_go_back_to_the_model():
+    degraded = {"incident_id": "inc-1", "tool": "enable_degraded_mode", "target": "payment",
+                "pattern": "recent_change", "evidence_ids": ["journal:41"]}
+    script, result = await choose(
+        lambda m, i: final(i),                                       # no decision at all
+        lambda m, i: chosen(i, "accept", "c9"),                      # not on the list
+        lambda m, i: chosen(i, "other", proposed=degraded),          # a tool that is not built
+    )
+    assert sent_back(script, "set decision to accept, other or decline")
+    assert sent_back(script, "candidate must be one of ['c1', 'c2']")
+    # three strikes: the answer is dropped and the rule's pick goes on, as when the model is down
+    assert result.diagnosis is None and result.error == "invalid_diagnosis"
+    assert result.action == RULE and result.action.origin == "rule"
+
+
+async def test_tool_that_is_not_built_is_named_in_the_rejection():
+    degraded = {"incident_id": "inc-1", "tool": "enable_degraded_mode", "target": "payment",
+                "pattern": "recent_change", "evidence_ids": ["journal:41"]}
+    script, result = await choose(lambda m, i: chosen(i, "other", proposed=degraded),
+                                  lambda m, i: chosen(i, "accept", "c1"))
+    assert sent_back(script, "enable_degraded_mode is not an available capability") and result.action == RULE
+
+
+async def test_accept_needs_a_prediction_and_a_reason():
+    script, result = await choose(lambda m, i: chosen(i, "accept", "c1", prediction=None),
+                                  lambda m, i: chosen(i, "accept", "c1", reason=" "),
+                                  lambda m, i: chosen(i, "accept", "c1"))
+    assert retried(script) and sent_back(script, "fill reason") and result.action == RULE
+
+
+async def test_no_candidates_means_other_or_decline():
+    script, result = await choose(lambda m, i: chosen(i, "accept", "c1"),
+                                  lambda m, i: chosen(i, "decline", prediction=None),
+                                  pattern="unknown", rule=None, cands=[])
+    assert sent_back(script, "there are no candidates") and result.action is None
+
+
+# a proposal smuggled next to "accept" or "decline" never becomes the action
+async def test_proposal_counts_only_with_decision_other():
+    extra = {"incident_id": "inc-1", "tool": "scale", "target": "payment", "pattern": "recent_change",
+             "params": {"replicas": 3}, "evidence_ids": ["journal:41"]}
+    _, result = await choose(lambda m, i: chosen(i, "decline", proposed=extra, prediction=None))
+    assert result.action is None and result.diagnosis.proposed is None
+
+
+async def test_no_rule_proposal_in_advise_mode_is_marked_as_the_models():
+    proposal = {"incident_id": "inc-1", "tool": "restart_service", "target": "payment", "pattern": "unknown",
+                "evidence_ids": ["event:payment-1:payment:last"], "prediction": PREDICT}
+    script = Script(lambda m, i: call("get_pods", service="payment"),
+                    lambda m, i: final(i, cite=("event:payment-1:payment:last",), proposed=proposal))
+    result = await service(script).diagnose(make_box(), "unknown", None)
+    assert result.action.origin == "model"
