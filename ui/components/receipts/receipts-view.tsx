@@ -125,7 +125,7 @@ export function ReceiptsView() {
 
   return (
     <div className={page.page}>
-      <PageHead eyebrow="Receipts · every action, its diff, its undo, and the trust it earned" title="What Akira changed" aside={<AuditCheck />} />
+      <PageHead eyebrow="every action, its diff, its undo, and the trust it earned" title="Receipts" aside={<AuditCheck />} />
       <Kpis label="Receipt figures" items={[
         { label: "Actions", value: data ? items.length : "–" },
         { label: "Fix verified", value: data ? items.filter((i) => i.receipt.outcome === "success").length : "–", tone: "ok" },

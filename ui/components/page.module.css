@@ -1,4 +1,4 @@
-/* page frame and data table shared by /receipts, /benchmark and /chaos */
+/* page frame and data table shared by /receipts, /chaos and the overview map */
 .page { display: flex; flex-direction: column; gap: 18px; max-width: 1320px; }
 
 .note {

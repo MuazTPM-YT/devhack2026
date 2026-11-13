@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import page from "@/components/page.module.css";
-import { PageHead } from "@/components/ui/page-head";
 import { Tag, type Tone } from "@/components/ui/tag";
 import { dependencies } from "@/lib/chaos-api";
 import { plural } from "@/lib/format";
@@ -49,6 +48,7 @@ function Names({ names, onPick }: { names: string[]; onPick: (n: string) => void
   );
 }
 
+// overview's map view: who calls whom, and how a failure climbs to the callers
 export function ServiceMap({ services }: { services: Record<string, ServiceInfo> }) {
   const { state, observer, policy } = useLiveContext();
   const now = useNow(true, 5000);
@@ -92,31 +92,23 @@ export function ServiceMap({ services }: { services: Record<string, ServiceInfo>
   const atRisk = [...m.atRisk].sort();
 
   return (
-    <div className={page.page}>
-      <PageHead eyebrow="Service map · calls Jaeger saw in the last hour" title="Who depends on whom" />
-
-      <p className={page.lede}>
-        {error && !calls ? <span className="bad">Jaeger unreachable ({error}). Check <span className="mono">JAEGER_URL</span>.</span>
-          : !calls ? "Loading the call graph…"
-            : blind ? "Observer numbers are stale, so health is unknown. The graph is still current."
-              : failing.length ? <><b className="bad">{failing.join(", ")} {failing.length === 1 ? "is" : "are"} failing.</b>{" "}
-                {atRisk.length ? `${plural(atRisk.length, "service")} depend${atRisk.length === 1 ? "s" : ""} on it, directly or not, and break with it: ${atRisk.join(", ")}.` : "Nothing calls it."}</>
-                : `${plural(names.length, "service")}, ${plural(list.length, "call path")}, none failing. A failure climbs from a service to everything that calls it.`}
-      </p>
-
-      <div className={page.grid}>
-        <article className={`card ${page.span12}`}>
+    <div className={page.stack}>
+        <article className="card">
           <div className="card-head">
-            <h2 className="card-title">Call graph</h2>
+            <h2 className="card-title">Calls in the last hour</h2>
             <div className={styles.legend} aria-hidden="true">
               <span><i className={styles.kBad} />failing</span>
               <span><i className={styles.kRisk} />at risk</span>
               <span><i className={styles.kHot} />failure path</span>
             </div>
           </div>
-          {calls && list.length === 0 ? (
+          {error && !calls ? (
+            <p className="empty bad">Jaeger unreachable ({error}). Check <span className="mono">JAEGER_URL</span>.</p>
+          ) : !calls ? (
+            <p className="empty">Loading the call graph…</p>
+          ) : list.length === 0 ? (
             <p className="empty">Jaeger saw no calls in the last hour. Is the load generator running?</p>
-          ) : calls && (
+          ) : (
             <div className={styles.scroll}>
               <svg viewBox={`0 0 ${box.width} ${box.height}`} className={styles.map} style={{ minWidth: Math.min(box.width, 720), maxWidth: box.width }}
                 role="group" aria-label="Service call graph; callers on the left, the services they call on the right">
@@ -167,7 +159,7 @@ export function ServiceMap({ services }: { services: Record<string, ServiceInfo>
           )}
         </article>
 
-        <aside className={`card ${page.span12}`} aria-live="polite">
+        <aside className="card" aria-live="polite">
           {sel ? (
             <>
               <div className="card-head">
@@ -206,7 +198,6 @@ export function ServiceMap({ services }: { services: Record<string, ServiceInfo>
             </>
           )}
         </aside>
-      </div>
     </div>
   );
 }
