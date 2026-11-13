@@ -24,6 +24,7 @@ from gateway.receipts import ReceiptStore, build_card, create_receipts_router
 from schemas import auth, config, migrations
 from schemas.db import DEFAULT_PATH, connect
 from schemas.orchestration import IntentEnvelope, load_policy
+from schemas.workspace import Workspace
 from schemas import logs
 
 logs.setup()
@@ -86,9 +87,11 @@ def build_from_env() -> Gateway:
                  events.publish, ReceiptStore(Path(DEFAULT_PATH)), approvers_from_env(),
                  graph=DependencyGraph(http, jaeger), flag_map=config.load("services").get("flags") or {},
                  rehearsal=os.environ.get("ONCALL_REHEARSAL") == "1", books=runbooks.load())
-    if load_policy().mode != "disabled":  # orchestration: durable intents (migration v2 required)
+    orch = load_policy()
+    if orch.mode != "disabled":  # orchestration: durable intents + read views (migration v2 required)
         migrations.require(gw.conn)
         gw.intents = IntentStore(gw.conn, gw.lock, gw.clock)
+        gw.workspace = Workspace(gw.conn, orch, gw.clock, lock=gw.lock)
     return gw
 
 
@@ -215,11 +218,16 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
         with gw.lock:
             rows = gw.conn.execute(f"SELECT * FROM incidents{where} ORDER BY opened_at DESC LIMIT ?",
                                    (*args, limit)).fetchall()
-        return [incident_view(dict(r)) for r in rows]
+        views = [incident_view(dict(r)) for r in rows]
+        if gw.workspace is not None:  # additive: orchestration phase and task count, null for old incidents
+            for view in views:
+                view["orchestration"] = gw.workspace.summary(view["id"])
+        return views
 
     # one incident with everything around it: approvals, receipts + cards, its bus events, similar past ones
     @app.get("/incidents/{incident_id}")
-    def get_incident(incident_id: str, events_limit: int = Query(300, ge=1, le=1000)) -> dict:
+    def get_incident(incident_id: str, events_limit: int = Query(300, ge=1, le=1000),
+                     tasks_limit: int = Query(20, ge=1, le=200)) -> dict:
         gw = holder["gw"]
         with gw.lock:
             row = gw.conn.execute("SELECT * FROM incidents WHERE id=?", (incident_id,)).fetchone()
@@ -233,8 +241,10 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
         receipts = [{"id": i, "receipt": r, "card": build_card(r, i)} for i in ids if (r := gw.receipts.get(i))]
         mine = [rec for rec in events.active_bus().audit.records if rec["event"].get("incident_id") == incident_id]
         now = gw.clock()
+        snapshot = gw.workspace.snapshot(incident_id, tasks_limit) if gw.workspace is not None else None
         return {"incident": incident_view(dict(row)), "approvals": [approval_view(dict(a), now) for a in asks],
-                "receipts": receipts, "events": mine[-events_limit:], "events_total": len(mine), "similar": past}
+                "receipts": receipts, "events": mine[-events_limit:], "events_total": len(mine), "similar": past,
+                "orchestration": redact_value(snapshot.model_dump(mode="json")) if snapshot else None}
 
     @app.get("/approvals")
     def list_approvals(state: ApprovalState | None = None, limit: int = Query(50, ge=1, le=200)) -> list[dict]:

@@ -9,8 +9,8 @@ from contextlib import contextmanager
 from typing import Any
 
 from schemas.orchestration import (BudgetUse, DelegationRecord, FindingResult, FindingSummary, IncidentLink,
-                                   Membership, OrchestrationPolicy, SignalAck, SignalEpisode, TaskSummary,
-                                   WorkspaceSnapshot, fingerprint)
+                                   IntentSummary, Membership, OrchestrationPolicy, SignalAck, SignalEpisode,
+                                   TaskSummary, WorkspaceSnapshot, fingerprint)
 
 CAS_COLUMNS = {"phase", "cause_key", "deadline_at", "owner", "lease_epoch", "last_error", "tool_calls_used",
                "specialists_started"}
@@ -22,9 +22,11 @@ class Conflict(Exception):
 
 
 class Workspace:
-    def __init__(self, conn: sqlite3.Connection, policy: OrchestrationPolicy, clock: Callable[[], float] = time.time):
+    # lock: pass the owner's lock when sharing its connection (the gateway's read views)
+    def __init__(self, conn: sqlite3.Connection, policy: OrchestrationPolicy, clock: Callable[[], float] = time.time,
+                 lock: "threading.Lock | None" = None):
         self.conn, self.policy, self.clock = conn, policy, clock
-        self.lock = threading.Lock()
+        self.lock = lock or threading.Lock()
 
     @contextmanager
     def tx(self) -> Iterator[sqlite3.Connection]:
@@ -433,7 +435,30 @@ class Workspace:
                                  created_at=w["created_at"], deadline_at=w["deadline_at"],
                                  memberships=self.memberships(incident_id), links=self.links(incident_id),
                                  tasks=tasks, findings=findings, delegation=delegation, budget=budget,
-                                 last_error=w["last_error"])
+                                 intents=self.intents(incident_id, tasks_limit), last_error=w["last_error"])
+
+    # gateway-owned rows (migration v2); none before that migration
+    def intents(self, incident_id: str, limit: int = 20) -> list[IntentSummary]:
+        try:
+            rows = self.rows("SELECT * FROM action_intents WHERE incident_id=? ORDER BY created_at LIMIT ?",
+                             (incident_id, limit))
+        except sqlite3.OperationalError:
+            return []
+        out = []
+        for r in rows:
+            action = json.loads(r["action_json"])
+            out.append(IntentSummary(intent_id=r["intent_id"], status="queued" if r["status"] == "new" else r["status"],
+                                     plan_revision=r["plan_revision"], tool=action["tool"], target=action["target"],
+                                     approval_id=r["approval_id"], receipt_id=r["receipt_id"]))
+        return out
+
+    # one line per incident for lists: phase and how many specialist tasks ran
+    def summary(self, incident_id: str) -> dict[str, Any] | None:
+        w = self.workspace(incident_id)
+        if w is None:
+            return None
+        r = self.row("SELECT COUNT(*) FROM investigation_tasks WHERE incident_id=?", (incident_id,))
+        return {"phase": w["phase"], "task_count": int(r[0]) if r else 0}
 
 
 def _episode(r: sqlite3.Row) -> SignalEpisode:

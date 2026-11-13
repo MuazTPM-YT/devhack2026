@@ -82,6 +82,7 @@ class Gateway:
         self.guide: dict[str, dict] = {}  # incident id -> runbook + seen-before for Discord; same ceiling as why
         self.health: dict[str, dict] = {}  # incident id -> last health read, for the card's numbers; same ponytail
         self.intents: IntentStore | None = None  # orchestration on (migration v2): durable action intents
+        self.workspace: Any = None  # schemas.workspace.Workspace on the same connection: read views only
 
     # ---- helpers -------------------------------------------------------------------------------
     def incident(self, incident_id: str) -> dict | None:
