@@ -260,22 +260,22 @@ def test_reset_restarts_kafka_clients_only_when_kafka_was_restored(tmp_path):
     assert not [c for c in fake.calls if c[:2] == ("rollout", "restart")]
 
 
-def test_wait_healthy_polls_until_severity_zero_or_timeout():
+def test_wait_healthy_needs_a_stable_zero_or_times_out():
     from chaos.main import wait_healthy
-    readings, now, slept = iter([7, None, 0]), [0.0], []
+    now = [0.0]
 
     def sleep(s):
-        slept.append(s)
         now[0] += s
 
-    assert wait_healthy(lambda: next(readings), 60, sleep=sleep, clock=lambda: now[0]) is True
-    assert slept == [5, 5]
+    readings = iter([7, None, 0, 4, 0, 0, 0])  # a zero that flaps back to 4 doesn't count
+    assert wait_healthy(lambda: next(readings), 120, stable_s=10, sleep=sleep, clock=lambda: now[0]) is True
+    assert now[0] == 30  # zeros at t=20, 25, 30: 10 s calm
     assert wait_healthy(lambda: 3, 12, sleep=sleep, clock=lambda: now[0]) is False
     assert wait_healthy(None, 60) is None
 
 
 def test_http_reset_reports_healthy(tmp_path):
-    with TestClient(create_app(tmp_path, FakeKubectl(), severity=lambda: 0)) as client:
+    with TestClient(create_app(tmp_path, FakeKubectl(), severity=lambda: 0, reset_stable_s=0)) as client:
         assert client.post("/chaos/reset").json()["healthy"] is True
 
 
