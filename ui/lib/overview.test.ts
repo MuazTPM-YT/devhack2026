@@ -15,7 +15,7 @@ const health = (over: Partial<ServiceHealth> = {}): ServiceHealth => ({
 });
 
 test("reads the real policy and service list", () => {
-  assert.deepEqual(policy, { errThreshold: 0.05, latencyMultiplier: 2, latencyFloorMs: 100, maxAgeS: 1200 });
+  assert.deepEqual(policy, { errThreshold: 0.05, latencyMultiplier: 2, latencyFloorMs: 100, maxAgeS: 2400 });
   const services = parseServices(servicesText);
   assert.deepEqual(services.payment, { kind: "stateless", critical: true, actable: true, protected: false });
   assert.equal(Object.keys(services).length, 11);

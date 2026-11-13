@@ -97,6 +97,8 @@ export function pathOf(ev: IncidentEvent, prev: IncidentEvent | null): NodeId[] 
       return ["verifier"];
     case "action_undone":
       return ["verifier", "k8s"];
+    case "retry_started":
+      return ["verifier", "gateway", "brain"];
     case "harm_check":
       return ["k8s", "verifier"];
   }
@@ -215,6 +217,8 @@ export function describe(ev: IncidentEvent, next: IncidentEvent | null = null): 
       return line("Early abort: severity rose", `${num(p.before) ?? "?"} → ${num(p.severity) ?? "?"}`, "bad");
     case "action_undone":
       return line(`Undid receipt #${num(p.receipt_id) ?? "?"}`, str(p.reason), "bad");
+    case "retry_started":
+      return line(`Trying fix ${num(p.attempt) ?? "?"} of ${num(p.max_attempts) ?? "?"}`, str(p.briefing), "warn");
     case "harm_check":
       return p.clean === true ? line("Harm check clean", "nothing else changed or got worse", "ok")
         : line("Harm check found side effects", null, "bad");

@@ -76,6 +76,8 @@ class ToolBox:
     choose: bool = False
     candidates: list[dict] = field(default_factory=list)
     tools_ok: set[str] = field(default_factory=set)
+    # fixes already run and undone in this incident (gateway retry context); never chosen again
+    tried: list[dict] = field(default_factory=list)
 
     # what the model was shown, in the shape llm.check validates against
     def bundle(self) -> EvidenceBundle:

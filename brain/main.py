@@ -14,16 +14,18 @@ from typing import Any, cast
 
 import httpx
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 
 from brain import capabilities, rules
 from brain.bundle import build_bundle, collect_k8s, why_text
 from brain import major, memory, runbooks
-from brain.agent import AgentDiagnosisService, model_from_env
+from brain.agent import AgentDiagnosisService, model_from_env, was_tried
 from brain.culprit import dependency_change, fetch_error_traces, find_culprit
 from brain.gateway_client import call_tool
 from brain.graph import DependencyGraph
 from brain.llm import DiagnosisService
 from brain.redact import redact
+from gateway.receipts import started_by
 from brain.tools import KubeReader, ToolBox
 from schemas import auth, config
 from schemas.db import DEFAULT_PATH, connect
@@ -56,6 +58,7 @@ class Brain:
         self.flag_map: dict[str, str] = {}  # config/services.yaml `flags:`, set by build_from_env
         self.runbooks: list[dict] = []  # config/runbooks.yaml, set by build_from_env
         self.guides: dict[str, dict] = {}  # incident id -> runbook + seen-before for the escalation payload
+        self.tried: dict[str, list[dict]] = {}  # incident id -> fixes that failed and were undone (retry context)
         # BRAIN_MODE=agent, set by build_from_env: tool-using diagnosis and what its tools read
         self.agent: AgentDiagnosisService | None = None
         self.prom_url = ""
@@ -81,9 +84,12 @@ class Brain:
             log.warning("GET %s failed: %s", url, type(e).__name__)
             return default
 
-    # one incident end to end; every upstream failure degrades evidence, never stops the rules
-    async def handle(self, incident: Incident) -> dict:
+    # one incident end to end; every upstream failure degrades evidence, never stops the rules.
+    # tried: a retry after the gateway undid earlier fixes; those are never sent again
+    async def handle(self, incident: Incident, tried: list[dict] | None = None) -> dict:
         now = self.clock()
+        tried = tried or []
+        self.tried[incident.id] = tried
         window_s = self.policy["change_window_minutes"] * 60
         health = await self._get_json(f"{self.observer_url}/health/now", {"ts": now, "services": {}})
         first_breach = {s: v["first_breach_ts"] for s, v in health["services"].items()
@@ -134,11 +140,16 @@ class Brain:
         pattern, actions = rules.match(incident.model_dump(), journal_rows, [e.model_dump() for e in bundle.events],
                                        self.services, self.policy, k8s["memory_ratio"], k8s["memory_limit"],
                                        self.flag_map)
+        if tried and actions and was_tried(actions[0], tried):
+            actions = []  # the rule's pick already failed: it has nothing new, nor do its follow-ups
         rule_action = ActionRequest.model_validate(actions[0]) if actions else None
         # everything else the evidence supports; the agent may take one of these instead of the rule's pick
         _, cands = rules.candidates(incident.model_dump(), journal_rows, [e.model_dump() for e in bundle.events],
                                     self.services, self.policy, k8s["memory_ratio"], k8s["memory_limit"],
                                     self.flag_map)
+        if tried:  # failed fixes leave the list; ids renumbered so c1 is the first fix left
+            left = [c for c in cands if not was_tried(c["action"], tried)]
+            cands = [{**c, "id": f"c{i + 1}"} for i, c in enumerate(left)]
         # company runbooks + verified past incidents: the model reads them, they never change the rule's fix
         fix_entry = next((j for j in journal_rows if rule_action and j["id"] == rule_action.journal_entry), None)
         # redacted first: a runbook can match "[REDACTED]" (secret in logs) and never sees the secret itself
@@ -148,8 +159,12 @@ class Brain:
                                  fix_entry["kind"] if fix_entry else None, evidence_text)
         with self.lock:
             past = memory.similar(self.conn, incident.id, culprit, pattern)
+        # "Started by" on Discord: the change the rule's fix reverts, else the newest one on the culprit
+        first = fix_entry or (rules.latest_change_before_onset(journal_rows, culprit, incident.onset_at, window_s,
+                                                                self.flag_map) if culprit else None)
         self.guides[incident.id] = {"runbook": runbooks.brief(matched[0]) if matched else None,
-                                    "seen_before": memory.summary(past)}
+                                    "seen_before": memory.summary(past),
+                                    "started": started_by(first, incident.model_dump())}
         await self.publish("rule_matched", incident.id, {"pattern": pattern, "tools": [a["tool"] for a in actions],
                                                          "runbooks": [rb["id"] for rb in matched],
                                                          "similar_before": len(past),
@@ -164,12 +179,14 @@ class Brain:
                           self.kube, self.conn, self.lock, list(self.services), self.queries, self.publish,
                           edges=list(edges))
             result = await self.agent.diagnose(box, cast(Pattern, pattern), rule_action, guide, cands,
-                                               capabilities.available(self.policy, self.services))
+                                               capabilities.available(self.policy, self.services), tried=tried)
         else:
             result = await self.diagnoser.diagnose(bundle, pattern, rule_action, guide)
         for ev in result.events:
             await self.publish(ev["type"], ev.get("incident_id"), ev.get("payload", {}))
         action = result.action
+        if action is not None and was_tried(action.model_dump(), tried):
+            action = None  # belt and braces: the validator refuses it, a fallback must not resend it either
         # the prediction the verifier checks is the model's, whoever picked the fix
         if action and action.prediction is None and result.diagnosis and result.diagnosis.prediction:
             action = action.model_copy(update={"prediction": result.diagnosis.prediction})
@@ -194,6 +211,7 @@ class Brain:
                               (culprit, json.dumps(victims), pattern, int(is_major), llm_why, incident.id))
             self.conn.commit()
         record: dict[str, Any] = {"incident": incident.model_dump(mode="json"), "pattern": pattern,
+                  "attempt": len(tried) + 1,
                   "action": action.model_dump(mode="json") if action else None,
                   "followups": actions[1:],
                   "diagnosis": result.diagnosis.model_dump(mode="json") if result.diagnosis else None,
@@ -244,9 +262,9 @@ class Brain:
 
     # a crash must still end the incident: without a terminal event the observer keeps it open and opens
     # no other incident, ever
-    async def handle_safely(self, incident: Incident) -> dict:
+    async def handle_safely(self, incident: Incident, tried: list[dict] | None = None) -> dict:
         try:
-            return await self.handle(incident)
+            return await self.handle(incident, tried)
         except Exception as e:
             log.error("incident %s failed in the brain: %r", incident.id, e)
             decision = GatewayDecision(decision="escalated", failed_step="brain", reason=type(e).__name__)
@@ -266,6 +284,8 @@ class Brain:
                         declined: str | None = None, rule_action: ActionRequest | None = None) -> dict:
         if action is None:
             reason, step = f"no safe action ({pattern})", "rules"
+            if tried := self.tried.get(incident.id):
+                reason = f"no untried safe fix left after {len(tried)} failed fix{'es' if len(tried) > 1 else ''}"
             if declined:
                 hint = f" The rule suggested {rule_action.tool} on {rule_action.target}." if rule_action else ""
                 reason, step = f"agent declined to act: {declined}{hint}", "agent"
@@ -286,16 +306,27 @@ class Brain:
 
     async def escalate(self, incident: Incident, diagnosis: Any, decision: GatewayDecision, briefing: str,
                        why: str | None, health: dict | None = None, action: ActionRequest | None = None) -> dict:
-        from gateway.receipts import build_incident_card  # pure card builder, no cluster access
+        from gateway.receipts import build_incident_card, source  # pure card builder, no cluster access
 
+        retry = {"tries": self.tried.get(incident.id, []), "max": 1 + int(self.policy["budgets"]["max_retries"])}
         card = build_incident_card(incident, diagnosis, decision=decision.model_copy(update={"decision": "escalated"}),
-                                   why=why, health=health, proposal=action)
+                                   why=why, health=health, proposal=action, retry=retry)
+        step = {"rules": "diagnosis", "agent": "diagnosis", "brain": "crash guard"}.get(decision.failed_step or "",
+                                                                                      "gateway call")
         with self.lock:
             self.conn.execute("UPDATE incidents SET state='escalated' WHERE id=?", (incident.id,))
             self.conn.commit()
         await self.publish("escalated", incident.id, {"card": card.model_dump(mode="json"), "briefing": briefing,
-                                                      **self.guides.get(incident.id, {})})
+                                                      **self.guides.get(incident.id, {}),
+                                                      "source": source("brain", step)})
         return decision.model_dump(mode="json")
+
+
+class RetryRequest(BaseModel):
+    incident: Incident
+    attempt: int = Field(ge=2)
+    max_attempts: int = Field(ge=2)
+    failed: list[dict[str, Any]] = Field(min_length=1, max_length=10)
 
 
 def build_from_env() -> Brain:
@@ -364,6 +395,27 @@ def create_app(brain: Brain | None = None) -> FastAPI:
         tasks.add(task)
         task.add_done_callback(_finished)
         return {"incident_id": incident.id, "status": "accepted"}
+
+    # gateway, after it undid a failed fix (§6.4.11): diagnose again with the failed fixes as context.
+    # Agent mode only: in advise and bundle mode no model reads the context, and the rule would resend its pick
+    @app.post("/incidents/{incident_id}/retry", status_code=202)
+    async def retry(incident_id: str, body: RetryRequest) -> dict:
+        b = app.state.brain
+        if body.incident.id != incident_id:
+            raise HTTPException(422, "incident id does not match the path")
+        if b.agent is None or not b.agent.choose:
+            raise HTTPException(409, "retries need BRAIN_MODE=agent")
+        if any(t.get_name() == incident_id and not t.done() for t in tasks):
+            raise HTTPException(409, "this incident is still being diagnosed")
+        # the brain's own copy keeps the full unhealthy list; the gateway only knows culprit + victims
+        known = (b.results.get(incident_id) or {}).get("incident")
+        incident = Incident.model_validate(known) if known else body.incident
+        task = asyncio.create_task(b.handle_safely(incident, body.failed), name=incident_id)
+        tasks.add(task)
+        task.add_done_callback(_finished)
+        log.info("incident %s: retry %s of %s after %s failed fix(es)", incident_id, body.attempt,
+                 body.max_attempts, len(body.failed))
+        return {"incident_id": incident_id, "status": "accepted", "attempt": body.attempt}
 
     @app.get("/incidents/{incident_id}")
     def get_incident(incident_id: str) -> dict:

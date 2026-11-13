@@ -1,5 +1,6 @@
 import json
 import re
+import socket
 import sqlite3
 from collections import Counter
 from pathlib import Path
@@ -89,6 +90,12 @@ def _took(seconds: float) -> str:
 
 # "automatic; trust 30 rehearsals, 0 real; proven at least 90%" or "approved by <id>" (plan §6.7.1)
 def _mode(trust: dict) -> str:
+    n = trust.get("attempt") or 1
+    retry = f"try {n}, after {n - 1} failed fix{'es' if n > 2 else ''}; " if n > 1 else ""
+    return retry + _gate(trust)
+
+
+def _gate(trust: dict) -> str:
     if trust.get("approved_by"):
         return f"approved by {trust['approved_by']}"
     rehearsal, real = trust.get("rehearsal") or [0, 0], trust.get("real") or [0, 0]
@@ -180,6 +187,11 @@ REASONS = [
     (r"did not recover", "The fix did not bring the service back in time, so the agent undid it."),
     (r"harm check failed", "After the fix, another service got worse, so the agent undid it."),
     (r"UNDO FAILED", "The agent could not undo its own change. The system may be half changed."),
+    (r"no untried safe fix left", "Every safe fix the agent could find was tried and failed. A person must look."),
+    (r"the brain sent no new fix", "The agent undid a failed fix but then sent no new one in time. "
+                                   "A person must look."),
+    (r"the brain never handed this incident", "The agent started on this incident but never finished deciding "
+                                              "(it may have crashed). A person must look."),
     (r"watchdog", "The agent lost track of its fix while checking it, so it undid it to be safe."),
     (r"write outcome unknown", "Kubernetes stopped answering during the change, so it may or may not have "
                                "happened. The agent will not guess or undo. A person must check the cluster."),
@@ -230,18 +242,71 @@ def ms(x: float) -> str:
 
 # "36% of payment requests are failing" from live health, culprit first; numbers always with units
 def symptom(health: dict | None, services: list[str]) -> str | None:
+    return next(iter(impact(health, services, 1)), None)
+
+
+# one plain line per sick service, culprit first (Discord "Impact")
+def impact(health: dict | None, services: list[str], limit: int = 6) -> list[str]:
+    out = []
     for s in services:
         v = ((health or {}).get("services") or {}).get(s) or {}
-        err, p95, base = v.get("err_ratio"), v.get("p95_ms"), v.get("baseline_p95_ms")
-        if isinstance(err, (int, float)) and err >= 0.01:
-            return f"{pct(err)} of {s} requests are failing"
-        if isinstance(p95, (int, float)) and isinstance(base, (int, float)) and 0 < base < p95:
-            fine = "; no requests are failing" if err is not None else ""
-            return f"{s} is slow: 95% of requests finish within {ms(p95)}, normal is {ms(base)}{fine}"
-        # datastores have no request metrics; the kube watch counts their sick pods (observer pod_bad)
-        if (n := v.get("bad_pods")) and isinstance(n, int):
-            return f"{n} {s} pod{'s are' if n > 1 else ' is'} crashing, out of memory or not ready"
+        if (line := _symptom(s, v)) is not None:
+            out.append(line)
+    return out[:limit]
+
+
+def _symptom(s: str, v: dict) -> str | None:
+    err, p95, base = v.get("err_ratio"), v.get("p95_ms"), v.get("baseline_p95_ms")
+    if isinstance(err, (int, float)) and err >= 0.01:
+        return f"{pct(err)} of {s} requests are failing"
+    if isinstance(p95, (int, float)) and isinstance(base, (int, float)) and 0 < base < p95:
+        fine = "; no requests are failing" if err is not None else ""
+        return f"{s} is slow: 95% of requests finish within {ms(p95)}, normal is {ms(base)}{fine}"
+    # datastores have no request metrics; the kube watch counts their sick pods (observer pod_bad)
+    if (n := v.get("bad_pods")) and isinstance(n, int):
+        return f"{n} {s} pod{'s are' if n > 1 else ' is'} crashing, out of memory or not ready"
     return None
+
+
+# where a Discord-bound event came from: which part of the agent, which step, which machine.
+# The gateway's event bus adds "mode" (live or rehearsal); only the gateway knows it
+def source(part: str, step: str) -> dict:
+    return {"part": part, "step": step, "host": socket.gethostname()}
+
+
+# the recorded change behind an incident, and the incident's clock, for Discord's Origin and Timeline.
+# Names and paths only: env values never leave the journal
+def started_by(entry: dict | None, incident: dict) -> dict:
+    out: dict = {"onset_at": incident.get("onset_at"), "opened_at": incident.get("opened_at"), "change": None}
+    if entry is not None:
+        flags = sorted({p[len("flags["):].split("]", 1)[0] for p in entry.get("diff") or {} if p.startswith("flags[")})
+        what = f"{entry['kind']} change on {entry['object']}" + (f" ({', '.join(flags[:3])})" if flags else "")
+        out.update(change=what, by="the agent" if entry.get("by_agent") else (entry.get("field_manager") or "unknown"),
+                   change_ts=entry.get("ts"))
+    return out
+
+
+# why a failed fix was undone, short, for the "Fixes tried" list
+TRY_WHY = {"did not recover": "it did not bring the service back in time",
+           "severity rose after the action": "things got worse after it",
+           "harm check failed": "it hurt another service"}
+
+
+def _tries(retry: dict) -> str | None:
+    lines: list[str] = []
+    for t in retry.get("tries") or []:
+        done = cap(_action(str(t.get("tool")), plain(t.get("target")), done=True))
+        why = TRY_WHY.get(str(t.get("why_undone")), plain(t.get("why_undone") or "it failed its check"))
+        ran = f", ran {_took(t['ran_s'])}" if isinstance(t.get("ran_s"), (int, float)) else ""
+        lines.append(f"{t.get('attempt', len(lines) + 1)}. {done}: {why}, so the agent undid it "
+                     f"(receipt #{t.get('receipt_id')}{ran}).")
+    if not lines:
+        return None
+    if retry.get("next"):
+        lines.append(f"Now trying fix {retry['next']} of {retry.get('max')}.")
+    elif retry.get("stop"):
+        lines.append(f"No more tries: {plain(retry['stop'])}.")
+    return "\n".join(lines)
 
 
 ACTION = {
@@ -313,7 +378,11 @@ def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
                         receipt_id: int | None = None, mitigated: bool = False, why: str | None = None,
                         took_s: float | None = None, metric: str | None = None, did: str | None = None,
                         pattern: str | None = None, model_says: str | None = None, health: dict | None = None,
-                        proposal: ActionRequest | None = None, reason: str | None = None) -> Card:
+                        proposal: ActionRequest | None = None, reason: str | None = None,
+                        retry: dict | None = None) -> Card:
+    # retry: {"tries": failed fixes (gateway failed_try), "max": n, "next": fix number now tried | None,
+    # "stop": why no more tries | None}
+    retry = retry or {}
     acted = receipt is not None and receipt_id is not None
     if receipt is not None and receipt_id is not None:
         card = build_card(receipt, receipt_id)
@@ -324,6 +393,8 @@ def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
                        "escalated": "NEEDS YOU", "refused": "NO ACTION"}.get(decision.decision, card.status)
     if mitigated:
         card.status = "MITIGATED, NOT FIXED"
+    if retry.get("next"):
+        card.status = "TRYING ANOTHER FIX"
     state = card.status
     asking = state == "NEEDS APPROVAL"
     level = {"NEEDS YOU": "page", "NEEDS APPROVAL": "ask", "MITIGATED, NOT FIXED": "ask",
@@ -390,12 +461,23 @@ def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
         did_line = "nothing yet" + (f"; it {'wants to' if asking else 'would'} {wanted}" if wanted else "") \
             + (f". {because}" if because else "")
         check, undo = "nothing yet; the agent made no change", "nothing to undo"
+    # every sick service, not only the first; a fixed card's health is the "before" picture, so none there
+    sick = impact(health, services) if not (acted and level == "ok") else []
+    if sick:
+        sev = (health or {}).get("severity")
+        head_line = f"Severity {sev:g}. " if isinstance(sev, (int, float)) else ""
+        add("Impact", head_line + f"{len(sick)} service{'s' if len(sick) > 1 else ''} affected:\n"
+            + "\n".join(f"- {line}" for line in sick))  # service names stay lower case
+    if tried := _tries(retry):
+        add("Fixes tried", tried)
     if said:
         add("AI reading (not checked)", said)
 
     # summary always names the service, so the push line leads with it; service names stay lower case
     if receipt is not None and receipt.outcome == "undo_failed":
         headline = f"{summary}. The agent could not undo its own change: act now"
+    elif receipt is not None and receipt.outcome == "undone" and retry.get("stop") and len(retry.get("tries") or []) > 1:
+        headline = f"{summary}. The agent tried {len(retry['tries'])} fixes; each failed and was undone"
     elif receipt is not None and receipt.outcome == "undone":
         headline = f"{summary}. {because or 'The agent undid its fix.'}"
     elif asking and proposal:
@@ -408,6 +490,9 @@ def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
         headline = f"{svc} works again after a restart, but the cause is not fixed"
     elif state == "HANDED OFF":
         headline = f"{svc}: a person changed something, so the agent stepped back"
+    elif state == "TRYING ANOTHER FIX":
+        headline = (f"{svc}: fix {retry['next'] - 1} of {retry.get('max')} did not work, so the agent undid it "
+                    f"and is trying fix {retry['next']}")
     elif state == "NO ACTION":
         headline = f"{svc}: the agent took no action. {because or ''}"
     else:

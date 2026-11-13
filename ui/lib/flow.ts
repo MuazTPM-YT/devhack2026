@@ -47,6 +47,7 @@ export const EVENT_NODE: Record<string, NodeId> = {
   approval_requested: "human", approval_decided: "human",
   action_executed: "kube", blocked: "kube",
   verify_tick: "verifier", early_abort: "verifier", action_undone: "verifier", harm_check: "verifier",
+  retry_started: "verifier",
   incident_resolved: "verifier", escalated: "human", handed_off: "human",
 };
 

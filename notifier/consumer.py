@@ -15,7 +15,7 @@ from schemas.models import Card
 
 TERMINAL = {"incident_resolved", "handed_off"}
 # payload extras the embeds show; kept with a wake so a re-page shows them too
-DETAILS = ("runbook", "seen_before")
+DETAILS = ("runbook", "seen_before", "source", "started")
 
 
 # a wake saved by an older notifier may not fit today's Card; page its text rather than crash all paging
@@ -41,11 +41,13 @@ class NotificationConsumer:
         incident_id, kind = event.get("incident_id"), event["type"]
         payload = event.get("payload", {})
         details = {k: payload[k] for k in DETAILS if payload.get(k)}
+        # the bus record says when the agent decided and where it sits in the audit chain
+        details["event"] = {"type": kind, "seq": seq, "ts": record.get("ts")}
         pending = self.state.get("wakes", {})
         before = copy.deepcopy(pending)
         if kind in TERMINAL:
             pending.pop(incident_id, None)
-        if kind in {"approval_requested", "incident_resolved", "escalated", "handed_off"}:
+        if kind in {"approval_requested", "incident_resolved", "escalated", "handed_off", "retry_started"}:
             card = Card.model_validate(payload["card"])
             if kind == "approval_requested":
                 await self.notifier.request_approval(payload["approval_id"], card,

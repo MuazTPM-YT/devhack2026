@@ -108,6 +108,125 @@ async def test_consumer_passes_details_and_counts_pages(tmp_path, monkeypatch):
         for t in (20, 40):
             monkeypatch.setattr("notifier.consumer.time.time", lambda t=t: t)
             await consumer.repage_once()
-    assert notifier.calls[0] == {"runbook": RB, "seen_before": "2 similar before"}
+    first = notifier.calls[0]
+    assert {k: v for k, v in first.items() if k != "event"} == {"runbook": RB, "seen_before": "2 similar before"}
+    assert first["event"] == {"type": "escalated", "seq": 1, "ts": None}  # the bus record's place and time
     assert [c["page"] for c in notifier.calls[1:]] == [2, 3]
     assert state.get("wakes")["i"]["pages"] == 3
+
+
+# ---- origin, timeline, what to do (Muaz: show where a message came from, what started it, when) ----------
+SOURCE = {"part": "gateway", "step": "trust gate", "host": "backend-1", "mode": "live"}
+STARTED = {"onset_at": 960.0, "opened_at": 990.0, "change": "image change on deployment/payment",
+           "by": "chaos-panel", "change_ts": 930.0}
+EVENT = {"type": "approval_requested", "seq": 812, "ts": 1000.0}
+
+
+async def test_approval_shows_your_move_origin_timeline_and_ids(monkeypatch):
+    monkeypatch.setattr("notifier.discord_bot.ApprovalView", lambda *a: None)
+    bot = Sent({"111"})
+    bot.controller.state = type("S", (), {"get": lambda self, k: None, "set": lambda self, k, v: None})()
+    await bot.request_approval("a1b2", CARD, "rollback payment", "0 s", 1300,
+                               details={"source": SOURCE, "started": STARTED, "event": EVENT})
+    text, embed, _ = bot.sent[0]
+    f = fields(embed)
+    assert "**Your move:** Press Approve or Reject below before <t:1300:t> (<t:1300:R>)" in embed.description
+    assert f["Origin"].splitlines() == [
+        "Started by: image change on deployment/payment, made by chaos-panel, 30 s before the first errors.",
+        "Sent by: Gateway (safety checks), step: trust gate. Machine: backend-1.", "Mode: LIVE."]
+    assert f["Timeline"].splitlines() == ["First errors: <t:960:T> (<t:960:R>)", "Incident opened: <t:990:T>",
+                                          "This message: <t:1000:T> (<t:1000:R>)"]
+    assert embed.footer.text.endswith("Event #812 · Approval a1b2") and embed.timestamp.timestamp() == 1000
+    assert not embed.title.startswith("[REHEARSAL]") and text == CARD.headline
+
+
+async def test_rehearsal_is_marked_in_title_line_and_origin():
+    bot = Sent()
+    await bot.wake(CARD, "b", details={"source": {**SOURCE, "mode": "rehearsal"}, "event": EVENT})
+    text, embed, _ = bot.sent[0]
+    assert text.startswith("[REHEARSAL] ") and embed.title.startswith("[REHEARSAL] ")
+    assert "Mode: **REHEARSAL**. A bench test run" in fields(embed)["Origin"]
+    assert "Look at it now. Press Acknowledge" in embed.description
+
+
+async def test_repage_says_the_notifier_sent_it_and_when_it_was_first_sent():
+    bot = Sent()
+    await bot.wake(CARD, "b", details={"source": SOURCE, "started": STARTED, "event": EVENT, "page": 2})
+    f = fields(bot.sent[0][1])
+    assert f["Origin"].endswith("Re-sent by the Notifier: page #2.")
+    assert "First sent: <t:1000:T>" in f["Timeline"] and "This re-page: <t:" in f["Timeline"]
+
+
+def test_no_recorded_change_and_a_change_after_onset_read_plainly():
+    assert embeds.origin_text(None, {"change": None}) == "Started by: no recorded change found before the first errors."
+    late = embeds.origin_text(None, {**STARTED, "change_ts": 970.0})
+    assert late.endswith("made by chaos-panel, after the first errors.")
+    assert embeds.origin_text(None, None) is None and embeds.timeline_text(None, None) is None
+
+
+def test_your_move_per_kind():
+    assert embeds.your_move("fyi", "FIXED in 2m").startswith("Nothing. This is for your information")
+    assert embeds.your_move("fyi", "TRYING ANOTHER FIX").startswith("Nothing yet. You get a page if every fix")
+    assert embeds.your_move("fyi", "HANDED OFF").startswith("Nothing from the agent")
+    assert embeds.your_move("ticket", "MITIGATED, NOT FIXED").startswith("Plan a follow-up")
+
+
+async def test_origin_and_timeline_survive_a_huge_card():
+    bot = Sent()
+    rb = {**RB, "steps": ["x" * 1000] * 3}
+    await bot.wake(CARD, "b", details={"source": SOURCE, "started": STARTED, "event": EVENT, "runbook": rb,
+                                       "seen_before": "y" * 1000})
+    embed = bot.sent[0][1]
+    assert len(embed) <= embeds.MAX_TOTAL and "Origin" in fields(embed) and "Timeline" in fields(embed)
+
+
+async def test_retry_started_goes_to_fyi_with_its_origin(tmp_path):
+    card = build_incident_card(INC, retry={"tries": [{"attempt": 1, "tool": "rollback_deploy", "target": "payment",
+                                                      "why_undone": "did not recover", "receipt_id": 3}],
+                                           "max": 3, "next": 2})
+    assert card.status == "TRYING ANOTHER FIX" and card.level == "info"
+    assert card.headline == ("payment: fix 1 of 3 did not work, so the agent undid it and is trying fix 2.")
+
+    class Fyi:
+        calls = []
+
+        async def fyi(self, card, url, details=None):
+            self.calls.append((card.status, url, details))
+
+    async with httpx.AsyncClient() as client:
+        consumer = NotificationConsumer(client, "http://gw", Fyi(), NotifierState(tmp_path / "s.db"))
+        await consumer.handle({"seq": 9, "ts": 1000.0, "event": {"type": "retry_started", "incident_id": "inc-1",
+                                                                 "payload": {"card": card.model_dump(), "source": SOURCE,
+                                                                             "receipt_url": "/receipts/3"}}})
+    status, url, details = Fyi.calls[0]
+    assert status == "TRYING ANOTHER FIX" and url == "http://gw/receipts/3"
+    assert details["source"] == SOURCE and details["event"] == {"type": "retry_started", "seq": 9, "ts": 1000.0}
+    assert consumer.state.get("wakes", {}) == {}  # an FYI: nobody is paged
+
+
+def test_bus_stamps_live_or_rehearsal_only_where_a_source_is_named(monkeypatch):
+    from gateway.events import stamp
+
+    monkeypatch.setenv("ONCALL_REHEARSAL", "1")
+    assert stamp({"type": "escalated", "payload": {"source": {"part": "brain"}}})["payload"]["source"]["mode"] == \
+        "rehearsal"
+    monkeypatch.setenv("ONCALL_REHEARSAL", "0")
+    assert stamp({"type": "escalated", "payload": {"source": {"part": "brain"}}})["payload"]["source"]["mode"] == "live"
+    assert stamp({"type": "verify_tick", "payload": {"severity": 3}}) == {"type": "verify_tick",
+                                                                          "payload": {"severity": 3}}
+
+
+def test_impact_lists_every_sick_service_with_numbers():
+    health = {"severity": 7, "services": {
+        "payment": {"err_ratio": 0.36}, "checkout": {"err_ratio": 0.0, "p95_ms": 1200.0, "baseline_p95_ms": 80.0}}}
+    inc = Incident(id="inc-1", opened_at=100, onset_at=90, unhealthy=["payment", "checkout"], culprit="payment",
+                   victims=["checkout"], severity=7)
+    card = build_incident_card(inc, decision=GatewayDecision(decision="escalated", reason="no safe action (unknown)"),
+                               health=health)
+    assert fields_of(card)["Impact"].splitlines() == [
+        "Severity 7. 2 services affected:", "- 36% of payment requests are failing",
+        "- checkout is slow: 95% of requests finish within 1.2 s, normal is 80 ms; no requests are failing"]
+
+
+def fields_of(card):
+    return {f.label: f.body for f in card.fields}

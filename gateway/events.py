@@ -1,4 +1,5 @@
 import json
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any
@@ -35,9 +36,18 @@ async def lifespan(app: FastAPI):
         _active_bus = None
 
 
+# a Discord-bound event names its sender (payload "source"); the bus lives in the gateway, the only process
+# that knows rehearsal mode, so it adds the mode for every sender. Recorded in the audit chain too
+def stamp(event: dict[str, Any]) -> dict[str, Any]:
+    src = event.get("payload", {}).get("source")
+    if isinstance(src, dict):
+        src["mode"] = "rehearsal" if os.environ.get("ONCALL_REHEARSAL") == "1" else "live"
+    return event
+
+
 async def publish(event: Event | dict[str, Any]) -> dict[str, Any]:
     validated = Event.model_validate(event)
-    return await active_bus().publish(validated.model_dump(mode="json"))
+    return await active_bus().publish(stamp(validated.model_dump(mode="json")))
 
 
 def create_events_router(bus: EventBus | None = None) -> APIRouter:
@@ -48,7 +58,7 @@ def create_events_router(bus: EventBus | None = None) -> APIRouter:
 
     @router.post("/events/publish")
     async def publish_event(event: Event):
-        return await selected_bus().publish(event.model_dump(mode="json"))
+        return await selected_bus().publish(stamp(event.model_dump(mode="json")))
 
     @router.get("/events")
     async def events(request: Request, last_event_id: Annotated[str | None, Header()] = None):

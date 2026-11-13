@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from gateway import events, trust
 from gateway.audit import verify
 from gateway.approvals import approvers_from_env
-from gateway.checklist import Gateway
+from gateway.checklist import Gateway, brain_retry
 from gateway.mcp_server import build_mcp
 from gateway.receipts import ReceiptStore, create_receipts_router
 from schemas import auth, config
@@ -52,14 +52,16 @@ def build_from_env() -> Gateway:
     from brain import runbooks
     from brain.graph import DependencyGraph
 
-    kubeconfig, observer, jaeger = require_env("AGENT_KUBECONFIG", "OBSERVER_URL", "JAEGER_URL")
+    # BRAIN_URL: after a clean undo the gateway asks the brain for the next fix (policy budgets.max_retries)
+    kubeconfig, observer, jaeger, brain = require_env("AGENT_KUBECONFIG", "OBSERVER_URL", "JAEGER_URL", "BRAIN_URL")
     api = kube_config.new_client_from_config(config_file=kubeconfig)
     http = httpx.AsyncClient()
     return Gateway(connect(DEFAULT_PATH, shared=True), client.AppsV1Api(api), client.CoreV1Api(api),
                    http, observer, config.load("services")["services"], config.load("policy"),
                    events.publish, ReceiptStore(Path(DEFAULT_PATH)), approvers_from_env(),
                    graph=DependencyGraph(http, jaeger), flag_map=config.load("services").get("flags") or {},
-                   rehearsal=os.environ.get("ONCALL_REHEARSAL") == "1", books=runbooks.load())
+                   rehearsal=os.environ.get("ONCALL_REHEARSAL") == "1", books=runbooks.load(),
+                   request_retry=brain_retry(http, brain.rstrip("/")))
 
 
 def create_app(gateway: Gateway | None = None) -> FastAPI:

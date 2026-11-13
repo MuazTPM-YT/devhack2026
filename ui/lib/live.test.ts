@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { type BusRecord, type LiveState, initialState, reduce } from "./live.ts";
+import { type BusRecord, EVENT_TYPES, type LiveState, initialState, reduce } from "./live.ts";
 
 let seq = 0;
 function rec(type: string, payload: Record<string, unknown> = {}, incident_id: string | null = "inc-1", ts = 100 + seq): BusRecord {
@@ -174,4 +174,19 @@ test("resolved keeps whether the fix was proven", () => {
   assert.equal(closed(true), true);
   assert.equal(closed(false), false);
   assert.equal(closed(undefined), null);
+});
+
+test("retry_started sends the later tiles back to idle for the next fix", () => {
+  const recs: BusRecord[] = [
+    { seq: 1, ts: 1, event: { type: "incident_opened", incident_id: "r", payload: { opened_at: 1 } } },
+    { seq: 2, ts: 2, event: { type: "checklist_step", incident_id: "r", payload: { name: "policy", passed: true } } },
+    { seq: 3, ts: 3, event: { type: "action_executed", incident_id: "r", payload: { receipt_id: 1, tool: "rollback_deploy", target: "payment" } } },
+    { seq: 4, ts: 4, event: { type: "verify_tick", incident_id: "r", payload: { severity: 4 } } },
+    { seq: 5, ts: 5, event: { type: "retry_started", incident_id: "r", payload: { attempt: 2, max_attempts: 3 } } },
+  ];
+  const inc = recs.reduce(reduce, initialState).incidents.r;
+  assert.equal(inc.outcome, null);
+  assert.deepEqual([inc.stages.diagnose, inc.stages.check, inc.stages.act, inc.stages.verify], ["active", "idle", "idle", "idle"]);
+  assert.deepEqual(inc.ticks, []);
+  assert.ok(EVENT_TYPES.includes("retry_started"));
 });

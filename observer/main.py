@@ -19,7 +19,8 @@ from observer.detector import Detector, fetch_readings
 from observer.kube_watch import Tracker, run_watch
 from schemas import auth, config
 from schemas.db import DEFAULT_PATH, connect
-from schemas.models import Card, Incident
+from gateway.receipts import build_incident_card, source, started_by
+from schemas.models import GatewayDecision, Incident
 from schemas import logs
 
 logs.setup()
@@ -44,6 +45,7 @@ class Observer:
                                  policy["major_incident"]["within_seconds"], d["latency_floor_ms"])
         self.poll_s = d["poll_seconds"]
         self.max_age_s = d["incident_max_age_seconds"]
+        self.handover_s = d["handover_seconds"]
         self.conn, self.tracker, self.http, self.clock = conn, tracker, http, clock
         self.prom_url, self.brain_url, self.gateway_url = prom_url, brain_url, gateway_url
         self.queries, self.services = queries, services
@@ -120,12 +122,21 @@ class Observer:
         self.undelivered = failed
 
     # last safety net: an incident with no terminal event blocks every later incident, so after
-    # incident_max_age_seconds close it here and wake a human
+    # incident_max_age_seconds close it here and wake a human. One the brain never handed over (DB state
+    # still 'open': brain crashed mid-diagnosis) gets handover_seconds, not the whole max age
     async def expire_stuck_incident(self, now: float) -> None:
         inc = self.detector.incident
-        if inc is None or now - inc["opened_at"] < self.max_age_s:
+        if inc is None or now - inc["opened_at"] < min(self.max_age_s, self.handover_s):
             return
-        reason = f"no outcome {now - inc['opened_at']:.0f} s after opening; the agent lost track, look by hand"
+        with self.tracker.lock:
+            r = self.conn.execute("SELECT state FROM incidents WHERE id=?", (inc["id"],)).fetchone()
+        never_handed = r is not None and r["state"] == "open"
+        age = now - inc["opened_at"]
+        if age < self.max_age_s and not never_handed:
+            return
+        reason = (f"the brain never handed this incident to the gateway within {age:.0f} s; it may have crashed, "
+                  "look by hand") if age < self.max_age_s else \
+            f"no outcome {age:.0f} s after opening; the agent lost track, look by hand"
         log.error("incident %s: %s", inc["id"], reason)
         self.detector.close_incident()
         self.undelivered = set()
@@ -133,12 +144,14 @@ class Observer:
             self.conn.execute("UPDATE incidents SET state='escalated' WHERE id=? AND state NOT IN "
                               "('resolved', 'escalated', 'handed_off')", (inc["id"],))
             self.conn.commit()
-        card = Card(incident_id=inc["id"], status="WOKE YOU BECAUSE",
-                    text=f"WOKE YOU BECAUSE: {', '.join(inc['unhealthy'])}\nWhy: {reason}", evidence_ids=[])
+        card = build_incident_card(Incident.model_validate(inc), health=self.health,
+                                   decision=GatewayDecision(decision="escalated", failed_step="observer", reason=reason))
         try:
             (await self.http.post(f"{self.gateway_url}/events/publish", timeout=5, headers=auth.headers(), json={
                 "type": "escalated", "incident_id": inc["id"],
-                "payload": {"card": card.model_dump(mode="json"), "briefing": reason}})).raise_for_status()
+                "payload": {"card": card.model_dump(mode="json"), "briefing": reason,
+                            "source": source("observer", "stuck-incident check"),
+                            "started": started_by(None, inc)}})).raise_for_status()
         except httpx.HTTPError as e:
             log.error("incident %s: escalation publish failed: %s", inc["id"], type(e).__name__)
 

@@ -439,3 +439,166 @@ async def test_stale_health_to_window_end_keeps_fix_and_pages(tmp_path):
 async def test_stale_ticks_then_fresh_recovery_is_success(tmp_path):
     w, d, outcome = await executed(tmp_path, [blind(sick())] * 3 + [healthy()])
     assert outcome == "success"
+
+
+# ---- retry after a clean undo (§6.4.11, Muaz: 3 fixes, retries run alone, trust gate kept) ----------------
+class Brain:
+    def __init__(self, answer=(True, "")):
+        self.bodies, self.answer = [], answer
+
+    async def __call__(self, body):
+        self.bodies.append(body)
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        return self.answer
+
+
+def with_brain(brain):
+    return lambda w: setattr(w.gw, "request_retry", brain)
+
+
+def state(w):
+    return w.conn.execute("SELECT state FROM incidents WHERE id='inc-1'").fetchone()[0]
+
+
+async def test_failed_fix_goes_back_to_the_brain_with_the_error_context(tmp_path):
+    brain = Brain()
+    w, d, outcome = await executed(tmp_path, [sick()], setup=with_brain(brain))
+    assert outcome == "undone" and "escalated" not in w.types() and w.types()[-1] == "retry_started"
+    assert state(w) == "replanning" and w.gw.retry_grants["inc-1"][1] == 2
+    body = brain.bodies[0]
+    assert (body["incident"]["id"], body["attempt"], body["max_attempts"]) == ("inc-1", 2, 3)
+    failed = body["failed"][0]
+    assert (failed["tool"], failed["journal_entry"], failed["why_undone"]) == ("rollback_deploy", 41, "did not recover")
+    assert failed["recovered"] is False and (failed["severity_before"], failed["severity_after"]) == (4, 4)
+    assert failed["readings_after"]["payment"]["err_ratio"] == 0.4 and failed["receipt_id"] == d.receipt_id
+    payload = w.events[-1]["payload"]
+    assert payload["card"]["status"] == "TRYING ANOTHER FIX" and payload["attempt"] == 2
+    assert payload["source"]["part"] == "verifier" and payload["started"]["change"] == "image change on deployment/payment"
+    tries = next(f["body"] for f in payload["card"]["fields"] if f["label"] == "Fixes tried")
+    assert "did not bring the service back in time" in tries and tries.endswith("Now trying fix 2 of 3.")
+    assert ledger(w) == [("real", 0, 1)]  # the failed fix still costs the rule's trust
+
+
+async def test_early_abort_also_retries(tmp_path):
+    w, _, outcome = await executed(tmp_path, [sick(severity=9)], setup=with_brain(Brain()))
+    assert outcome == "undone" and w.types()[-1] == "retry_started"
+    assert w.gw.tries["inc-1"][0]["why_undone"] == "severity rose after the action"
+
+
+async def test_no_retry_when_the_undo_failed(tmp_path):
+    from kubernetes.client.rest import ApiException
+
+    brain = Brain()
+
+    def broken(w):
+        with_brain(brain)(w)
+        w.apps.fail_template = ApiException(status=422, reason="Invalid")
+
+    w, _, outcome = await executed(tmp_path, [sick(severity=9)], setup=broken)
+    assert outcome == "undo_failed" and brain.bodies == [] and w.types()[-1] == "escalated"
+
+
+async def test_three_fixes_used_pages_with_every_try(tmp_path):
+    def two_earlier(w):
+        with_brain(brain)(w)
+        for i in (1, 2):
+            w.conn.execute("INSERT INTO receipts (incident_id, ts, tool, target, outcome) "
+                           "VALUES ('inc-1', 999, 'scale', 'payment', 'undone')")
+            w.gw.tries.setdefault("inc-1", []).append({"attempt": i, "tool": "scale", "target": "payment",
+                                                        "why_undone": "harm check failed", "receipt_id": i})
+
+    brain = Brain()
+    w, _, outcome = await executed(tmp_path, [sick()], setup=two_earlier)
+    assert outcome == "undone" and brain.bodies == [] and w.types()[-1] == "escalated" and state(w) == "escalated"
+    payload = w.events[-1]["payload"]
+    assert payload["briefing"] == "did not recover; no retry: all 3 fixes tried"
+    assert payload["card"]["headline"].endswith("The agent tried 3 fixes; each failed and was undone.")
+    tries = next(f["body"] for f in payload["card"]["fields"] if f["label"] == "Fixes tried").splitlines()
+    assert len(tries) == 4 and tries[2].startswith("3. Rolled payment back") and tries[3] == "No more tries: all 3 fixes tried."
+
+
+async def test_brain_that_refuses_or_is_down_means_a_page(tmp_path):
+    w, _, _ = await executed(tmp_path, [sick()], setup=with_brain(Brain((False, "brain refused the retry: no"))))
+    assert w.types()[-1] == "escalated" and state(w) == "escalated" and w.gw.retry_grants == {}
+    assert w.events[-1]["payload"]["briefing"].endswith("no retry: brain refused the retry: no")
+    w2, _, _ = await executed(tmp_path / "b", [sick()], setup=with_brain(Brain(httpx.ConnectError("down"))))
+    assert w2.types()[-1] == "escalated" and "brain unreachable (ConnectError)" in w2.events[-1]["payload"]["briefing"]
+
+
+async def test_waiting_follow_up_approval_blocks_the_retry(tmp_path):
+    from gateway import approvals
+
+    def waiting(w):
+        with_brain(brain)(w)
+        approvals.create(w.conn, "inc-1", {"tool": "raise_limit"}, 1000, 300)
+
+    brain = Brain()
+    w, _, _ = await executed(tmp_path, [sick()], setup=waiting)
+    assert brain.bodies == [] and "no retry: another approval" in w.events[-1]["payload"]["briefing"]
+
+
+class Graph:
+    async def get(self):
+        return [("checkout", "payment", 9.0)]
+
+
+def trusted(w, tool, pattern="recent_change", target="payment"):
+    from gateway import trust
+    for _ in range(30):
+        trust.record(w.conn, pattern, tool, target, "rehearsal", True, 0)
+
+
+# the retry the gateway granted runs alone when the fix has earned trust; the same model pick without a grant
+# asks a human, and a granted retry with no earned trust still asks (trust gate kept)
+async def test_granted_retry_skips_only_the_model_pick_ask(tmp_path):
+    w, _, _ = await executed(tmp_path, [sick()], setup=with_brain(Brain()))
+    w.gw.graph = Graph()
+    restart = action(tool="restart_service", journal_entry=None, evidence_ids=["query:err_ratio:service=payment"],
+                     origin="model")
+    trusted(w, "restart_service")
+    d = await w.gw.submit(restart)
+    assert d.decision == "executed", d
+    assert "inc-1" not in w.gw.retry_grants  # one grant, one action
+    gate = json.loads(w.conn.execute("SELECT trust_json FROM receipts WHERE id=?", (d.receipt_id,)).fetchone()[0])
+    assert gate["attempt"] == 2 and gate["origin"] == "model"
+
+
+async def test_model_pick_without_a_grant_still_asks(tmp_path):
+    w = World(tmp_path)
+    w.gw.graph = Graph()
+    trusted(w, "restart_service")
+    d = await w.gw.submit(action(tool="restart_service", journal_entry=None,
+                                 evidence_ids=["query:err_ratio:service=payment"], origin="model"))
+    assert d.decision == "awaiting_approval" and "chose this fix itself" in d.reason
+
+
+async def test_granted_retry_without_trust_still_asks(tmp_path):
+    w, _, _ = await executed(tmp_path, [sick()], setup=with_brain(Brain()))
+    w.gw.graph = Graph()
+    d = await w.gw.submit(action(tool="restart_service", journal_entry=None,
+                                 evidence_ids=["query:err_ratio:service=payment"], origin="model"))
+    assert d.decision == "awaiting_approval" and d.reason.startswith("trust bound")
+
+
+async def test_retry_the_brain_never_answers_pages_after_the_deadline(tmp_path):
+    from gateway.checklist import RETRY_DEADLINE_S
+
+    w, _, _ = await executed(tmp_path, [sick()], setup=with_brain(Brain()))
+    assert await w.gw.retry_timeouts() == 0
+    w.now[0] += RETRY_DEADLINE_S + 1
+    assert await w.gw.retry_timeouts() == 1
+    assert w.types()[-1] == "escalated" and state(w) == "escalated" and w.gw.retry_grants == {}
+    payload = w.events[-1]["payload"]
+    assert "sent no new fix" in payload["briefing"] and payload["source"]["step"] == "retry deadline"
+
+
+# gateway restart while the brain replans: the grant is gone, so the next fix asks, and silence still pages
+async def test_restart_while_replanning_asks_and_still_has_a_deadline(tmp_path):
+    from gateway.checklist import RETRY_DEADLINE_S
+
+    w = World(tmp_path)
+    w.conn.execute("UPDATE incidents SET state='replanning' WHERE id='inc-1'")
+    assert await w.gw.retry_timeouts() == 0 and w.gw.retry_grants["inc-1"][1] is None
+    w.now[0] += RETRY_DEADLINE_S + 1
+    assert await w.gw.retry_timeouts() == 1 and state(w) == "escalated"
