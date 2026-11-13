@@ -1356,3 +1356,12 @@ Seeded from reading the plan. Reply under each one.
   2/1/2 replicas; no cluster changes stored. No real live fault/model/notifier drill. Restart chaos, brain,
   gateway; rebuild production UI. Current ad/email/recommendation baseline is 1 replica, so their capacity
   reduction controls correctly stay unavailable until 2+; payment/checkout currently offer reduction to 1.
+
+- [M] 2026-11-14 for A,T: live memory test `inc-5198ce6253f6` asked at net-benefit, before autonomy
+  checks: one-replica surge rollout incorrectly charged 10535 s of startup as lost capacity. Fixed
+  `gateway/blast.py`: 1+ replicas with maxUnavailable=0 and positive maxSurge forecast no planned
+  capacity loss; zero/invalid surge and Recreate retain capacity cost. Both rule/model memory restores
+  now pass single-replica + healthy-critical-caller verification and notifier FYI regression. 949 tests
+  pass with tracked defaults, Ruff/mypy clean. Gateway restarted; live recommendation forecast 0 s,
+  MCP services healthy. No new live injection or Discord completion drill; prior fault was cleaned up
+  before its human approval, so that recovery was not Akira's repair.
