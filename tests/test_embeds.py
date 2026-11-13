@@ -230,3 +230,15 @@ def test_impact_lists_every_sick_service_with_numbers():
 
 def fields_of(card):
     return {f.label: f.body for f in card.fields}
+
+
+# live 2026-11-14: the retry FYI is built from the undone receipt; its push line said only "undid it"
+def test_retry_card_from_an_undone_receipt_says_it_tries_again():
+    from schemas.models import Receipt
+    r = Receipt(incident_id="inc-1", tool="rollback_deploy", target="payment", diff={"x": 1},
+                inverse={"op": "restore_template"}, evidence_ids=[], outcome="undone")
+    card = build_incident_card(INC, receipt=r, receipt_id=2, reason="did not recover",
+                               retry={"tries": [{"attempt": 1, "tool": "rollback_deploy", "target": "payment",
+                                                 "why_undone": "did not recover", "receipt_id": 2}], "max": 3, "next": 2})
+    assert card.status == "TRYING ANOTHER FIX" and card.level == "info"
+    assert card.headline == "payment: fix 1 of 3 did not work, so the agent undid it and is trying fix 2."

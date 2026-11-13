@@ -474,7 +474,10 @@ def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
         add("AI reading (not checked)", said)
 
     # summary always names the service, so the push line leads with it; service names stay lower case
-    if receipt is not None and receipt.outcome == "undo_failed":
+    if state == "TRYING ANOTHER FIX":  # before the undone line: the retry FYI is built from the undone receipt
+        headline = (f"{svc}: fix {retry['next'] - 1} of {retry.get('max')} did not work, so the agent undid it "
+                    f"and is trying fix {retry['next']}")
+    elif receipt is not None and receipt.outcome == "undo_failed":
         headline = f"{summary}. The agent could not undo its own change: act now"
     elif receipt is not None and receipt.outcome == "undone" and retry.get("stop") and len(retry.get("tries") or []) > 1:
         headline = f"{summary}. The agent tried {len(retry['tries'])} fixes; each failed and was undone"
@@ -490,9 +493,6 @@ def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
         headline = f"{svc} works again after a restart, but the cause is not fixed"
     elif state == "HANDED OFF":
         headline = f"{svc}: a person changed something, so the agent stepped back"
-    elif state == "TRYING ANOTHER FIX":
-        headline = (f"{svc}: fix {retry['next'] - 1} of {retry.get('max')} did not work, so the agent undid it "
-                    f"and is trying fix {retry['next']}")
     elif state == "NO ACTION":
         headline = f"{svc}: the agent took no action. {because or ''}"
     else:
