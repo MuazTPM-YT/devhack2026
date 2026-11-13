@@ -24,6 +24,10 @@ tools:
   scale:                {reversible: true, auto_eligible: true, min: 1, max: 3}
   raise_limit:          {reversible: true, auto_eligible: false, max_memory: 1Gi}
   enable_degraded_mode: {reversible: true, auto_eligible: true}
+autonomy:
+  # Exact journal inverses only: flag/env reverts or restoring a reduced replica count.
+  # No incident-time approval on these non-critical services; all other checks still run.
+  journal_reverts: [ad, email, recommendation]
 net_benefit:
   max_added_harm_seconds: 30       # per healthy critical service
   min_benefit_ratio: 2.0           # harm removed must be at least 2x harm added

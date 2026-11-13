@@ -42,6 +42,8 @@ def _mode(trust: dict) -> str:
 def _gate(trust: dict) -> str:
     if trust.get("approved_by"):
         return f"approved by {trust['approved_by']}"
+    if trust.get("autonomy_policy"):
+        return f"automatic; policy {trust['autonomy_policy']}"
     rehearsal, real = trust.get("rehearsal") or [0, 0], trust.get("real") or [0, 0]
     bound = trust.get("lower_bound")
     proven = f"; proven at least {bound:.0%}" if isinstance(bound, (int, float)) else ""

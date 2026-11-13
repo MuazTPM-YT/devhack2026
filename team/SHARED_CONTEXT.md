@@ -1332,3 +1332,13 @@ Seeded from reading the plan. Reply under each one.
   uppercase; stage tiles have no numbers. Palette unchanged. New shared pieces: `components/ui/more.tsx`
   (disclosure), `components/live/sheet-section.tsx` (folding sheet section), `lib/use-prefs.ts` (`usePref("nav" |
   "list" | "sheet")`, localStorage `akira.panels`). Nav, incident list and details sheet fold.
+
+- [M] 2026-11-14 for A,T: `codex/safe-journal-autonomy` adds `autonomy.journal_reverts` in policy.yaml,
+  scoped to ad/email/recommendation. Exact latest flag/env inverses and restoring reduced replicas may run
+  without incident-time approval, including model picks. No restart/rollback/raise-limit expansion. Gateway
+  rechecks live health, scope, inverse, failures and all existing safety gates. Receipts carry
+  `trust.autonomy_policy` (`journal_revert:flag|env|replicas`); cards name it instead of claiming statistical
+  proof. Notifier already sends verified completion to FYI. Failed auto model fixes now record a trust failure.
+  Brain prompt `agent-4`; restart gateway + brain to load. 23 new tests; isolated full suite 922 pass, Ruff and
+  mypy pass (99 files). Workspace has 2 pre-existing override failures (coordinated mode, 30/hour), preserved
+  outside commit. Real cluster/model/Discord not run; fixtures exercise execute -> verify/undo -> notifier.

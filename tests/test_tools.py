@@ -1,7 +1,152 @@
+import asyncio
+import copy
+import json
+
+import httpx
 import pytest
 
 from gateway.dryrun import RESTART_KEY
 from test_gateway import World, action
+
+
+def autonomous_world(tmp_path, kind):
+    from observer import journal
+    from test_flags import FlagCore, cm, flagd
+
+    w = World(tmp_path)
+    w.gw.policy = copy.deepcopy(w.gw.policy)
+    w.gw.policy["autonomy"] = {"journal_reverts": ["ad", "email", "recommendation"]}
+    w.apps.dep["metadata"]["name"] = "ad"
+    c = w.apps.dep["spec"]["template"]["spec"]["containers"][0]
+    c["name"], c["image"] = "ad", "ghcr.io/open-telemetry/demo:3.1.0-ad"
+    old = copy.deepcopy(w.apps.dep)
+    if kind == "flag":
+        w.core = FlagCore(flagd(ad="on"))
+        w.gw.core, w.gw.flag_map = w.core, {"adFailure": "ad", "paymentFailure": "payment"}
+        e = journal.entry("configmap", cm(flagd()), w.core.cm, 950.0, "flagd-config")
+    else:
+        if kind == "env":
+            c["env"] = [{"name": "MODE", "value": "broken"}]
+        else:
+            w.apps.dep["spec"]["replicas"] = 1
+        e = journal.entry("deployment", old, w.apps.dep, 950.0, "flagd-config")
+    w.obs.journal = [{**e, "id": 42, "by_agent": False, "field_manager": "chaos-panel"}]
+    w.conn.execute("UPDATE incidents SET culprit='ad', victims_json='[]'")
+    status = {"recovered": False, "prometheus_ok": True, "age": 0}
+
+    def observer(request):
+        if request.url.path == "/journal":
+            return w.obs(request)
+        w.now[0] += 5
+        return httpx.Response(200, json={"ts": w.now[0] - status["age"],
+            "prometheus_ok": status["prometheus_ok"], "severity": 0 if status["recovered"] else 4,
+            "services": {"ad": {"unhealthy": not status["recovered"],
+                                  "err_ratio": 0.0 if status["recovered"] else 0.4}}})
+
+    w.gw.http = httpx.AsyncClient(transport=httpx.MockTransport(observer))
+    w.gw.verify_every = 0
+    a = action(tool="scale" if kind == "replicas" else "revert_config", target="ad", journal_entry=42,
+               evidence_ids=["journal:42"], params={"replicas": 2} if kind == "replicas" else {},
+               prediction={"metric": "err_ratio", "target": "ad", "below": 0.05, "within_s": 90})
+    return w, a, status
+
+
+@pytest.mark.parametrize("kind", ["flag", "env", "replicas"])
+@pytest.mark.parametrize("origin", ["rule", "model"])
+async def test_autonomous_journal_revert_verifies_and_reports_without_approval(tmp_path, kind, origin):
+    from notifier.consumer import NotificationConsumer
+    from notifier.state import NotifierState
+
+    w, a, status = autonomous_world(tmp_path, kind)
+    d = await w.gw.submit({**a, "origin": origin})
+    assert d.decision == "executed"
+    assert "approval_requested" not in w.types()
+    status["recovered"] = True
+    assert await asyncio.wait_for(next(iter(w.gw.tasks)), 5) == "success"
+    receipt = w.gw.receipts.get(d.receipt_id)
+    assert receipt.trust["autonomy_policy"] == f"journal_revert:{kind}"
+    assert receipt.harm_clean and receipt.prediction_held
+    assert "automatic; policy journal_revert:" in w.events[-1]["payload"]["card"]["text"]
+
+    class ReportOnly:
+        reports = []
+
+        async def fyi(self, card, url, details=None):
+            self.reports.append((card, url))
+
+    notifier = ReportOnly()
+    consumer = NotificationConsumer(w.gw.http, "http://gw", notifier, NotifierState(tmp_path / "notify.db"))
+    await consumer.handle({"seq": 1, "event": w.events[-1]})
+    assert len(notifier.reports) == 1 and notifier.reports[0][1] == f"http://gw/receipts/{d.receipt_id}"
+    assert not consumer.state.get("wakes", {})
+
+
+@pytest.mark.parametrize("blocker", ["disabled", "critical", "runbook", "failure", "stale", "wrong_count",
+                                    "mixed_flags", "no_prediction", "wrong_prediction", "older_change",
+                                    "protected", "budget", "human_change", "no_inverse", "in_flight", "major"])
+async def test_autonomous_reverts_keep_approval_for_unsafe_cases(tmp_path, blocker):
+    from gateway import trust
+    from test_flags import flagd
+
+    kind = "replicas" if blocker == "wrong_count" else "flag"
+    w, a, status = autonomous_world(tmp_path, kind)
+    if blocker == "disabled":
+        w.gw.policy.pop("autonomy")
+    elif blocker == "critical":
+        w.gw.services = {**w.gw.services, "ad": {**w.gw.services["ad"], "critical": True}}
+    elif blocker == "runbook":
+        w.gw.books = [{"id": "ASK", "title": "Ask", "steps": ["Ask"], "require_approval": True}]
+    elif blocker == "failure":
+        trust.record(w.conn, "recent_change", "revert_config", "ad", "real", False, 999)
+    elif blocker == "stale":
+        status["age"] = 60
+    elif blocker == "wrong_count":
+        a["params"] = {"replicas": 3}
+    elif blocker == "mixed_flags":
+        from observer import journal
+        from test_flags import cm
+        w.core.cm = cm(flagd(payment="50%", ad="on"))
+        e = journal.entry("configmap", cm(flagd()), w.core.cm, 950.0, "flagd-config")
+        w.obs.journal = [{**e, "id": 42}]
+    elif blocker == "no_prediction":
+        a["prediction"] = None
+    elif blocker == "wrong_prediction":
+        a["prediction"]["target"] = "payment"
+    elif blocker == "older_change":
+        newer = {**copy.deepcopy(w.obs.journal[0]), "id": 43, "ts": 955}
+        w.obs.journal.append(newer)
+        a["origin"] = "model"
+    elif blocker == "protected":
+        w.gw.services = {**w.gw.services, "ad": {**w.gw.services["ad"], "protected": True}}
+    elif blocker == "budget":
+        w.gw.policy["budgets"]["max_actions_per_incident"] = 0
+    elif blocker == "human_change":
+        w.obs.journal.append({**w.obs.journal[0], "id": 43, "ts": 1001, "field_manager": "kubectl"})
+    elif blocker == "no_inverse":
+        w.obs.journal[0]["inverse"] = []
+    elif blocker == "in_flight":
+        a["origin"] = "model"
+        w.conn.execute("INSERT INTO receipts (incident_id, ts, outcome) VALUES ('another', 1000, 'pending')")
+    elif blocker == "major":
+        w.conn.execute("UPDATE incidents SET major=1")
+    d = await w.gw.submit(a)
+    assert d.decision == ({"protected": "escalated", "budget": "escalated", "human_change": "handed_off",
+                           "no_inverse": "refused", "in_flight": "refused"}.get(blocker, "awaiting_approval"))
+    assert w.conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0] == (1 if blocker == "in_flight" else 0)
+
+
+async def test_autonomous_model_failure_undoes_and_suspends_next_attempt(tmp_path):
+    from gateway import trust
+
+    w, a, _ = autonomous_world(tmp_path, "flag")
+    d = await w.gw.submit({**a, "origin": "model"})
+    assert d.decision == "executed"
+    assert await asyncio.wait_for(next(iter(w.gw.tasks)), 5) == "undone"
+    assert json.loads(w.core.cm["data"]["demo.flagd.json"])["flags"]["adFailure"]["defaultVariant"] == "on"
+    assert trust.counts(w.conn, "recent_change", "revert_config", "ad")["real"] == (0, 1)
+    assert w.types()[-1] == "escalated"
+    w.conn.execute("UPDATE incidents SET state='open'")
+    assert (await w.gw.submit(a)).decision == "awaiting_approval"
 
 
 async def run_tool(tmp_path, **over):

@@ -290,8 +290,7 @@ class Gateway:
             used = {**used, "hour": 0}
         protected = bool(self.services.get(action.target, {}).get("protected"))
         # these can only end in an approval request, so an action still verifying doesn't block them
-        # a fix the model chose itself (not the rule's first pick) goes to a human, except a granted retry
-        # (Muaz chose): it still meets every other check, the trust gate included
+        # model picks normally ask; step 7 can authorize a narrow journal inverse or a granted retry
         chosen_by_model = action.origin == "model"
         ask_model = chosen_by_model and retry is None
         asking = not approved and (self.policy["tools"][action.tool]["auto_eligible"] is False or protected
@@ -351,8 +350,7 @@ class Gateway:
                                             self.flag_map)
         # only "recent change" points at a journal entry; other patterns must not trip on unrelated edits
         rule_now: tuple[str, int | None]
-        # nor a fix the model chose: it is allowed to differ from the rule, and a human reviews it anyway.
-        # Still-sick and still-live are checked for it like for any other action
+        # model picks can differ from the rule; auto authorization below independently requires the latest entry
         if action.pattern == "recent_change" and not chosen_by_model:
             rule_now = (action.pattern, latest["id"] if latest else None)
         else:
@@ -383,6 +381,13 @@ class Gateway:
         with self.lock:
             gate = trust.check(self.conn, self.policy["trust"], self.policy["tools"][action.tool], action.pattern,
                                action.tool, action.target, kind)
+        auto_policy = None if row.get("major") else policy.journal_revert(
+            action.model_dump(), self.services, self.policy, entry, latest, plan, health, gate,
+            self.clock(), self.flag_map)
+        if auto_policy and not approved and asking:
+            ok, outcome, reason = policy.check(action.model_dump(), self.services, self.policy, used)
+            if not ok:
+                return await self.stop(action, row, steps, "policy", outcome, reason)
         if not approved and needs_human:
             return await self.ask(action, row, steps, plan, f"runbook {', '.join(needs_human)} requires a human "
                                                             "to approve this action", gate)
@@ -397,14 +402,17 @@ class Gateway:
             if not (action.pattern == "recent_change" and shared and action.journal_entry == shared["id"]):
                 return await self.ask(action, row, steps, plan, "major incident: a human approves every action "
                                                                 "except reverting the shared change", gate)
-        if not approved and ask_model:
+        if not approved and ask_model and not auto_policy:
             return await self.ask(action, row, steps, plan, "the agent chose this fix itself, not the rule's "
                                                             "first pick; a human must approve", gate)
         if not approved:
-            if not gate["open"]:
+            if not gate["open"] and not auto_policy:
                 return await self.ask(action, row, steps, plan, f"trust bound {gate['lower_bound']} < {gate['bar']}",
                                       gate)
-            await self.step(action.incident_id, steps, "trust_gate", True, f"bound {gate['lower_bound']}")
+            if auto_policy:
+                gate = {**gate, "autonomy_policy": auto_policy}
+            await self.step(action.incident_id, steps, "trust_gate", True,
+                            f"policy {auto_policy}" if auto_policy else f"bound {gate['lower_bound']}")
 
         # 8 execute
         return await self.execute(action, row, steps, plan, {**gate, "approved_by": approved_by, "pattern": action.pattern,
@@ -468,7 +476,7 @@ class Gateway:
         hashes = spec_hashes(list_json(self.apps.list_namespaced_deployment), list_json(self.core.list_namespaced_config_map))
         pod_objs = [p for p in list_json(self.core.list_namespaced_pod) if service_of(p) == target]
         pods = [p["metadata"]["name"] for p in pod_objs]
-        return {"live": live, "patch": patch, "diff": diff, "summary": patch["summary"], "hashes": hashes,
+        return {"live": live, "after": dry, "patch": patch, "diff": diff, "summary": patch["summary"], "hashes": hashes,
                 "pods": pods, "replicas": live["spec"].get("replicas", 1), "inverse": inverse,
                 "surge": blast.surge_ok(live), "startup_s": blast.startup_seconds(pod_objs),
                 "declared": f"deployment/{target}"}

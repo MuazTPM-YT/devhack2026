@@ -4,11 +4,24 @@ Update this file at the end of every session. Newest facts on top of each
 section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
-**Last updated:** 2026-11-13
+**Last updated:** 2026-11-14
 **Current phase:** retries + Discord origin on `muaz/agent-polish` (not pushed); live run pending
 **Branches:** all merged up to PR #38. Now `muaz/agent-polish` (not pushed)
 
 ## Done (with proof)
+
+- Safe autonomous journal reverts, `codex/safe-journal-autonomy` (2026-11-14). User approved a quick subset:
+  `config/policy.yaml` `autonomy.journal_reverts: [ad, email, recommendation]` allows exact flag/env inverses
+  and restoring a reduced replica count without incident-time approval or 29 trust runs. Gateway checks
+  explicit non-critical stateless scope, latest journal entry, fresh Prometheus health (3 polls), prediction,
+  exact inverse and no ledger failures; runbook, major, protected, budget and in-flight gates remain.
+  Model choices can qualify. Receipt/card names the policy; normal notifier FYI reports verified success.
+  Failed autonomous model fixes now debit trust too, so undo + escalation suspends the next auto attempt.
+  Prompt version `agent-4`. No new dependency. Proof: 23 new checks; full isolated suite with tracked config
+  defaults `922 passed` (19.84 s), Ruff clean, mypy clean (99 files), graphify updated. Workspace suite:
+  920 passed, 2 failures from existing local overrides (orchestration coordinated, hourly budget 30).
+  Local overrides preserved, excluded from commit. Sandbox async thread wakeups stall; tests pass outside.
+  Real cluster, model and Discord NOT run. Restart gateway + brain to load the new policy/prompt.
 
 - Live runs 2026-11-13/14 on k3d `oncall` (same branch). Found and fixed, each with a test that failed first:
   notifier bot died on a Discord 503 at connect and stayed up silent (`fdf7e7a`: reconnect 5 times, then stop

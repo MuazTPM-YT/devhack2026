@@ -85,7 +85,7 @@ class ActionRequest(Model):
     prediction: Prediction | None = None
     journal_entry: int | None = None
     # who picked the fix: the rule's first candidate, or the model (another candidate or its own proposal).
-    # Set by brain code, never by the model; the gateway asks a human for every "model" action
+    # Set by brain code; gateway checks policy before allowing a model choice to run alone
     origin: Literal["rule", "model"] = "rule"
 
 

@@ -1,8 +1,55 @@
 # checklist step 3 (IMPLEMENTATION.md §6.4.2): tool, target, budgets, nothing in flight. Pure.
+import math
 import sqlite3
 import time
 
 from brain.rules import to_bytes
+from observer import journal
+
+
+# authorize exact recent-change inverses; model origin never supplies permission
+def journal_revert(action: dict, services: dict, cfg: dict, entry: dict | None, latest: dict | None,
+                   plan: dict, health: dict, gate: dict, now: float, flag_map: dict) -> str | None:
+    target, tool = action["target"], action["tool"]
+    svc = services.get(target, {})
+    tool_cfg = cfg["tools"][tool]
+    if (target not in cfg.get("autonomy", {}).get("journal_reverts", [])
+            or not svc.get("actable") or svc.get("critical") is not False or svc.get("protected")
+            or svc.get("kind") != "stateless" or tool_cfg.get("auto_eligible") is not True
+            or tool_cfg.get("reversible") is not True or gate["failures"]
+            or action["pattern"] != "recent_change" or not action.get("prediction")
+            or action["prediction"]["target"] != target):
+        return None
+    stamp = health.get("ts")
+    if (health.get("prometheus_ok") is not True or not isinstance(stamp, (int, float))
+            or not math.isfinite(stamp) or not 0 <= now - stamp <= 3 * cfg["detection"]["poll_seconds"]):
+        return None
+    if (not entry or not latest or entry["id"] != latest["id"] or entry.get("by_agent") is not False
+            or f"journal:{entry['id']}" not in action["evidence_ids"]
+            or plan["inverse"].get("op") not in ("restore_configmap", "restore_template", "scale")):
+        return None
+    changes = entry.get("diff") or {}
+    expected = {p: {"old": v["new"], "new": v["old"]} for p, v in changes.items()}
+    if not expected:
+        return None
+    kind = entry["kind"]
+    if tool == "revert_config" and not action["params"]:
+        if kind == "flag" and entry["object"] == "configmap/flagd-config":
+            if (plan["diff"] == expected and all(p.startswith("flags[") and p.endswith("].defaultVariant")
+                    and flag_map.get(p[len("flags["):].split("]", 1)[0]) == target for p in changes)):
+                return "journal_revert:flag"
+        if kind == "env" and entry["object"] == f"deployment/{target}":
+            moved = journal.entry("deployment", plan["live"], plan["after"], now, "flagd-config")
+            if (moved and moved["diff"] == expected
+                    and all(p.startswith("containers[") and p.endswith("].env") for p in changes)):
+                return "journal_revert:env"
+    if (tool == "scale" and kind == "replicas" and entry["object"] == f"deployment/{target}"
+            and set(changes) == {"replicas"} and plan["diff"] == expected
+            and action["params"] == {"replicas": changes["replicas"]["old"]}
+            and changes["replicas"]["new"] < changes["replicas"]["old"]
+            and plan["inverse"].get("op") == "scale"):
+        return "journal_revert:replicas"
+    return None
 
 
 def usage(conn: sqlite3.Connection, incident_id: str, now: float | None = None) -> dict[str, int]:

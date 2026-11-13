@@ -238,9 +238,9 @@ async def close(self: "Gateway", receipt_id: int, action: ActionRequest, row: di
         self.conn.execute("UPDATE receipts SET outcome=?, hash_after=? WHERE id=?",
                           (outcome, hash_after, receipt_id))
         # real success needs a human's yes (§6.4.6); a failure always counts; the bench credits rehearsals.
-        # The ledger is the rule's record: a fix the model chose earns and costs it nothing
+        # model fixes normally skip the ledger; an authorized auto-fix failure must close its gate too
         if (effect is not None and by != approvals.REHEARSAL_APPROVER and (by or not effect)
-                and action.origin != "model"):
+                and (action.origin != "model" or receipt.trust.get("autonomy_policy"))):
             trust.record(self.conn, action.pattern, action.tool, action.target, "real", effect, self.clock())
         self.conn.commit()
     # fixes run in this incident, this one included (follow-ups count: they share the per-incident budget)
