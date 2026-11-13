@@ -48,8 +48,46 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         result["token_totals"] = {key: sum(usage.get(key, 0) for usage in usages)
                                   for key in sorted({key for usage in usages for key in usage})}
         result["billing"] = "subscription; token counts are not cash charges"
+        result["orchestration"] = orchestration(scenario, trials)
         summary[scenario] = result
     return summary
+
+
+# coordinated-mode figures; zero samples for single-agent rows. Low delegation can be right: no target rate
+def orchestration(scenario: str, trials: list[dict[str, Any]]) -> dict[str, Any]:
+    from bench.harness import EXPECTED_INCIDENTS
+
+    opened = [row["incidents_opened"] for row in trials if row.get("incidents_opened")]
+    calls = [row["model_calls"] for row in trials if row.get("model_calls") is not None]
+    denied: Counter[str] = Counter()
+    for row in trials:
+        denied.update(row.get("delegation_denied") or {})
+    expected = EXPECTED_INCIDENTS.get(scenario)
+    starts = sum(row.get("specialist_starts") or 0 for row in trials)
+    out: dict[str, Any] = {
+        "modes": dict(Counter(row.get("mode") or "unlabelled" for row in trials)),
+        "grouping_samples": len(opened),
+        "grouping_exact": (sum(n == expected for n in opened) / len(opened)) if opened and expected else None,
+        "specialist_starts": starts,
+        "delegation_denied": dict(denied),
+        "evidence_reused": sum(row.get("evidence_reused") or 0 for row in trials),
+        "model_calls": {"samples": len(calls), "median": statistics.median(calls) if calls else None,
+                        "worst": max(calls) if calls else None},
+    }
+    for metric in ("queue_wait_s", "approval_wait_s"):
+        values = sorted(row[metric] for row in trials if row.get(metric) is not None)
+        out[metric] = {"samples": len(values), "p50": statistics.median(values) if values else None,
+                       "p95": values[min(len(values) - 1, math.ceil(0.95 * len(values)) - 1)] if values else None}
+    # release gates (handoff §12): every current scenario is a clear single fault, so no specialist may start
+    out["gates"] = {"no_unneeded_specialists": starts == 0,
+                    "within_request_budget": all(n <= 9 for n in calls)}
+    return out
+
+
+# same-budget comparison: one summary per --mode label
+def summarize_by_mode(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    modes = sorted({row.get("mode") or "unlabelled" for row in rows})
+    return {mode: summarize([row for row in rows if (row.get("mode") or "unlabelled") == mode]) for mode in modes}
 
 
 def compare(agent_rows: list[dict[str, Any]], manual_rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -72,18 +110,24 @@ def load_rows(path: Path) -> list[dict[str, Any]]:
             row = json.loads(line)
             if not isinstance(row, dict) or not isinstance(row.get("scenario"), str) or not row["scenario"].strip():
                 raise ValueError
-            for field in ("detect_s", "diagnose_s", "recover_s", "forecast_s", "actual_added_s"):
+            for field in ("detect_s", "diagnose_s", "recover_s", "forecast_s", "actual_added_s", "queue_wait_s",
+                          "approval_wait_s"):
                 value = row.get(field)
                 if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or value < 0):
                     raise ValueError
-            for field in ("blocked", "failed_customer_requests"):
+            for field in ("blocked", "failed_customer_requests", "incidents_opened", "specialist_starts",
+                          "evidence_reused", "model_calls"):
                 value = row.get(field)
                 if value is not None and (type(value) is not int or value < 0):
                     raise ValueError
             for field in ("diagnosis_correct", "wake", "should_wake", "harm_clean", "prediction_held"):
                 if row.get(field) is not None and type(row[field]) is not bool:
                     raise ValueError
-            for field in ("source", "outcome"):
+            denied = row.get("delegation_denied")
+            if denied is not None and (not isinstance(denied, dict) or any(
+                    type(v) is not int or v < 0 for v in denied.values())):
+                raise ValueError
+            for field in ("source", "outcome", "mode"):
                 if row.get(field) is not None and not isinstance(row[field], str):
                     raise ValueError
             usage = row.get("usage")
@@ -104,8 +148,12 @@ def main():
     parser.add_argument("path", type=Path)
     parser.add_argument("--manual", type=Path)
     parser.add_argument("--output-dir", type=Path, help="Write JSON, CSV, Markdown, and SVG reports")
+    parser.add_argument("--by-mode", action="store_true", help="One summary per --mode label (A/B)")
     args = parser.parse_args()
     rows = load_rows(args.path)
+    if args.by_mode:
+        print(json.dumps(summarize_by_mode(rows), indent=2, allow_nan=False))
+        return
     if args.manual:
         manual = load_rows(args.manual)
         result = compare(rows, manual)

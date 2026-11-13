@@ -1,11 +1,44 @@
 # Twaha [T]: state
 
 **Last updated:** 2026-11-13
-**Current phase:** Chaos Lab + agent chooses the fix, offline checks done, live check done (2 runs)
-**Branch:** `twaha/chaos-lab` off `origin/main` `88d0ef7` (PR #43 merged), not pushed
+**Current phase:** Orchestration P0-P8 coded on `twaha/orchestration`, offline checks only, off by default
+**Branch:** `twaha/orchestration` off `origin/main` `7c6d808`, 14 commits, not pushed
 **Implementation:** PRs #8, #12, #15, #43 merged
 
 ## Done (with proof)
+
+- Orchestration (`twaha/orchestration`), from `reports/akira-orchestration-implementation-handoff.md`.
+  Plan: `~/.claude/plans/read-reports-akira-orchestration-impleme-cheeky-sparrow.md`. Twaha OK'd edits in
+  M's and A's files. `config/orchestration.yaml` `mode: disabled`: legacy path unchanged.
+  - P0 contracts `schemas/orchestration.py` (policy checked at start, typo fails loud). P1 migrations
+    `schemas/migrations.py` (v1-v3, only by CLI with `--backup`; services `require()`), `schemas/workspace.py`,
+    `brain/evidence.py` (shared read cache, snapshot-pinned `query:` ids, `journal:N` kept).
+  - P2 `observer/episodes.py` + `/signals`; `brain/correlation.py` (shared dependency / single shared change
+    only; timing alone never groups; missing topology = link). Shadow writes only `shadow_decisions`.
+  - P3 `brain/coordinator.py`: one incident per cause, commander = existing diagnosis under persisted
+    deadline, outbox + gateway `event_id` dedupe, restart recovery (fixes the "brain restart leaves incident
+    open 20 min" case in coordinated mode), lease, queue/max-age escalation.
+  - P4 `gateway/intents.py`: intent persisted before the write, `execution_unknown` never replayed/undone,
+    approver clears; busy slot queues; old-plan approval -> `superseded`; scoped early abort and harm.
+  - P5 `brain/delegation.py`, `brain/specialists.py`, `brain/budget.py`: change_causality specialist only,
+    code gate, durable per-call budget, commander reserve, SDK retries 0 in coordinated mode.
+  - P6 gateway `orchestration` on incident reads, MCP report, shell lines, UI Investigation panel + specialist
+    node. P7 bench metrics, `--mode`, `--by-mode`, gates. P8 `experience_records`.
+  - Proof: `uv run pytest` 850 passed, 1 failed = local budget 30 (`test_policy`); Ruff clean; mypy clean
+    93 files. UI: `tsc --noEmit` clean; `next build` OK; 65 `node:test` pass via compile step (`npm test`
+    still fails on this host's Node 22.22.1 for `.ts` loading, not a test).
+  - Live 2026-11-14, PR #50 (results comment there): live DB migrated (backup `data/oncall.db.bak-1794593888`).
+    disabled/shadow/coordinated/delegation runs on k3d all resolved after fixes; 6 bugs found live and fixed
+    (token charge, restart lease, tool count, phase, same-cause replan, specialist session header). Clean HEAD:
+    858 passed. Stack left in default mode; notifier cursor moved to 1518 to skip test events.
+    Open: specialist needs 3 requests live (cap 2), Twaha to decide.
+  - Earlier NOT done (now partly done above): live bench A/B, token
+    limits (delegation cannot be enabled until set), new chaos scenarios for shared-dependency /
+    decoy / two-fault bench, cross-process integration test (brain coordinator against a real gateway app).
+  - Needs Twaha review before merge: approval `superseded` + stale-plan refusal (P4); unattributed harm
+    after recovery keeps the fix and pages, no trust (P4, `gateway/checklist.py` verify).
+  - ASSUMED: config in `config/orchestration.yaml` (policy.yaml holds the local-only edit); repository in
+    `schemas/workspace.py`; UI uses SSE replay only (no snapshot fetch), one Investigation panel not three.
 
 - Chaos Lab + agent upgrade (`twaha/chaos-lab`), from `reports/akira-ui-chaos-panel-review.md`.
   Plan: `~/.claude/plans/i-want-you-to-floating-wand.md`. Twaha OK'd edits in A's and M's files.

@@ -175,3 +175,40 @@ test("resolved keeps whether the fix was proven", () => {
   assert.equal(closed(false), false);
   assert.equal(closed(undefined), null);
 });
+
+test("orchestration events build the investigation view; old incidents have none", () => {
+  const legacy = run(rec("incident_opened", { unhealthy: ["payment"] }, "inc-old"));
+  assert.equal(legacy.incidents["inc-old"].orch, null);
+  const s = run(
+    rec("incident_opened", { unhealthy: ["cart", "checkout"] }, "inc-o"),
+    rec("incident_scope_changed", { scope_revision: 0, services: ["cart", "checkout"], reasons: ["shared_dependency"] }, "inc-o"),
+    rec("delegation_decided", { status: "admitted", explanation: "Change check started" }, "inc-o"),
+    rec("investigation_task_changed", { task_id: "t1", question_id: "q1", state: "running", attempt: 1 }, "inc-o"),
+    rec("llm_called", { kind: "call", task_id: "t1", usage: { prompt_tokens: 100, completion_tokens: 20 } }, "inc-o"),
+    rec("investigation_task_changed", { task_id: "t1", question_id: "q1", state: "succeeded", attempt: 1 }, "inc-o"),
+    rec("finding_recorded", { task_id: "t1", verdict: "supported", summary: "image change did it" }, "inc-o"),
+    rec("evidence_reused", { query_key: "k", source: "cache", age_s: 2 }, "inc-o"),
+    rec("llm_called", { kind: "call", usage: { prompt_tokens: 50, completion_tokens: 5 } }, "inc-o"),
+    rec("llm_called", { kind: "summary", usage: { requests: 9, prompt_tokens: 999 } }, "inc-o"),
+    rec("action_intent_changed", { intent_id: "int-1", status: "queued", plan_revision: 1 }, "inc-o"),
+    rec("action_intent_changed", { intent_id: "int-1", status: "awaiting_approval", plan_revision: 1 }, "inc-o"),
+  );
+  const inc = s.incidents["inc-o"];
+  const o = inc.orch!;
+  assert.deepEqual(o.services, ["cart", "checkout"]);
+  assert.equal(o.delegation[0].explanation, "Change check started");
+  assert.equal(o.tasks.t1.state, "succeeded");
+  assert.deepEqual(o.findings, [{ verdict: "supported", summary: "image change did it" }]);
+  assert.equal(o.reusedReads, 1);
+  // per-call events count once; the run summary after them does not add its 9 again
+  assert.equal(o.modelCalls, 2);
+  assert.equal(inc.llmCalls, 2);
+  assert.equal(o.tokensIn + o.tokensOut, 175);
+  assert.equal(o.intents["int-1"].status, "awaiting_approval");
+});
+
+test("old run summaries without kind still count their requests", () => {
+  const s = run(rec("llm_called", { usage: { requests: 4 } }, "inc-legacy"));
+  assert.equal(s.incidents["inc-legacy"].llmCalls, 4);
+  assert.equal(s.incidents["inc-legacy"].orch, null);
+});

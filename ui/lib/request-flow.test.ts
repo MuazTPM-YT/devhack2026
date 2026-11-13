@@ -149,3 +149,28 @@ test("the diagnosis says who chose the fix", () => {
   const no = describe(ev("diagnosis_ready", { ...base, decision: "decline", origin: null, chosen: null, reason: "Evidence too thin." }));
   assert.deepEqual([no.title, no.detail, no.tone], ["Agent declined to act", "Evidence too thin.", "warn"]);
 });
+
+test("specialist work is drawn on the specialist, not the brain", () => {
+  const ev = (type: string, payload: Record<string, unknown>, seq = 1): IncidentEvent => ({ seq, ts: seq, type, payload });
+  assert.deepEqual(pathOf(ev("llm_called", { kind: "call", task_id: "t1" }), null), ["specialist", "llm", "specialist"]);
+  assert.deepEqual(pathOf(ev("llm_called", { kind: "call" }), null), ["brain", "llm", "brain"]);
+  assert.deepEqual(pathOf(ev("llm_called", { kind: "summary" }), null), ["brain"]);
+  assert.deepEqual(pathOf(ev("tool_called", { tool: "get_pods", task_id: "t1" }), null), ["specialist"]);
+  assert.deepEqual(pathOf(ev("delegation_decided", { status: "admitted" }), null), ["brain", "specialist"]);
+  assert.deepEqual(pathOf(ev("delegation_decided", { status: "none_needed" }), null), ["brain"]);
+  assert.deepEqual(pathOf(ev("finding_recorded", {}), null), ["specialist", "brain"]);
+  assert.equal(failedAt(ev("investigation_task_changed", { state: "timed_out" })), "specialist");
+  assert.equal(failedAt(ev("action_intent_changed", { status: "execution_unknown" })), "k8s");
+});
+
+test("orchestration events read as sentences", () => {
+  const ev = (type: string, payload: Record<string, unknown>): IncidentEvent => ({ seq: 1, ts: 1, type, payload });
+  assert.equal(describe(ev("delegation_decided", { status: "none_needed",
+    explanation: "No specialist needed: shared cause valkey-cart already supported" })).title,
+  "No specialist needed: shared cause valkey-cart already supported");
+  const unknown = describe(ev("action_intent_changed", { intent_id: "int-1", status: "execution_unknown", reason: "check" }));
+  assert.equal(unknown.tone, "bad");
+  assert.equal(unknown.title, "Fix execution unknown");
+  assert.equal(describe(ev("llm_called", { kind: "call", task_id: "t1", usage: { prompt_tokens: 10 } })).title,
+    "Specialist model request");
+});

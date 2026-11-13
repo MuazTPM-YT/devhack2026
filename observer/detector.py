@@ -37,29 +37,9 @@ class Detector:
 
     # one poll: readings {svc: {err_ratio, p95_ms}}, baselines {svc: p95_ms}, bad_pods {svc: count} from kube watch
     def tick(self, now: float, readings: dict, baselines: dict, bad_pods: dict) -> tuple[dict, tuple | None]:
-        services = {}
-        for svc in sorted(set(readings) | set(bad_pods)):
-            r = readings.get(svc, {})
-            err, p95, base = r.get("err_ratio"), r.get("p95_ms"), baselines.get(svc)
-            breaching = (err is not None and err > self.err_threshold) or (
-                # a few-ms baseline doubles on noise; also need a real absolute jump
-                p95 is not None and base is not None and p95 > self.latency_multiplier * base
-                and p95 - base >= self.latency_floor_ms)
-            if breaching:
-                self.first_breach.setdefault(svc, now)
-            else:
-                self.first_breach.pop(svc, None)
-            first = self.first_breach.get(svc)
-            pods = bad_pods.get(svc, 0)
-            sustained = first is not None and now - first >= self.sustain_s
-            services[svc] = {"err_ratio": err, "p95_ms": p95, "baseline_p95_ms": base, "breaching": breaching,
-                             "first_breach_ts": first, "bad_pods": pods, "unhealthy": sustained or pods > 0}
-
+        health = self.assess(now, readings, baselines, bad_pods)
+        services, severity = health["services"], health["severity"]
         unhealthy = sorted(s for s, v in services.items() if v["unhealthy"])
-        # ponytail: "open alerts" read as unhealthy services; swap in real alert count if one appears
-        severity = (3 * sum(v["breaching"] for v in services.values())
-                    + 2 * sum(v["bad_pods"] for v in services.values()) + len(unhealthy))
-        health = {"ts": now, "severity": severity, "services": services}
 
         self.suppressed &= set(unhealthy)  # a service that recovered may open an incident again
         fresh = [s for s in unhealthy if s not in self.suppressed]
@@ -83,6 +63,32 @@ class Detector:
                 self.incident["unhealthy"] = sorted(self.incident["unhealthy"] + new)
                 return health, ("alerts_grouped", dict(self.incident))
         return health, None
+
+    # per-service health and severity for one poll; keeps breach start times, owns no incident
+    def assess(self, now: float, readings: dict, baselines: dict, bad_pods: dict) -> dict:
+        services = {}
+        for svc in sorted(set(readings) | set(bad_pods)):
+            r = readings.get(svc, {})
+            err, p95, base = r.get("err_ratio"), r.get("p95_ms"), baselines.get(svc)
+            breaching = (err is not None and err > self.err_threshold) or (
+                # a few-ms baseline doubles on noise; also need a real absolute jump
+                p95 is not None and base is not None and p95 > self.latency_multiplier * base
+                and p95 - base >= self.latency_floor_ms)
+            if breaching:
+                self.first_breach.setdefault(svc, now)
+            else:
+                self.first_breach.pop(svc, None)
+            first = self.first_breach.get(svc)
+            pods = bad_pods.get(svc, 0)
+            sustained = first is not None and now - first >= self.sustain_s
+            services[svc] = {"err_ratio": err, "p95_ms": p95, "baseline_p95_ms": base, "breaching": breaching,
+                             "first_breach_ts": first, "bad_pods": pods, "unhealthy": sustained or pods > 0}
+
+        unhealthy = [s for s, v in services.items() if v["unhealthy"]]
+        # ponytail: "open alerts" read as unhealthy services; swap in real alert count if one appears
+        severity = (3 * sum(v["breaching"] for v in services.values())
+                    + 2 * sum(v["bad_pods"] for v in services.values()) + len(unhealthy))
+        return {"ts": now, "severity": severity, "services": services}
 
     # brain/gateway closed it (resolved, escalated, handed off). Its services stay quiet until they recover,
     # otherwise an escalated, still-broken service re-pages every poll

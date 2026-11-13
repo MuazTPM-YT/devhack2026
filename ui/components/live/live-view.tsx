@@ -9,7 +9,9 @@ import { Tag } from "@/components/ui/tag";
 import { clock, duration, words } from "@/lib/format";
 import type { Incident } from "@/lib/live";
 import { useLiveContext } from "@/lib/live-context";
+import { modeLabel } from "@/lib/orchestration";
 import { incidentStatus, verdict } from "@/lib/overview";
+import { useOrchestrationStatus } from "@/lib/use-orchestration";
 import { useNow } from "@/lib/use-now";
 import { useReceipt } from "@/lib/use-receipt";
 
@@ -19,6 +21,7 @@ import { Checklist } from "./checklist";
 import { Evidence } from "./evidence";
 import { FlowMap } from "./flow-map";
 import { IncidentList, IncidentSelect, statusTag, who } from "./incident-list";
+import { Investigation } from "./investigation";
 import { Outcome } from "./outcome";
 import { Severity } from "./severity";
 import sheet from "./sheet.module.css";
@@ -45,6 +48,7 @@ function IncidentBody({ incident, demo, list, picker }: {
   incident: Incident | null; demo: boolean; list: ReactNode; picker: ReactNode;
 }) {
   const { policy, link, replay } = useLiveContext();
+  const mode = modeLabel(useOrchestrationStatus(link !== "demo"));
   const [selected, setSelected] = useState<number | null>(null);
   const open = incident != null && incident.outcome == null;
   const now = useNow(open);
@@ -61,6 +65,7 @@ function IncidentBody({ incident, demo, list, picker }: {
         title={headline(incident, elapsed)}
         aside={<>
           <span className={styles.picker}>{picker}</span>
+          {mode && <Tag tone={mode.tone} title={mode.title}>{mode.label}</Tag>}
           {status && <Tag tone={statusTag(incident, status).tone}>{statusTag(incident, status).label}</Tag>}
           {link === "demo" && <button type="button" className="btn" onClick={replay}>Replay demo</button>}
         </>}
@@ -88,6 +93,7 @@ function IncidentBody({ incident, demo, list, picker }: {
           <aside className={`${sheet.sheet} ${styles.sheet}`} aria-label="Incident details">
             <Outcome incident={incident} receipt={receipt} />
             <Approval incident={incident} now={now} />
+            <Investigation incident={incident} />
             <Severity incident={incident} receipt={receipt} />
             <Checklist incident={incident} />
             <Blast incident={incident} />

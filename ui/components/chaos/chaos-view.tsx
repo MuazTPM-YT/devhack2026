@@ -9,6 +9,8 @@ import { experiments, groundTruth, registry as loadRegistry, resetShop, revealEx
 import { clock } from "@/lib/format";
 import { type Experiment, OPEN, type Registry, runState, telemetry } from "@/lib/lab";
 import { useLiveContext } from "@/lib/live-context";
+import { modeLabel } from "@/lib/orchestration";
+import { useOrchestrationStatus } from "@/lib/use-orchestration";
 import { useNow } from "@/lib/use-now";
 
 import { ActiveRun } from "./active-run";
@@ -23,7 +25,8 @@ const REGISTRY_MS = 15000;
 
 // the judge's workspace: compose a bounded fault, watch Akira respond, stop it, reveal it
 export function ChaosView() {
-  const { state, observer, policy } = useLiveContext();
+  const { state, observer, policy, link } = useLiveContext();
+  const mode = modeLabel(useOrchestrationStatus(link !== "demo"));
   const now = useNow(true, 2000);
   const [reg, setReg] = useState<Registry | null>(null);
   const [runs, setRuns] = useState<Experiment[] | null>(null);
@@ -65,12 +68,16 @@ export function ChaosView() {
 
   const tele = telemetry(observer.health, observer.error, now);
   const openRun = runs?.find((r) => OPEN.includes(r.status)) ?? null;
-  const labRun = runs?.find((r) => OPEN.includes(r.status) && !r.legacy) ?? null;
-  const shown = openRun ?? runs?.find((r) => r.status !== "rejected") ?? null;
+  const labRuns = runs?.filter((r) => OPEN.includes(r.status) && !r.legacy) ?? [];
+  // the chaos config sets how many faults may run at once (compound faults when above 1)
+  const full = labRuns.length >= (reg?.limits.max_active ?? 1);
+  const openRuns = runs?.filter((r) => OPEN.includes(r.status)) ?? [];
+  const shownRuns = openRuns.length ? openRuns : [runs?.find((r) => r.status !== "rejected")].filter((r): r is Experiment => r != null);
 
   return (
     <div className={page.page}>
-      <PageHead eyebrow="judge controls · Akira has no path here" title="Chaos Lab" />
+      <PageHead eyebrow="judge controls · Akira has no path here" title="Chaos Lab"
+        aside={mode ? <Tag tone={mode.tone} title={mode.title}>{mode.label}</Tag> : undefined} />
       {!tele.ok && tele.state !== "waiting" && <p className={styles.banner} role="alert">{tele.text}. An experiment started now cannot be read.</p>}
       <EnvStrip telemetry={tele} registry={reg} run={openRun} error={error} busy={busy === "reset"}
                 onReset={() => {
@@ -82,7 +89,10 @@ export function ChaosView() {
       <div className={page.grid}>
         <div className={page.span8}>
           {reg ? (
-            <Composer registry={reg} locked={labRun ? `Experiment ${labRun.id} is still ${labRun.status.replace("_", " ")}.` : null}
+            <Composer registry={reg} locked={full && labRuns.length
+              ? (labRuns.length === 1 ? `Experiment ${labRuns[0].id} is still ${labRuns[0].status.replace("_", " ")}.`
+                : `${labRuns.length} experiments are running, the most the lab allows at once.`)
+              : null}
                       onStarted={() => refresh("all")} />
           ) : error?.startsWith("locked") ? (
             <article className="card">
@@ -102,11 +112,11 @@ export function ChaosView() {
           )}
         </div>
         <div className={`${page.span4} ${page.stack} ${openRun ? styles.runFirst : ""}`}>
-          {shown ? (
+          {shownRuns.length ? shownRuns.map((shown) => (
             <ActiveRun key={shown.id} run={shown} live={state} health={observer.health} policy={policy} busy={busy === shown.id}
                        onStop={() => act(shown.id, () => stopExperiment(shown.id))}
                        onReveal={() => act(shown.id, () => revealExperiment(shown.id))} />
-          ) : (
+          )) : (
             <article className="card"><p className="empty">
               {runs ? "No experiment yet. Compose one on the left." : "Experiment state unknown, lab not loaded."}
             </p></article>
