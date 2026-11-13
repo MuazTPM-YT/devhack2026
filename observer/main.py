@@ -1,6 +1,7 @@
 # observer process, port 7001 (IMPLEMENTATION.md §6.2): detector loop, kube watch, /health/now, /journal.
 # Run: uv run --env-file .env uvicorn observer.main:app --host 127.0.0.1 --port 7001
 import asyncio
+import json
 import logging
 import os
 import sqlite3
@@ -50,6 +51,23 @@ class Observer:
             self.baselines = baselines.load(conn)
         self.health: dict | None = None
         self.undelivered: set[str] = set()
+        self.detector.incident = self.open_incident(clock())
+
+    # a restart forgot the open incident and opened a second one for the same fault (e2e: two approval pages).
+    # Take back the newest unfinished one younger than the max age; the event replay from seq 0 still closes it.
+    # ponytail: unhealthy = culprit + victims we watch (the DB keeps no list); empty before the brain answered
+    def open_incident(self, now: float) -> dict | None:
+        with self.tracker.lock:
+            r = self.conn.execute("SELECT * FROM incidents WHERE state NOT IN ('resolved', 'escalated', 'handed_off')"
+                                  " AND opened_at >= ? ORDER BY opened_at DESC LIMIT 1",
+                                  (now - self.max_age_s,)).fetchone()
+        if r is None:
+            return None
+        named = [r["culprit"], *json.loads(r["victims_json"] or "[]")]
+        log.info("taking back open incident %s after a restart", r["id"])
+        return {"id": r["id"], "opened_at": r["opened_at"], "onset_at": r["onset_at"],
+                "unhealthy": sorted({s for s in named if s in self.services}), "culprit": None, "victims": [],
+                "major": bool(r["major"]), "severity": float(r["severity_at_open"] or 0)}
 
     async def readings(self) -> dict:
         return await fetch_readings(self.http, self.prom_url, self.queries, self.services)
