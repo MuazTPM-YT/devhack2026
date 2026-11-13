@@ -5,7 +5,7 @@ from email.utils import parsedate_to_datetime
 
 import httpx
 
-from brain.providers.base import InferenceRequest, InferenceResponse, ProviderError
+from brain.providers.base import DEADLINE_S, InferenceRequest, InferenceResponse, ProviderError
 
 ENDPOINT = "https://opencode.ai/inference/go/openai/v1/chat/completions"
 
@@ -38,7 +38,7 @@ class OpenCodeGoAdapter:
                 ENDPOINT, headers=headers,
                 json={"model": self.model, "messages": request.messages,
                       "max_tokens": request.max_tokens, "stream": False},
-                timeout=30, follow_redirects=False,
+                timeout=DEADLINE_S, follow_redirects=False,
             )
         except httpx.RequestError:
             raise ProviderError("transport_failure", retryable=True) from None

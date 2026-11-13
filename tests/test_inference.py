@@ -136,3 +136,19 @@ async def test_known_cause_requires_evidence(bundle, tmp_path):
                       "confidence": 1})
     result = await DiagnosisService(FakeProvider([raw, raw]), tmp_path).diagnose(bundle, "unknown")
     assert result.diagnosis is None
+
+
+# live: deepseek calls took 16-20 s and two hit the old 30 s cap; http must not cut the call before the deadline
+async def test_deadline_is_45s_and_http_timeout_matches(tmp_path):
+    from brain.providers.base import InferenceRequest
+    seen = {}
+
+    def handle(request):
+        seen.update(request.extensions["timeout"])
+        return httpx.Response(200, json={"choices": [{"message": {"content": "{}"},
+                                                     "finish_reason": "stop"}], "usage": {}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        await OpenCodeGoAdapter(client, "fake-key", "m").generate(InferenceRequest("i", [], {}))
+    assert DiagnosisService(FakeProvider([]), tmp_path).timeout_s == 45
+    assert seen["read"] >= 45

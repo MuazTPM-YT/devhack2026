@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+# live deepseek calls took 16-20 s, two hit 30 s; rules still act if this runs out
+DEADLINE_S = 45
+
 
 @dataclass(frozen=True)
 class InferenceRequest:

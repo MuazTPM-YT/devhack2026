@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from brain.providers.base import InferenceProvider, InferenceRequest, ProviderError
+from brain.providers.base import DEADLINE_S, InferenceProvider, InferenceRequest, ProviderError
 from brain.redact import quarantine, redact_value
 from schemas.models import ActionRequest, Diagnosis, EvidenceBundle, Pattern
 
@@ -32,7 +32,7 @@ class DiagnosisResult:
 
 
 class DiagnosisService:
-    def __init__(self, provider: InferenceProvider, cache_dir: Path, timeout_s: float = 30):
+    def __init__(self, provider: InferenceProvider, cache_dir: Path, timeout_s: float = DEADLINE_S):
         self.provider, self.cache_dir, self.timeout_s = provider, cache_dir, timeout_s
 
     def _validate(self, raw: str, bundle: EvidenceBundle) -> Diagnosis:
