@@ -10,6 +10,15 @@ section. Only my own work here; cross-team facts go in
 
 ## Done (with proof)
 
+- Live runs 2026-11-13/14 on k3d `oncall` (same branch). Found and fixed, each with a test that failed first:
+  notifier bot died on a Discord 503 at connect and stayed up silent (`fdf7e7a`: reconnect 5 times, then stop
+  loud); journal blamed a removed field on the newest manager left (`cc73c96`: blame the manager that vanished);
+  verifier handed off a right fix when chaos removed its decoy (`76af19a`: chaos writes are no hand-off, as step
+  2); two gateways after a restart broke the audit chain (`dc3fcc8`: audit writer lock, demo.sh
+  `--timeout-graceful-shutdown 5`; live: 2nd gateway refused, stop took 6 s). The 3 stray audit lines are kept in
+  `data/audit.zombie-2026-11-14.jsonl`; `/audit/verify` -> ok, 124 records. Merged main (`978f0b5`), 714 passed.
+  Live: agent picked the right fix past a decoy twice; one fix executed (flag revert). Retries NOT yet seen live.
+
 - Retries + Discord origin (branch `muaz/agent-polish`, not pushed). Muaz chose: 3 fixes per incident, retries
   run alone (trust gate kept), only fixes run and cleanly undone retry, agent mode only, all three origin parts.
   - Before: no retry at all; `budgets.max_retries: 1` was never read. Now `max_retries: 2` (3 fixes).
