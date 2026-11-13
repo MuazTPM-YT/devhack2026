@@ -5,10 +5,30 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** audit fixes on `muaz/agent-polish` (not pushed); live shop rerun pending (A)
+**Current phase:** retries + Discord origin on `muaz/agent-polish` (not pushed); live run pending
 **Branches:** all merged up to PR #38. Now `muaz/agent-polish` (not pushed)
 
 ## Done (with proof)
+
+- Retries + Discord origin (branch `muaz/agent-polish`, not pushed). Muaz chose: 3 fixes per incident, retries
+  run alone (trust gate kept), only fixes run and cleanly undone retry, agent mode only, all three origin parts.
+  - Before: no retry at all; `budgets.max_retries: 1` was never read. Now `max_retries: 2` (3 fixes).
+  - Gateway decides (`Gateway.close`): undo for "did not recover", "severity rose", "harm check failed", tries
+    and budget left, no other approval waiting -> state `replanning`, event `retry_started` (FYI), POST
+    `BRAIN_URL/incidents/{id}/retry` with every failed fix (tool, change, why undone, severity before/after,
+    readings, prediction, worse services). Else page as before, briefing `...; no retry: <why>`.
+  - Granted retry (gateway memory, brain cannot claim one) skips only the "model picked it" ask; trust gate,
+    protected, runbook, major, net benefit, freshness still ask. No grant answered in 300 s -> page; gateway
+    restart adopts `replanning` incidents (next fix asks).
+  - Brain: failed fixes leave the candidates (renumbered), model sees `failed_attempts`, a repeat is refused.
+  - Observer: max age 1200 -> 2400 s; incident still `open` (brain never handed over) pages after 600 s.
+  - Discord: Your move line, Impact (all sick services), Fixes tried, Origin (started by / sent by + machine /
+    LIVE or REHEARSAL, stamped by the gateway bus), Timeline (Discord time tags), footer Event #, embed time.
+  Proof: `uv run pytest` -> `666 passed`; `ruff check .` -> `All checks passed!`; `mypy ... chaos` -> `no issues
+  found in 75 source files`; UI `npm test` 62 pass, typecheck OK, build OK. Two tests changed (setup/additive,
+  intent kept): `test_observer.py` stuck-incident test marks the incident handed over; `test_embeds.py` consumer
+  test also sees the new `event` detail; UI `overview.test.ts` mirrors max age 2400. Fakes only: real shop, real
+  LLM and Discord NOT run.
 
 - Full audit + local end-to-end run (branch `muaz/agent-polish`, 15 commits from `20ea15c` to `48c2194`):
   - Harness (not in git, job scratch dir): k3d `oncall-test` (k3s v1.31.5) with tiny Deployments named like the
