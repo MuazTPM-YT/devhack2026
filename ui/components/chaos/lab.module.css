@@ -32,7 +32,7 @@
   border-radius: var(--radius-sm);
   background: var(--card);
   font: inherit;
-  font-size: 13px;
+  font-size: 16px; /* under 16px iOS zooms the page into the field */
   max-width: 100%;
 }
 .number { width: 84px; font-family: var(--mono); }

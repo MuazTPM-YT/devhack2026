@@ -16,6 +16,9 @@ import { useNow } from "@/lib/use-now";
 import styles from "./service-map.module.css";
 
 const POLL_MS = 30_000;
+
+// last graph seen, so switching Cards -> Map shows it at once instead of "Loading" every time
+let lastCalls: Call[] | null = null;
 const BOX = { colW: 158, rowH: 46, nodeW: 128, nodeH: 30, pad: 18 };
 
 const STATUS: Record<ServiceStatus, { tone: Tone; label: string }> = {
@@ -52,14 +55,14 @@ function Names({ names, onPick }: { names: string[]; onPick: (n: string) => void
 export function ServiceMap({ services }: { services: Record<string, ServiceInfo> }) {
   const { state, observer, policy } = useLiveContext();
   const now = useNow(true, 5000);
-  const [calls, setCalls] = useState<Call[] | null>(null);
+  const [calls, setCalls] = useState<Call[] | null>(lastCalls);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
     const tick = () => dependencies()
-      .then((j) => { if (live) { setCalls(parseCalls(j)); setError(null); } })
+      .then((j) => { lastCalls = parseCalls(j); if (live) { setCalls(lastCalls); setError(null); } })
       .catch((e: Error) => { if (live) setError(e.message); });
     tick();
     const id = setInterval(tick, POLL_MS);

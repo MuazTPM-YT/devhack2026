@@ -44,7 +44,7 @@ export function Evidence({ incident }: { incident: Incident }) {
           <p className={`${s.note} ${s.noteTop}`}>What the agent read itself</p>
           <ol className={s.steps}>
             {incident.reads.map((r, i) => (
-              <li key={`${r.ts}-${i}`} className={s.step}>
+              <li key={`${r.ts}-${i}`} className={`${s.step} ${s.read}`}>
                 <span>{readTitle(r.tool, r.args)}</span>
                 <span className="num muted">{r.evidence} found</span>
               </li>
