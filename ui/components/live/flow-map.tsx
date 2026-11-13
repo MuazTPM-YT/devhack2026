@@ -132,7 +132,8 @@ export function FlowMap({ incident, upto }: { incident: Incident | null; upto: n
             );
           })}
 
-          {hop.length > 1 && <Pulse key={view.focus?.seq} pts={hop} />}
+          {/* only a new live event gets the pulse; a row picked from the timeline jumps */}
+          {hop.length > 1 && upto == null && <Pulse key={view.focus?.seq} pts={hop} />}
         </svg>
       </div>
 

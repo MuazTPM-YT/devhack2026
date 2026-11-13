@@ -42,11 +42,11 @@ function curve([x1, y1]: [number, number], [x2, y2]: [number, number]): string {
   return `M${ax},${ay} C${ax + 60},${low} ${x2 - 60},${low} ${x2 - 4},${by}`;
 }
 
-function Names({ names, onPick }: { names: string[]; onPick: (n: string) => void }) {
+function Names({ names, onPick }: { names: string[]; onPick: (n: string, keyboard: boolean) => void }) {
   if (!names.length) return <p className="muted">None.</p>;
   return (
     <ul className={styles.names}>
-      {names.map((n) => <li key={n}><button type="button" className={styles.nameBtn} onClick={() => onPick(n)}>{n}</button></li>)}
+      {names.map((n) => <li key={n}><button type="button" className={styles.nameBtn} onClick={(e) => onPick(n, e.detail === 0)}>{n}</button></li>)}
     </ul>
   );
 }
@@ -58,6 +58,8 @@ export function ServiceMap({ services }: { services: Record<string, ServiceInfo>
   const [calls, setCalls] = useState<Call[] | null>(lastCalls);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
+  // set by keyboard picks and Escape, cleared by pointer picks
+  const [instant, setInstant] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -71,7 +73,7 @@ export function ServiceMap({ services }: { services: Record<string, ServiceInfo>
 
   useEffect(() => {
     if (!picked) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPicked(null); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setInstant(true); setPicked(null); } };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [picked]);
@@ -90,7 +92,7 @@ export function ServiceMap({ services }: { services: Record<string, ServiceInfo>
   const up = sel ? callersOf(list, sel) : new Set<string>();
   const down = sel ? needsOf(list, sel) : new Set<string>();
   const lit = (n: string) => !sel || n === sel || up.has(n) || down.has(n);
-  const pick = (n: string) => setPicked((p) => (p === n ? null : n));
+  const pick = (n: string, keyboard = false) => { setInstant(keyboard); setPicked((p) => (p === n ? null : n)); };
   const failing = [...m.failing].filter((n) => box.pos[n]);
   const atRisk = [...m.atRisk].sort();
 
@@ -114,7 +116,7 @@ export function ServiceMap({ services }: { services: Record<string, ServiceInfo>
           ) : (
             <div className={styles.scroll}>
               <svg viewBox={`0 0 ${box.width} ${box.height}`} className={styles.map} style={{ minWidth: Math.min(box.width, 720), maxWidth: box.width }}
-                role="group" aria-label="Service call graph; callers on the left, the services they call on the right">
+                data-instant={instant} role="group" aria-label="Service call graph; callers on the left, the services they call on the right">
                 <defs>
                   {["", "Hot", "Lit"].map((k) => (
                     <marker key={k} id={`arrow${k}`} viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto">
@@ -146,7 +148,7 @@ export function ServiceMap({ services }: { services: Record<string, ServiceInfo>
                       aria-label={`${n}, ${STATUS[st].label}${m.atRisk.has(n) ? ", at risk" : ""}; ${plural(hit, "service")} break if it fails`}
                       className={`${styles.node} ${styles[role]} ${sel === n ? styles.picked : ""}`} data-dim={!lit(n)}
                       onClick={() => pick(n)}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(n); } }}>
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(n, true); } }}>
                       <rect width={BOX.nodeW} height={BOX.nodeH} rx="3" className={styles.box} />
                       <text x="10" y="19" className={styles.name}>{cut(n, 17)}</text>
                       {culprit === n && <text x={BOX.nodeW} y="-4" textAnchor="end" className={styles.culprit}>culprit</text>}
@@ -183,7 +185,7 @@ export function ServiceMap({ services }: { services: Record<string, ServiceInfo>
               <Names names={[...up].sort()} onPick={pick} />
               <h3 className={styles.sub}>It needs · {down.size}</h3>
               <Names names={[...down].sort()} onPick={pick} />
-              <button type="button" className={`btn ${styles.clear}`} onClick={() => setPicked(null)}>Clear</button>
+              <button type="button" className={`btn ${styles.clear}`} onClick={(e) => { setInstant(e.detail === 0); setPicked(null); }}>Clear</button>
             </>
           ) : (
             <>

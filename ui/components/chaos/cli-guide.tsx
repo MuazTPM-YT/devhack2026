@@ -34,8 +34,13 @@ function Copy({ text }: { text: string }) {
     .finally(() => setTimeout(() => setState("idle"), 1600));
   return (
     <button type="button" className={styles.copy} onClick={copy} aria-label={`Copy: ${text}`}>
-      <Icon name={state === "done" ? "check" : "copy"} size={16} />
-      <span className={styles.copyText} aria-live="polite">{state === "done" ? "Copied" : state === "failed" ? "Select it" : "Copy"}</span>
+      <span className={styles.live} aria-live="polite">
+        {/* remounts on each state, so @starting-style blurs the new label in */}
+        <span key={state} className={styles.swap}>
+          <Icon name={state === "done" ? "check" : "copy"} size={16} />
+          <span className={styles.copyText}>{state === "done" ? "Copied" : state === "failed" ? "Select it" : "Copy"}</span>
+        </span>
+      </span>
     </button>
   );
 }

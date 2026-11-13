@@ -58,7 +58,7 @@ export function ActiveRun({ run, live, health, policy, busy, onStop, onReveal }:
         )}
         {run.hidden && <button type="button" className="btn" onClick={onReveal} disabled={busy}>Reveal the answer</button>}
         {run.status === "needs_operator" && (
-          <span className={styles.hint}>The lab will not overwrite it. Fix the field by hand, or use Recover everything.</span>
+          <span className={styles.hint}>The lab will not overwrite it. Fix the field by hand, or hold Recover everything.</span>
         )}
       </div>
 

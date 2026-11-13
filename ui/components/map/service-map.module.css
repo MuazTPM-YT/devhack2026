@@ -30,6 +30,9 @@
 .node:focus-visible .box { stroke: var(--ox); stroke-width: 2.4; }
 
 .map [data-dim="true"] { opacity: 0.22; }
+/* picked or cleared from the keyboard: no fade, keyboard actions never animate */
+.map[data-instant="true"] .node, .map[data-instant="true"] .edge,
+.map[data-instant="true"] .edgeHot, .map[data-instant="true"] .edgeLit { transition: none; }
 
 @media (hover: hover) and (pointer: fine) {
   .node:hover .box { stroke: var(--ink); }
@@ -55,6 +58,7 @@
   background: var(--card);
   color: var(--ink);
   cursor: pointer;
+  transition: transform 160ms var(--ease-out);
 }
 .nameBtn:active { transform: scale(0.97); }
 @media (hover: hover) and (pointer: fine) {
@@ -64,5 +68,6 @@
 .clear { margin-top: 16px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .edge, .edgeHot, .edgeLit, .node { transition: none; }
+  .edge, .edgeHot, .edgeLit, .node, .nameBtn { transition: none; }
+  .nameBtn:active { transform: none; }
 }

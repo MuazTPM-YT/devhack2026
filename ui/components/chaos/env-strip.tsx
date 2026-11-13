@@ -1,7 +1,38 @@
+import { type ReactNode, useEffect, useRef, useState } from "react";
+
 import type { Baseline, Experiment, Registry } from "@/lib/lab";
 import type { Telemetry } from "@/lib/lab";
 
 import styles from "./lab.module.css";
+
+const HOLD_MS = 1500;
+
+// destructive, so press and hold to confirm: the fill shows progress, letting go early cancels
+function HoldButton({ busy, onDone, title, children }: { busy: boolean; onDone: () => void; title: string; children: ReactNode }) {
+  const [holding, setHolding] = useState(false);
+  const timer = useRef<number | null>(null);
+  const stop = () => {
+    if (timer.current != null) window.clearTimeout(timer.current);
+    timer.current = null;
+    setHolding(false);
+  };
+  const start = () => {
+    if (busy || timer.current != null) return;
+    setHolding(true);
+    timer.current = window.setTimeout(() => { timer.current = null; setHolding(false); onDone(); }, HOLD_MS);
+  };
+  useEffect(() => () => { if (timer.current != null) window.clearTimeout(timer.current); }, []);
+  const isKey = (k: string) => k === "Enter" || k === " ";
+  return (
+    <button type="button" className={`btn ${styles.danger} ${styles.hold}`} data-holding={holding} disabled={busy} title={title}
+      onPointerDown={(e) => { if (e.button === 0) start(); }} onPointerUp={stop} onPointerLeave={stop} onPointerCancel={stop}
+      onKeyDown={(e) => { if (isKey(e.key)) { e.preventDefault(); if (!e.repeat) start(); } }}
+      onKeyUp={(e) => { if (isKey(e.key)) stop(); }} onBlur={stop} onContextMenu={(e) => e.preventDefault()}>
+      <span className={styles.holdFill} aria-hidden="true" />
+      <span aria-live="polite">{children}</span>
+    </button>
+  );
+}
 
 const DOT = { fresh: "dot-ok", stale: "dot-warn", blind: "dot-bad", offline: "dot-bad", waiting: "dot-warn" } as const;
 
@@ -40,10 +71,9 @@ export function EnvStrip({ telemetry, registry, run, error, busy, onReset }: {
         </span>
       </div>
       <div className={styles.cell}>
-        <button type="button" className={`btn ${styles.danger}`} onClick={onReset} disabled={busy}
-                title="Restore the whole shop from its healthy snapshot. Ends every experiment.">
-          {busy ? "Recovering…" : "Recover everything"}
-        </button>
+        <HoldButton busy={busy} onDone={onReset} title="Restore the whole shop from its healthy snapshot. Ends every experiment; can take a few minutes.">
+          {busy ? "Recovering…" : "Hold to recover everything"}
+        </HoldButton>
       </div>
     </section>
   );

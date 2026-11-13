@@ -59,6 +59,18 @@
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .danger { border-color: var(--bad); color: var(--bad); }
 
+/* hold to confirm: slow linear fill while held, fast snap back on release */
+.hold { position: relative; overflow: hidden; isolation: isolate; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.holdFill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--bad-tint);
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 200ms var(--ease-out);
+}
+.hold[data-holding="true"] .holdFill { clip-path: inset(0 0 0 0); transition: clip-path 1500ms linear; }
+
 .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 14px; margin: 0; font-size: 13px; }
 .facts dt { color: var(--ink-mute); }
 .facts dd { margin: 0; overflow-wrap: anywhere; }

@@ -37,6 +37,12 @@
 }
 
 .copy:active { transform: scale(0.97); }
+
+.live, .swap { display: inline-flex; align-items: center; gap: 5px; }
+.swap { transition: filter 200ms ease, opacity 200ms ease; }
+@starting-style {
+  .swap { filter: blur(2px); opacity: 0.7; }
+}
 .copy:focus-visible { outline-color: var(--frame); outline-offset: -3px; }
 
 @media (hover: hover) and (pointer: fine) {
@@ -59,3 +65,8 @@
 }
 
 .cmdCell .code { white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .copy:active { transform: none; }
+  .swap { transition: opacity 200ms ease; }
+}
