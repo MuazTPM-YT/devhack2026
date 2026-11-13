@@ -1057,3 +1057,49 @@ Seeded from reading the plan. Reply under each one.
     in flight, approval expired, observer/gateway down). Refused fixes show
     as "Blocked proposal (not run)" with no command; approval cards carry
     none (doing it by hand skips verification).
+- [T] 2026-11-13 for M,A: **Live scenario runs found 5 bugs; fixed on
+  `twaha/card-embeds`** (Twaha OK'd edits to M's and A's files). Each fix
+  has a test that failed first. Suite 444 passed (1 fail = T's local
+  `max_actions_per_hour: 30`, not committed).
+  M's files:
+  - `observer/main.py`: Prometheus answering with **no span metrics for
+    any service** now takes the Prometheus-down path (keep last health,
+    `prometheus_ok: false`, detector not fed). Live: the collector's OTLP
+    pushes got HTTP 400 "too old" for hours, every service read None =
+    "fine", sustain timers reset, and smoke closed "problem no longer
+    present" with payment:v2-bad still live (false PASS). A collector
+    restart (`kubectl rollout restart ds/otel-collector-agent`) cured it;
+    root cause not found.
+  - `gateway/freshness.py`: nothing measured for culprit or victims ->
+    `awaiting_approval` "no health readings", not "problem gone".
+    `tests/test_freshness.py:24` now expects that (T approved the change).
+  - `gateway/checklist.py`: a scale whose undo falls outside policy
+    `scale.min/max` (0 -> 1 on a data store) records inverse
+    `{"op": "none"}`: no early abort, full verify window; unproven -> fix
+    kept, receipt `handed_off`, page "no safe undo", ledger failure.
+    `undo()` refuses unknown ops, so the watchdog fails closed. Live:
+    valkey-cart came back, callers kept failing (sev 7 -> 17), early abort
+    tried to scale it to 0, admission policy refused (422), page said
+    "UNDO FAILED, half changed".
+  - Not done, your call: early abort compares global severity; a fault
+    still spreading looks like harm from the fix. The verifier also reads
+    `unhealthy: False` as recovered even when the reason is no data.
+  A's files:
+  - `k8s/values.yaml`: frontend 400Mi, astronomy-db 200Mi (both OOMKilled
+    in runs). Installed live with helm **3** (v3.19.5 here):
+    `install_shop.sh`'s `--force-conflicts` is helm-4-only and fails with
+    "unknown flag" on helm 3; ran the same steps without it.
+  - Cluster RBAC re-applied from `k8s/rbac-agent.yaml` (open item 1):
+    agent can now scale valkey-cart and kafka.
+  Mine: `smoke.sh` fails when an incident resolves with no
+  `action_executed`, and both `smoke.sh` and `scripts/demo.sh up` fail
+  loudly on a blind observer. LLM `max_tokens` 4096 -> 8192 (datastore
+  answer came back truncated). New `scripts/demo.sh`
+  (`up | shop | backend <bundle> | down | status | logs`) starts the whole
+  stack; `shop`/`backend` split it across 2 machines over Cloudflare
+  quick tunnels (only agent + reader tokens leave the shop machine).
+  Results, 1 run each, all 4 PS failure types: bad deploy FIXED 191 s,
+  broken config FIXED 204 s, memory leak FIXED 343 s, datastore down
+  escalated (the bug above). Trust ledger was empty, so every fix asked
+  approval; 30+30 rehearsal trust runs started 16:05 (gateway in
+  `ONCALL_REHEARSAL=1`; turn it off before the demo).
