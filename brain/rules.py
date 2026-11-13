@@ -1,5 +1,5 @@
 # deterministic rules (IMPLEMENTATION.md §6.3.6). The LLM never picks the action when a rule matches.
-# Dict-based until schemas/ (C1) lands; actions follow the ActionRequest fields.
+# Works on plain dicts (journal rows, incident); actions follow the ActionRequest fields.
 
 # template-level changes undo by rollback; env by revert_config; replica count by scale
 TOOL_FOR_KIND = {"image": "rollback_deploy", "resources": "rollback_deploy", "other": "rollback_deploy",

@@ -9,7 +9,7 @@ from brain.graph import downstream
 from brain.rules import flag_targets, latest_change_before_onset
 
 
-# ~20 recent error traces per service, last 5 min. VERIFY params/path on A's cluster (internal Jaeger API)
+# ~20 recent error traces per service, last 5 min (internal Jaeger query API, checked on the live cluster)
 async def fetch_error_traces(http: httpx.AsyncClient, jaeger_url: str, services: list[str], now: float,
                              lookback_s: float = 300, limit: int = 20) -> list[dict]:
     traces: dict[str, dict] = {}

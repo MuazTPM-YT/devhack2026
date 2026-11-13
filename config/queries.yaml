@@ -1,7 +1,7 @@
 # Allow-listed PromQL templates (IMPLEMENTATION.md §4.3). Brain and gateway may run only these.
 # $service is the only placeholder; callers must pass a name from config/services.yaml.
-# VERIFY: metric names traces_span_metrics_calls_total, traces_span_metrics_duration_milliseconds_bucket,
-#         labels service_name and status_code, against the real Prometheus (A + M, §3.3).
+# Metric names traces_span_metrics_calls_total, traces_span_metrics_duration_milliseconds_bucket and labels
+# service_name, status_code checked against the live Prometheus (chart 0.42.6, §3.3).
 err_ratio: >
   sum(rate(traces_span_metrics_calls_total{service_name="$service",status_code="STATUS_CODE_ERROR"}[1m]))
   / sum(rate(traces_span_metrics_calls_total{service_name="$service"}[1m]))
