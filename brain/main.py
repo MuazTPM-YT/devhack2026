@@ -169,13 +169,14 @@ class Brain:
         self.results[incident.id] = record
         entry = next((j for j in journal_rows if action and j["id"] == action.journal_entry), None)
         why = why_text(entry, incident.onset_at)
-        record["gateway"] = await self.hand_over(incident, action, result.diagnosis, pattern, why)
+        record["gateway"] = await self.hand_over(incident, action, result.diagnosis, pattern, why, health)
         # resource case: restart first, then ask for more memory (never automatic; §6.3.6 special case 1)
         if action is not None and record["gateway"].get("decision") in ("executed", "awaiting_approval"):
             record["followups_sent"] = []
             for extra in actions[1:]:
                 follow = ActionRequest.model_validate({**extra, "prediction": None})
-                record["followups_sent"].append(await self.hand_over(incident, follow, result.diagnosis, pattern, why))
+                record["followups_sent"].append(await self.hand_over(incident, follow, result.diagnosis, pattern, why,
+                                                                      health))
         return record
 
     # alert grouping grew an already-diagnosed incident (§6.3.3 "within 2 minutes"): if it is major now,
@@ -224,28 +225,29 @@ class Brain:
 
     # the gateway decides from here; with nothing safe to do, wake a human ourselves
     async def hand_over(self, incident: Incident, action: ActionRequest | None, diagnosis: Any,
-                        pattern: str, why: str | None = None) -> dict:
+                        pattern: str, why: str | None = None, health: dict | None = None) -> dict:
         if action is None:
             decision = GatewayDecision(decision="escalated", failed_step="rules", reason=f"no safe action ({pattern})")
-            return await self.escalate(incident, diagnosis, decision, decision.reason or "", why)
+            return await self.escalate(incident, diagnosis, decision, decision.reason or "", why, health)
         try:
             decision = await self.submit(action)
         except Exception as e:  # gateway down: a human must look, the brain never acts itself
             log.error("gateway call failed: %r", e)
             decision = GatewayDecision(decision="escalated", failed_step="gateway", reason=type(e).__name__)
-            return await self.escalate(incident, diagnosis, decision, "gateway unreachable", why)
+            return await self.escalate(incident, diagnosis, decision, "gateway unreachable", why, health, action)
         if decision.decision == "refused" and decision.failed_step == "schema":
             # refused before the checklist ran (MCP or schema): no one else ends the incident, so wake a human
             log.error("gateway refused %s at schema: %s", action.tool, decision.reason)
-            return await self.escalate(incident, diagnosis, decision, f"action refused: {decision.reason}", why)
+            return await self.escalate(incident, diagnosis, decision, f"action refused: {decision.reason}", why,
+                                       health, action)
         return decision.model_dump(mode="json")
 
     async def escalate(self, incident: Incident, diagnosis: Any, decision: GatewayDecision, briefing: str,
-                       why: str | None) -> dict:
+                       why: str | None, health: dict | None = None, action: ActionRequest | None = None) -> dict:
         from gateway.receipts import build_incident_card  # pure card builder, no cluster access
 
         card = build_incident_card(incident, diagnosis, decision=decision.model_copy(update={"decision": "escalated"}),
-                                   why=why)
+                                   why=why, health=health, proposal=action)
         with self.lock:
             self.conn.execute("UPDATE incidents SET state='escalated' WHERE id=?", (incident.id,))
             self.conn.commit()

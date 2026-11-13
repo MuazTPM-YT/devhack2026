@@ -63,6 +63,11 @@ class Observer:
             log.warning("prometheus query failed: %s", type(e).__name__)
             self.health = {**(self.health or {"severity": 0, "services": {}}), "ts": now, "prometheus_ok": False}
             return None
+        # answered but no span metrics for anyone: the pipeline is down, not every service healthy
+        if readings and all(r["err_ratio"] is None and r["p95_ms"] is None for r in readings.values()):
+            log.warning("prometheus has no span metrics for any service; keeping last health")
+            self.health = {**(self.health or {"severity": 0, "services": {}}), "ts": now, "prometheus_ok": False}
+            return None
         await self.expire_stuck_incident(now)
         health, event = self.detector.tick(now, readings, self.baselines, self.tracker.bad_pods(now))
         self.health = {**health, "prometheus_ok": True}

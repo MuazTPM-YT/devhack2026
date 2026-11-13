@@ -337,6 +337,13 @@ async def test_hour_budget_lifted_only_in_rehearsal_mode(tmp_path):
         assert d.decision == decision, (rehearsal, d)
         if not rehearsal:
             assert d.reason == "action budget used up"
+            # live: the raw reason read like a crash; the page says it is a limit and what it would have run
+            card = w.events[-1]["payload"]["card"]
+            assert card["headline"] == "40% of payment requests are failing. The agent changed nothing."
+            fields = {f["label"]: f["body"] for f in card["fields"]}
+            assert fields["Why the agent stopped"].startswith("Safety limit:")
+            assert "kubectl rollout undo deploy/payment -n shop" in fields["Suggested fix (not run)"]
+            assert "budget used up" not in json.dumps(card)
 
 
 def test_previous_template_and_diff_helpers():

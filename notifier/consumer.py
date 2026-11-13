@@ -6,6 +6,8 @@ from typing import Any
 import discord
 import httpx
 
+from pydantic import ValidationError
+
 from gateway.client import read_events
 from notifier.discord_bot import DiscordNotifier
 from notifier.state import NotifierState
@@ -14,6 +16,15 @@ from schemas.models import Card
 TERMINAL = {"incident_resolved", "handed_off"}
 # payload extras the embeds show; kept with a wake so a re-page shows them too
 DETAILS = ("runbook", "seen_before")
+
+
+# a wake saved by an older notifier may not fit today's Card; page its text rather than crash all paging
+def stored_card(incident_id: str, raw: dict) -> Card:
+    try:
+        return Card.model_validate(raw)
+    except ValidationError:
+        return Card(incident_id=incident_id, status=str(raw.get("status", "")), text=str(raw.get("text", "")),
+                    evidence_ids=[])
 
 
 class NotificationConsumer:
@@ -82,7 +93,7 @@ class NotificationConsumer:
                 continue
             page = row.get("pages", 1) + 1
             try:
-                message_id = await self.notifier.wake(Card.model_validate(row["card"]), row["briefing"],
+                message_id = await self.notifier.wake(stored_card(incident_id, row["card"]), row["briefing"],
                                                       details={**row.get("details", {}), "page": page})
             except (discord.HTTPException, httpx.HTTPError):
                 continue

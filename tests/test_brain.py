@@ -348,7 +348,8 @@ async def test_schema_refusal_escalates_with_why(tmp_path):
     record = await brain.handle(INC)
     assert record["gateway"]["decision"] == "refused" and world.published[-1]["type"] == "escalated"
     text = world.published[-1]["payload"]["card"]["text"]
-    assert text.startswith("WOKE YOU BECAUSE") and "deployment/payment image change" in text
+    assert text.startswith("NEEDS YOU: 40% of payment requests are failing") and "deployment/payment image change" in text
+    assert "The fix the agent proposed is not allowed by its rules, so it was blocked." in text
     assert brain.conn.execute("SELECT state FROM incidents").fetchone()[0] == "escalated"
 
 

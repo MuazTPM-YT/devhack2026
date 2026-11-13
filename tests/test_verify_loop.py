@@ -178,10 +178,10 @@ async def test_success_card_and_terminal_payload(tmp_path):
     w, d, outcome = await executed(tmp_path, [healthy()])
     payload = w.events[-1]["payload"]
     lines = payload["card"]["text"].splitlines()
-    assert len(lines) == 5 and lines[0].startswith("FIXED in ") and "payment errors 40.0% -> 1.0%" in lines[0]
-    assert "payment:v2-bad" in lines[1] and "[journal:41]" in lines[1]
+    assert len(lines) == 5 and lines[0].startswith("FIXED in ") and "payment errors 40.0% → 1.0%" in lines[0]
+    assert "payment:v2-bad" in lines[1] and "journal:41" in payload["card"]["evidence_ids"]
     assert "back to revision 1" in lines[2] and "approved by u1" in lines[2]
-    assert "prediction held; nothing else got worse; added disruption 0 s" in lines[3]
+    assert "recovery matched the agent's prediction; nothing else got worse; extra disruption 0 s" in lines[3]
     assert lines[4] == "Undo: kubectl rollout undo deploy/payment -n shop"
     assert (payload["tier"], payload["prediction_held"], payload["harm_clean"]) == ("ask", True, True)
     assert payload["receipt_id"] == d.receipt_id and payload["actual_added_s"] == 0
@@ -219,7 +219,7 @@ async def test_no_prediction_is_none_not_missed(tmp_path):
     assert await asyncio.wait_for(next(iter(w.gw.tasks)), 5) == "right_by_accident"
     assert w.gw.receipts.get(d.receipt_id).prediction_held is None
     assert "no prediction to check" in w.events[-1]["payload"]["card"]["text"]
-    assert w.events[-1]["payload"]["card"]["status"] == "RECOVERED; NO PREDICTION"
+    assert w.events[-1]["payload"]["card"]["status"] == "RECOVERED, FIX NOT PROVEN"
 
 
 # harm check spares the blast radius (§6.4.9): an upstream caller that dips is expected, not harm
@@ -249,3 +249,71 @@ async def test_upstream_caller_inside_blast_radius_is_not_harm(tmp_path):
         d = await w.gw.decide(d.approval_id, "approved", "u1")
         script.active = True
         assert await asyncio.wait_for(next(iter(w.gw.tasks)), 5) == want
+
+
+def store(cart_sick: bool, severity: int, spread: bool = False) -> dict:
+    sick_svc = {"unhealthy": True, "breaching": True, "bad_pods": 0, "err_ratio": 1.0, "p95_ms": 5.0}
+    fine = {"unhealthy": False, "breaching": False, "bad_pods": 0, "err_ratio": 0.0, "p95_ms": 5.0}
+    services = {"valkey-cart": {"unhealthy": False, "breaching": False, "bad_pods": 0, "err_ratio": None,
+                                "p95_ms": None},
+                "cart": sick_svc if cart_sick else fine, "checkout": sick_svc if spread else fine}
+    return {"ts": 0, "severity": severity, "services": services}
+
+
+# valkey-cart scaled to 0, a human approves the scale back to 1; health then follows `healths`
+async def store_scaled_back(tmp_path, healths):
+    w = World(tmp_path)
+    w.conn.execute("UPDATE incidents SET culprit='valkey-cart', victims_json='[\"cart\"]'")
+    w.apps.dep["spec"]["replicas"] = 0
+    w.apps.dep["metadata"]["name"] = "valkey-cart"  # harm check hashes deployments by name
+    journal = [{"id": 50, "object": "deployment/valkey-cart", "kind": "replicas", "ts": 950.0,
+                "field_manager": "chaos-panel", "by_agent": False, "diff": {"replicas": {"old": 1, "new": 0}}}]
+
+    def before(request):
+        if request.url.path == "/journal":
+            return httpx.Response(200, json=[r for r in journal if r["ts"] >= float(request.url.params["since"])])
+        return httpx.Response(200, json=store(True, 7))
+
+    w.obs = before
+    script = Script(w, healths)
+    w.gw.http = httpx.AsyncClient(transport=httpx.MockTransport(script))
+    w.gw.verify_every = 0
+    a = action(tool="scale", target="valkey-cart", pattern="protected", journal_entry=50,
+               evidence_ids=["journal:50"], params={"replicas": 1}, prediction=None)
+    d = await w.gw.submit(a)
+    d = await w.gw.decide(d.approval_id, "approved", "u1")
+    assert d.decision == "executed"
+    script.active = True
+    return w, d, await asyncio.wait_for(next(iter(w.gw.tasks)), 5)
+
+
+# live inc-1794564403607: callers kept failing while valkey-cart came back (sev 7 -> 17), early abort fired,
+# and the undo "scale to 0" was refused by the replicas 1-3 admission policy: page said "half changed"
+async def test_fix_with_no_safe_undo_is_not_aborted_while_the_fault_still_spreads(tmp_path):
+    w, d, outcome = await store_scaled_back(tmp_path, [store(True, 17, spread=True)] * 14 + [store(False, 0)])
+    assert "early_abort" not in w.types() and outcome == "right_by_accident"
+    assert w.apps.dep["spec"]["replicas"] == 1
+    assert json.loads(w.conn.execute("SELECT inverse_json FROM receipts").fetchone()[0])["op"] == "none"
+
+
+async def test_fix_with_no_safe_undo_that_never_recovers_is_kept_and_pages(tmp_path):
+    w, d, outcome = await store_scaled_back(tmp_path, [store(True, 17, spread=True)])
+    assert outcome == "handed_off" and w.apps.dep["spec"]["replicas"] == 1
+    assert [p for p in w.apps.patches if not p["dry_run"]][-1]["patch"]["spec"]["replicas"] == 1  # no scale to 0
+    last = w.events[-1]
+    assert last["type"] == "escalated" and "no safe undo" in last["payload"]["briefing"]
+    assert "UNDO FAILED" not in json.dumps(last) and "configmap/None" not in json.dumps(last)
+    assert "Undo: none is safe" in last["payload"]["card"]["text"]
+    assert w.gw.receipts.get(d.receipt_id).outcome == "handed_off"
+    assert ledger(w) == [("real", 0, 1)]  # an unproven fix counts against trust, kept or not
+
+
+# the watchdog undoes a silent verifier's fix; a receipt with no safe undo must not crash it (KeyError)
+async def test_watchdog_on_a_fix_with_no_safe_undo_fails_closed(tmp_path):
+    from test_phase3 import executed_and_parked
+    w, d = await executed_and_parked(tmp_path)
+    w.conn.execute("UPDATE receipts SET inverse_json=?", (json.dumps({"op": "none", "why": "would scale to 0"}),))
+    w.now[0] += 200
+    assert await w.gw.watchdog() == 1
+    assert w.conn.execute("SELECT outcome FROM receipts").fetchone()[0] == "watchdog_failed"
+    assert w.apps.dep["spec"]["template"]["spec"]["containers"][0]["image"] == GOOD  # fix left in place

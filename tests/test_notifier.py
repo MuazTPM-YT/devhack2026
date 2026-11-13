@@ -206,3 +206,21 @@ async def test_incident_closed_during_repage_stays_closed(tmp_path):
         consumer = NotificationConsumer(client, "http://gateway", SlowDiscord(), state, repage_s=1)
         await consumer.repage_once()
     assert state.get("wakes") == {}
+
+
+# live: a wake saved before the card fields were renamed failed validation and the crash stopped all paging
+async def test_unreadable_saved_wake_still_pages_as_text(tmp_path):
+    class FakeNotifier:
+        pages: list = []
+
+        async def wake(self, card, briefing, details=None):
+            self.pages.append((card.incident_id, card.text, card.fields))
+
+    state = NotifierState(tmp_path / "state.db")
+    old = {"incident_id": "i", "status": "NEEDS YOU", "text": "payment is failing", "evidence_ids": [],
+           "fields": [{"name": "Why", "value": "x"}]}
+    state.set("wakes", {"i": {"card": old, "briefing": "b", "last_page": 0}})
+    notifier = FakeNotifier()
+    async with httpx.AsyncClient() as client:
+        await NotificationConsumer(client, "http://gateway", notifier, state, repage_s=10).repage_once()
+    assert notifier.pages == [("i", "payment is failing", [])]

@@ -17,6 +17,17 @@ until [ "$(curl -fsS "$OBSERVER_URL/health/now" \
   sleep 2
 done
 
+# severity 0 also means "sees nothing": a blind observer turns any run into a false result
+if ! curl -fsS "$OBSERVER_URL/health/now" | python3 -c '
+import json, sys
+h = json.load(sys.stdin)
+seen = [s for s, v in h.get("services", {}).items() if v.get("err_ratio") is not None or v.get("p95_ms") is not None]
+sys.exit(0 if h.get("prometheus_ok") is True and seen else 1)'; then
+  echo "FAIL: observer has no metric readings; telemetry is down, a run now proves nothing." >&2
+  echo "      try: kubectl --context k3d-oncall -n shop rollout restart ds/otel-collector-agent" >&2
+  exit 1
+fi
+
 injection=$(curl -fsS -X POST "$CHAOS_URL/chaos/bad-deploy")
 echo "inject: $injection"
 inject_ts=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["ts"])' "$injection")
@@ -50,7 +61,11 @@ def show(kind):
 outcome = next((k for k in ("incident_resolved", "escalated", "handed_off") if k in marks), "timeout")
 print(f"incident={incident} outcome={outcome}")
 print(f"detect={show('incident_opened')} diagnose={show('diagnosis_ready')} "
-      f"recover={show('incident_resolved')}")
+      f"act={show('action_executed')} recover={show('incident_resolved')}")
+# "resolved" with no action means the agent fixed nothing (e.g. it lost its metrics and saw "problem gone")
+if outcome == "incident_resolved" and "action_executed" not in marks:
+    print("FAIL: resolved but the agent took no action; the fault may still be live")
+    sys.exit(1)
 sys.exit(0 if outcome == "incident_resolved" else 1)
 EOF
 
