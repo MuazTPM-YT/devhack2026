@@ -421,3 +421,19 @@ def test_trust_receipts_and_audit_routes(tmp_path):
         path = tmp_path / "audit.jsonl"
         path.write_text(path.read_text().replace('"x"', '"y"'))  # someone edits the log while we run
         assert client.get("/audit/verify").json() == {"ok": False, "error": "Audit chain broken at seq 1"}
+
+
+# live-shaped: the API server blips while an approved action re-runs its checks; before, decide raised
+# (HTTP 500), nobody was paged and the incident sat "awaiting_approval" until the observer's max age
+async def test_api_error_on_approved_rerun_escalates(tmp_path):
+    w = World(tmp_path)
+    d = await w.gw.submit(action())
+
+    def down(*a, **k):
+        raise ApiException(status=503, reason="Service Unavailable")
+
+    w.apps.read_namespaced_deployment = down
+    d = await w.gw.decide(d.approval_id, "approved", "u1")
+    assert d.decision == "escalated" and d.failed_step == "dry_run" and "503" in d.reason
+    assert w.types()[-1] == "escalated"
+    assert w.conn.execute("SELECT state FROM incidents").fetchone()[0] == "escalated"

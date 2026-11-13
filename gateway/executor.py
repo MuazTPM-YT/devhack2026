@@ -48,13 +48,26 @@ def patch_configmap(core: Any, name: str, body: dict, dry_run: bool) -> dict:
     return _call(core.patch_namespaced_config_map, name, body, dry_run, MERGE)
 
 
+# reads fail as WriteRefused too, so every checklist caller ends the incident instead of crashing (HTTP 500)
+def _read(fn: Any, *args: Any) -> Any:
+    import urllib3
+    from kubernetes.client.rest import ApiException
+
+    try:
+        return json.loads(fn(*args, NAMESPACE, _preload_content=False).data)
+    except ApiException as e:
+        raise classify(e.status, str(e.body or e.reason)) from None
+    except (urllib3.exceptions.HTTPError, OSError) as e:
+        raise WriteRefused("escalated", f"Kubernetes API unreachable ({type(e).__name__})") from None
+
+
 def read_configmap(core: Any, name: str) -> dict:
-    return json.loads(core.read_namespaced_config_map(name, NAMESPACE, _preload_content=False).data)
+    return _read(core.read_namespaced_config_map, name)
 
 
 def read_deployment(apps: Any, name: str) -> dict:
-    return json.loads(apps.read_namespaced_deployment(name, NAMESPACE, _preload_content=False).data)
+    return _read(apps.read_namespaced_deployment, name)
 
 
 def list_json(fn: Any) -> list[dict]:
-    return json.loads(fn(NAMESPACE, _preload_content=False).data)["items"]
+    return _read(fn)["items"]
