@@ -392,3 +392,33 @@ async def test_escalation_carries_the_runbook(tmp_path):
     await brain.handle(INC)
     esc = world.published[-1]
     assert esc["type"] == "escalated" and esc["payload"]["runbook"]["id"] == "RB-01"
+
+
+async def test_agent_mode_reads_through_tools_and_keeps_rule_fix(tmp_path):
+    from pydantic_ai.models.function import FunctionModel
+
+    from brain.agent import AgentDiagnosisService
+    from schemas.models import Event
+    from test_agent import Script, call, final
+
+    world = World()
+    world.brain = make(world, [], tmp_path)  # bundle provider has no answers: agent mode must not use it
+    world.brain.agent = AgentDiagnosisService(FunctionModel(Script(lambda m, i: call("get_recent_changes"),
+                                                                   lambda m, i: final(i))))
+    record = await world.brain.handle(INC)
+    assert record["action"]["tool"] == "rollback_deploy" and record["action"]["prediction"]["within_s"] == 90
+    assert record["diagnosis"]["causes"][0]["evidence_ids"] == ["journal:41"] and record["llm_error"] is None
+    tools = [e["payload"]["tool"] for e in world.published if e["type"] == "llm_called" and "tool" in e["payload"]]
+    assert tools == ["get_recent_changes"]
+    for e in world.published:  # the gateway's bus accepts every event the agent adds
+        Event.model_validate(e)
+
+
+def test_bad_brain_mode_fails_loud(monkeypatch):
+    import pytest
+
+    from brain.main import build_from_env
+
+    monkeypatch.setenv("BRAIN_MODE", "yolo")
+    with pytest.raises(RuntimeError, match="BRAIN_MODE must be agent or bundle"):
+        build_from_env()
