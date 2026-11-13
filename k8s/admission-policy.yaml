@@ -55,10 +55,57 @@ spec:
         && has(c.args) == has(o.args) && (!has(c.args) || c.args == o.args)
         && has(c.securityContext) == has(o.securityContext)
         && (!has(c.securityContext) || c.securityContext == o.securityContext)))
+  - message: "agent may not change scheduling, the service account token or other pod settings"
+    expression: >-
+      has(variables.new.nodeSelector) == has(variables.old.nodeSelector) && (!has(variables.new.nodeSelector) || variables.new.nodeSelector == variables.old.nodeSelector)
+      && has(variables.new.tolerations) == has(variables.old.tolerations) && (!has(variables.new.tolerations) || variables.new.tolerations == variables.old.tolerations)
+      && has(variables.new.affinity) == has(variables.old.affinity) && (!has(variables.new.affinity) || variables.new.affinity == variables.old.affinity)
+      && has(variables.new.nodeName) == has(variables.old.nodeName) && (!has(variables.new.nodeName) || variables.new.nodeName == variables.old.nodeName)
+      && has(variables.new.automountServiceAccountToken) == has(variables.old.automountServiceAccountToken) && (!has(variables.new.automountServiceAccountToken) || variables.new.automountServiceAccountToken == variables.old.automountServiceAccountToken)
+      && has(variables.new.priorityClassName) == has(variables.old.priorityClassName) && (!has(variables.new.priorityClassName) || variables.new.priorityClassName == variables.old.priorityClassName)
+      && has(variables.new.runtimeClassName) == has(variables.old.runtimeClassName) && (!has(variables.new.runtimeClassName) || variables.new.runtimeClassName == variables.old.runtimeClassName)
+      && has(variables.new.hostAliases) == has(variables.old.hostAliases) && (!has(variables.new.hostAliases) || variables.new.hostAliases == variables.old.hostAliases)
+      && has(variables.new.shareProcessNamespace) == has(variables.old.shareProcessNamespace) && (!has(variables.new.shareProcessNamespace) || variables.new.shareProcessNamespace == variables.old.shareProcessNamespace)
+      && has(variables.new.imagePullSecrets) == has(variables.old.imagePullSecrets) && (!has(variables.new.imagePullSecrets) || variables.new.imagePullSecrets == variables.old.imagePullSecrets)
+      && has(variables.new.dnsConfig) == has(variables.old.dnsConfig) && (!has(variables.new.dnsConfig) || variables.new.dnsConfig == variables.old.dnsConfig)
+      && has(variables.new.dnsPolicy) == has(variables.old.dnsPolicy) && (!has(variables.new.dnsPolicy) || variables.new.dnsPolicy == variables.old.dnsPolicy)
+  - message: "agent may not change probes, lifecycle hooks, envFrom, ports, mounts or workingDir"
+    expression: >-
+      variables.new.containers.all(c, variables.old.containers.exists(o, o.name == c.name
+        && has(c.livenessProbe) == has(o.livenessProbe) && (!has(c.livenessProbe) || c.livenessProbe == o.livenessProbe)
+        && has(c.readinessProbe) == has(o.readinessProbe) && (!has(c.readinessProbe) || c.readinessProbe == o.readinessProbe)
+        && has(c.startupProbe) == has(o.startupProbe) && (!has(c.startupProbe) || c.startupProbe == o.startupProbe)
+        && has(c.lifecycle) == has(o.lifecycle) && (!has(c.lifecycle) || c.lifecycle == o.lifecycle)
+        && has(c.envFrom) == has(o.envFrom) && (!has(c.envFrom) || c.envFrom == o.envFrom)
+        && has(c.ports) == has(o.ports) && (!has(c.ports) || c.ports == o.ports)
+        && has(c.volumeMounts) == has(o.volumeMounts) && (!has(c.volumeMounts) || c.volumeMounts == o.volumeMounts)
+        && has(c.workingDir) == has(o.workingDir) && (!has(c.workingDir) || c.workingDir == o.workingDir)))
+  - message: "agent may not add env values read from secrets or configmaps"
+    expression: >-
+      variables.new.containers.all(c, !has(c.env) || c.env.all(e, !has(e.valueFrom)
+        || variables.old.containers.exists(o, o.name == c.name && has(o.env) && e in o.env)))
+  - message: "memory limit above 1Gi"
+    expression: >-
+      variables.new.containers.all(c, !has(c.resources) || !has(c.resources.limits)
+        || !('memory' in c.resources.limits)
+        || quantity(c.resources.limits['memory']).compareTo(quantity('1Gi')) <= 0
+        || variables.old.containers.exists(o, o.name == c.name && has(o.resources) && has(o.resources.limits)
+             && 'memory' in o.resources.limits && o.resources.limits['memory'] == c.resources.limits['memory']))
+  - message: "agent may not change pod labels"
+    expression: >-
+      has(object.spec.template.metadata.labels) == has(oldObject.spec.template.metadata.labels)
+      && (!has(object.spec.template.metadata.labels)
+          || object.spec.template.metadata.labels == oldObject.spec.template.metadata.labels)
+  - message: "agent may not change the rollout strategy or revision history"
+    expression: >-
+      has(object.spec.strategy) == has(oldObject.spec.strategy) && (!has(object.spec.strategy) || object.spec.strategy == oldObject.spec.strategy)
+      && has(object.spec.revisionHistoryLimit) == has(oldObject.spec.revisionHistoryLimit) && (!has(object.spec.revisionHistoryLimit) || object.spec.revisionHistoryLimit == oldObject.spec.revisionHistoryLimit)
+      && has(object.spec.minReadySeconds) == has(oldObject.spec.minReadySeconds) && (!has(object.spec.minReadySeconds) || object.spec.minReadySeconds == oldObject.spec.minReadySeconds)
+      && has(object.spec.progressDeadlineSeconds) == has(oldObject.spec.progressDeadlineSeconds) && (!has(object.spec.progressDeadlineSeconds) || object.spec.progressDeadlineSeconds == oldObject.spec.progressDeadlineSeconds)
   - message: "image must come from an approved source"
     expression: >-
       variables.new.containers.all(c,
-        c.image.startsWith('ghcr.io/open-telemetry/') || c.image.startsWith('payment:'))
+        c.image.startsWith('ghcr.io/open-telemetry/demo:') || c.image.startsWith('payment:'))
   - message: "replicas must stay between 1 and 3"
     expression: "!has(object.spec.replicas) || (object.spec.replicas >= 1 && object.spec.replicas <= 3)"
 ---
@@ -80,3 +127,27 @@ spec:
   validations:
   - message: "replicas must stay between 1 and 3"
     expression: "has(object.spec.replicas) && object.spec.replicas >= 1 && object.spec.replicas <= 3"
+---
+# flagd-config: the agent may change the flag file's text only, never add keys or binary data
+# ponytail: CEL cannot parse the JSON, so which flags move is checked in the gateway (dry-run diff), not here
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata: {name: oncall-agent-flags}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: [""]
+      apiVersions: ["v1"]
+      operations: ["UPDATE"]
+      resources: ["configmaps"]
+  matchConditions:
+  - name: only-the-agent
+    expression: "request.userInfo.username == 'system:serviceaccount:shop:oncall-agent'"
+  validations:
+  - message: "agent may change only existing keys of the flag file"
+    expression: >-
+      has(object.data) && has(oldObject.data) && object.data.size() == oldObject.data.size()
+      && oldObject.data.all(k, k in object.data)
+      && has(object.binaryData) == has(oldObject.binaryData)
+      && (!has(object.binaryData) || object.binaryData == oldObject.binaryData)
