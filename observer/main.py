@@ -70,7 +70,7 @@ class Observer:
             return None
         await self.expire_stuck_incident(now)
         health, event = self.detector.tick(now, readings, self.baselines, self.tracker.bad_pods(now))
-        self.health = {**health, "prometheus_ok": True}
+        self.health = {**health, "prometheus_ok": True, "last_ok_ts": now}
         if event:
             await self.announce(*event)
         elif self.undelivered and self.detector.incident:
