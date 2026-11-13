@@ -27,7 +27,12 @@
   - Proof: `uv run pytest` 850 passed, 1 failed = local budget 30 (`test_policy`); Ruff clean; mypy clean
     93 files. UI: `tsc --noEmit` clean; `next build` OK; 65 `node:test` pass via compile step (`npm test`
     still fails on this host's Node 22.22.1 for `.ts` loading, not a test).
-  - NOT done: live DB migration, any live run (shadow, coordinated, delegation), live bench A/B, token
+  - Live 2026-11-14, PR #50 (results comment there): live DB migrated (backup `data/oncall.db.bak-1794593888`).
+    disabled/shadow/coordinated/delegation runs on k3d all resolved after fixes; 6 bugs found live and fixed
+    (token charge, restart lease, tool count, phase, same-cause replan, specialist session header). Clean HEAD:
+    858 passed. Stack left in default mode; notifier cursor moved to 1518 to skip test events.
+    Open: specialist needs 3 requests live (cap 2), Twaha to decide.
+  - Earlier NOT done (now partly done above): live bench A/B, token
     limits (delegation cannot be enabled until set), new chaos scenarios for shared-dependency /
     decoy / two-fault bench, cross-process integration test (brain coordinator against a real gateway app).
   - Needs Twaha review before merge: approval `superseded` + stale-plan refusal (P4); unattributed harm
