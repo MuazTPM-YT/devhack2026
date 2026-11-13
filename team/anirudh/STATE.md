@@ -10,6 +10,14 @@ not pushed). Phases 0-4 merged.
 
 ## Done (with proof)
 
+- Map into Overview + benchmark page removed, 2026-11-14, `anirudh/service-map`
+  (26650e1, 14bc1fd). Decisions by Anirudh: no `/map` page, Overview gets a
+  Cards | Map switch; page titles are plain names (Overview, Chaos Lab,
+  Receipts); `/benchmark` UI removed (`bench/out` never existed here; Python
+  `bench/` untouched). Checks: UI 59 pass, tsc clean, ruff clean. Live on :3000
+  against the running stack: both Overview views render, `/map` and
+  `/benchmark` 404, no other console errors.
+
 - Service map + debloat, 2026-11-13, branch `anirudh/service-map` (dcd7f1c, 12eb5d2,
   c93aab2). Decisions by Anirudh: UI reads Jaeger through a Next rewrite
   (`/api/jaeger/*` -> `JAEGER_URL`), no gateway route; Trust merged into Receipts
