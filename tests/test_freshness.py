@@ -63,3 +63,25 @@ class FreshnessTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# chaos lab decoy: a later, unrelated env var on the same Deployment must not make the older env change
+# look gone; live it would turn an approved revert into an escalation
+def test_env_entry_stays_live_when_another_var_is_added_later():
+    from tests.test_journal import deploy
+    good = [{"name": "PAYMENT_ADDR", "value": "payment:8080"}]
+    broken = [{"name": "PAYMENT_ADDR", "value": "payment:9999"}]
+    e = journal.entry("deployment", deploy(env=good), deploy(env=broken), 100.0, "flagd-config")
+    later = deploy(env=broken + [{"name": "PROMO_BANNER", "value": "autumn"}])
+    assert journal.still_live(e, later)
+    assert not journal.still_live(e, deploy(env=good + [{"name": "PROMO_BANNER", "value": "autumn"}]))
+    # a var the entry added, since removed: gone
+    added = journal.entry("deployment", deploy(env=good), deploy(env=good + [{"name": "X", "value": "1"}]), 100.0,
+                          "flagd-config")
+    assert journal.still_live(added, deploy(env=good + [{"name": "X", "value": "1"}, {"name": "Y", "value": "2"}]))
+    assert not journal.still_live(added, deploy(env=good))
+    # a var the entry removed, since put back: gone
+    removed = journal.entry("deployment", deploy(env=good + [{"name": "X", "value": "1"}]), deploy(env=good), 100.0,
+                            "flagd-config")
+    assert journal.still_live(removed, deploy(env=good)) and not journal.still_live(
+        removed, deploy(env=good + [{"name": "X", "value": "1"}]))

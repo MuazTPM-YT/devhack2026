@@ -4,8 +4,16 @@ import pytest
 
 # processes share ONCALL_API_TOKEN; tests use a fixed fake one
 os.environ.setdefault("ONCALL_API_TOKEN", "test-token-0123456789")
+# the judge plane has its own secret (chaos :7004)
+os.environ.setdefault("CHAOS_JUDGE_TOKEN", "judge-token-0123456789")
 
 from schemas.models import ActionRequest, Evidence, EvidenceBundle, Incident
+
+
+# agent services drop the judge token when they start; give every test a fresh one
+@pytest.fixture(autouse=True)
+def judge_token(monkeypatch):
+    monkeypatch.setenv("CHAOS_JUDGE_TOKEN", "judge-token-0123456789")
 
 
 @pytest.fixture

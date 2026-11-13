@@ -12,6 +12,7 @@ export const EVENT_TYPES = [
   "rule_matched", "llm_called", "diagnosis_ready", "checklist_step", "approval_requested",
   "approval_decided", "action_executed", "verify_tick", "early_abort", "action_undone",
   "harm_check", "incident_resolved", "escalated", "handed_off", "injection_quarantined", "blocked",
+  "tool_called",
 ] as const;
 
 // one SSE data line from gateway /events
@@ -27,6 +28,18 @@ export interface Card { status: string; text: string; evidence_ids: string[] }
 // one bus record kept per incident, in arrival order: the timeline and flow map read these
 export interface IncidentEvent { seq: number; ts: number; type: string; payload: Record<string, unknown> }
 
+// one telemetry read by the diagnosis agent (brain/tools.py): a read, not a model request
+export interface Read { tool: string; args: Record<string, unknown>; ms: number | null; evidence: number; ts: number }
+// who picked the fix and why (diagnosis_ready, BRAIN_MODE=agent). origin "model" = not the rule's first pick
+export interface Choice {
+  decision: "accept" | "other" | "decline";
+  origin: "rule" | "model" | null;
+  chosen: { tool: string; target: string } | null;
+  ruleChoice: { tool: string; target: string } | null;
+  reason: string | null;
+  alternative: string | null;
+}
+
 export interface Incident {
   id: string;
   openedAt: number;
@@ -41,6 +54,8 @@ export interface Incident {
   pattern: string | null;
   tools: string[];
   llmCalls: number;
+  reads: Read[];
+  choice: Choice | null;
   checklist: Step[];
   approval: { id: string; forecast: string; diff: string; expiresAt: number; decision: string | null } | null;
   action: { receiptId: number; tool: string; target: string; ts: number } | null;
@@ -48,6 +63,8 @@ export interface Incident {
   harmClean: boolean | null;
   outcome: Outcome | null;
   closedAt: number | null;
+  // did the recovery match the prediction made before the fix? null = no prediction, or not closed by a fix
+  predictionHeld: boolean | null;
   card: Card | null;
   briefing: string;
   quarantined: number;
@@ -79,6 +96,7 @@ export const STAGE_OF: Record<string, Stage> = {
   bundle_built: "diagnose",
   rule_matched: "diagnose",
   llm_called: "diagnose",
+  tool_called: "diagnose",
   diagnosis_ready: "diagnose",
   checklist_step: "check",
   approval_requested: "act",
@@ -96,12 +114,27 @@ const TERMINAL: Record<string, Outcome> = {
   handed_off: "handed_off",
 };
 
+const READS_PER_INCIDENT = 30;
+
+function read(p: Record<string, unknown>, ts: number): Read {
+  return {
+    tool: str(p.tool) ?? "?", args: (p.args && typeof p.args === "object" ? p.args : {}) as Record<string, unknown>,
+    ms: typeof p.ms === "number" ? p.ms : null, evidence: Array.isArray(p.evidence_ids) ? p.evidence_ids.length : 0, ts,
+  };
+}
+
+function pick(v: unknown): { tool: string; target: string } | null {
+  const o = v as Record<string, unknown> | null;
+  return o && typeof o.tool === "string" && typeof o.target === "string" ? { tool: o.tool, target: o.target } : null;
+}
+
 function blank(id: string, ts: number): Incident {
   return {
     id, openedAt: ts, onsetAt: null, severityAtOpen: null, unhealthy: [], groupings: 0,
     culprit: null, victims: [], fromTraces: null, bundle: {}, pattern: null, tools: [], llmCalls: 0,
+    reads: [], choice: null,
     checklist: [], approval: null, action: null, ticks: [], harmClean: null, outcome: null,
-    closedAt: null, card: null, briefing: "", quarantined: 0, blocked: 0,
+    closedAt: null, predictionHeld: null, card: null, briefing: "", quarantined: 0, blocked: 0,
     stages: { detect: "idle", group: "idle", diagnose: "idle", check: "idle", act: "idle", verify: "idle" },
     events: [],
   };
@@ -161,12 +194,26 @@ function apply(inc: Incident, type: string, p: Record<string, unknown>, ts: numb
       next.pattern = str(p.pattern);
       next.tools = strs(p.tools);
       break;
-    case "llm_called":
-      next.llmCalls += 1;
+    case "llm_called": {
+      // audit logs from before tool_called carry reads as llm_called with a tool name
+      if (str(p.tool)) { next.reads = [...next.reads, read(p, ts)].slice(-READS_PER_INCIDENT); break; }
+      // an agent run reports all its requests in one event
+      const requests = (p.usage as Record<string, unknown> | undefined)?.requests;
+      next.llmCalls += typeof requests === "number" && requests > 0 ? requests : 1;
+      break;
+    }
+    case "tool_called":
+      next.reads = [...next.reads, read(p, ts)].slice(-READS_PER_INCIDENT);
       break;
     case "diagnosis_ready":
       next.pattern = str(p.pattern) ?? next.pattern;
       next.culprit = str(p.culprit) ?? next.culprit;
+      if (p.decision === "accept" || p.decision === "other" || p.decision === "decline") {
+        next.choice = {
+          decision: p.decision, origin: p.origin === "rule" || p.origin === "model" ? p.origin : null,
+          chosen: pick(p.chosen), ruleChoice: pick(p.rule_choice), reason: str(p.reason), alternative: str(p.alternative),
+        };
+      }
       break;
     case "checklist_step": {
       const passed = p.passed === true;
@@ -207,6 +254,7 @@ function apply(inc: Incident, type: string, p: Record<string, unknown>, ts: numb
     next = {
       ...next, outcome, closedAt: ts, stages: close(next.stages, outcome),
       card: card && typeof card.text === "string" ? card : null, briefing: str(p.briefing) ?? "",
+      predictionHeld: typeof p.prediction_held === "boolean" ? p.prediction_held : null,
     };
   }
   return next;

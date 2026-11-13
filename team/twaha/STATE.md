@@ -1,11 +1,60 @@
 # Twaha [T]: state
 
 **Last updated:** 2026-11-13
-**Current phase:** brain as tool-using agent (read tools), offline + live model check done
-**Branch:** `twaha/agent-tools` off `twaha/card-embeds` + merged `origin/main` `116c993`, not pushed
-**Implementation:** PRs #8, #12, #15 merged
+**Current phase:** Chaos Lab + agent chooses the fix, offline checks done, live check done (2 runs)
+**Branch:** `twaha/chaos-lab` off `origin/main` `88d0ef7` (PR #43 merged), not pushed
+**Implementation:** PRs #8, #12, #15, #43 merged
 
 ## Done (with proof)
+
+- Chaos Lab + agent upgrade (`twaha/chaos-lab`), from `reports/akira-ui-chaos-panel-review.md`.
+  Plan: `~/.claude/plans/i-want-you-to-floating-wand.md`. Twaha OK'd edits in A's and M's files.
+  - Chaos: faults are tracked experiments (`chaos/experiments.py`, `data/chaos.db`): preflight,
+    idempotency key, watchdog (expiry, cleanup, repaired-fault detection), restore only when the
+    field still holds the injected value. Reviewed list `config/chaos.yaml` + live facts in
+    `chaos/registry.py`. The six old routes run as presets through the engine, same response
+    plus `experiment_id`. Every chaos route needs `CHAOS_JUDGE_TOKEN` (`X-Chaos-Token`), reads too.
+  - UI: `/chaos` is the lab (composer, preview, active run, stop, reveal, blind draw by seed).
+    Token added by `ui/app/api/chaos/[...path]/route.ts`; loopback same-origin only, else a
+    passcode unlock. `/chaos/kubectl` is not proxied.
+  - Brain: `BRAIN_MODE=agent` now lets the model accept a rule candidate, propose another built
+    tool, or decline (`brain/rules.py candidates()`, `brain/capabilities.py`, `brain/agent.py
+    select()`). `BRAIN_MODE=advise` = old rule-wins behaviour. Tool reads are `tool_called`.
+    The model sees "the agent" / "another writer", never the field manager name.
+  - Gateway: `ActionRequest.origin == "model"` always asks a human, skips the rule-equality
+    freshness compare, writes no ledger credit. Verifier ignores readings with
+    `prometheus_ok: false`. `still_live` compares env var by var.
+  - Proof: `uv run pytest` 616 passed, 1 failed = local budget 30 (`test_policy`); Ruff clean;
+    mypy clean, 75 files. UI: `tsc --noEmit` clean; 60 `node:test` pass, run through a
+    compile step because this host's Node 22.22.1 cannot run `.ts` (`npm test` fails here for
+    that reason, not for a test). Registry build and 3 previews run against live k3d with
+    server-side dry runs only: 11 targets, `cartFailure 50%` + decoy and
+    `checkout PAYMENT_ADDR wrong_host` preview OK, `shipping` flag refused "not watched".
+  - Live check 2026-11-13 19:10 to 19:32, k3d `oncall`, stack restarted with `scripts/demo.sh`,
+    both runs started from the browser (headless Chrome driven over DevTools):
+    - Run 1 `exp-56f262853c`, guided `cartFailure 50%` on cart: symptom +3m30s (frontend and
+      checkout p95; cart errors stayed ~4%, under the 5% line), `inc-1794577880789` opened +4m00s,
+      culprit cart, 19 reads, candidate c1 `revert_config cart` was right. **Agent answer was junk**:
+      `decline`, reason "test", cause "placeholder"; it was accepted and Discord was paged with
+      "agent declined to act: test". Fixed in `9f45690` (2 tests failed first): reason and causes
+      need real sentences, a decline must cite evidence, three bad answers -> rule pick, every
+      rejection logged. Stop from the browser restored the flag; shop back to severity 0.
+    - Run 2 `exp-30876b397e`, `paymentFailure 50%` + decoy (`PROMO_BANNER` env on payment):
+      `inc-1794578176880`, rule's c1 = the decoy, agent accepted c2 (the flag) with a correct
+      reason, 6 model requests, 10 reads, 35.7k + 4.2k tokens, no rejected answer. Gateway: all
+      gates passed, trust gate asked "the agent chose this fix itself". Twaha approved in Discord,
+      `revert_config` ran (receipt #17, origin model), recovered at +5m15s, FIXED, prediction
+      held, harm clean. Lab: `ended_by repaired`, decoy removed after verification, no ledger row
+      for the fix, `verify_audit.py`: 949 records verified. Total inject to verdict 315 s, of
+      which 75 s waiting for the approval.
+    - Auth live: chaos 401 without token on GET and POST; proxy 404 for `kubectl`, 403 cross-site,
+      401 "locked" for a non-loopback Host.
+    - Screenshots: `.playwright-mcp/akira-lab-*.png` (1440, 390, live page at 1680).
+  - Left over: `inc-1794577996231` (opened 19:23:16 while run 1 was still live) has no outcome: I restarted the brain while
+    it was diagnosing. It shows as open until the observer's 20 min max age.
+  - NOT tested live: blind draw, `bad_image` / `broken_env` / `scale_zero` from the lab, expiry
+    by timer on the real cluster, the passcode unlock from another machine, `advise` mode.
+    One run per case: the junk answer may come back in other shapes.
 
 - Agent tools (`twaha/agent-tools`): brain diagnoses as a pydantic-ai agent
   (`brain/agent.py`) with 9 read tools (`brain/tools.py`). Thin brief, max 6
@@ -194,6 +243,9 @@
 
 ## Next
 
+0. Chaos Lab live check: add `CHAOS_JUDGE_TOKEN` to `.env`, `scripts/demo.sh down && up`, one guided
+   run (`cartFailure 50%`), one decoy run, stop, reveal; then screenshots at 1440 and 390 px.
+   Trust runs collected before this branch describe `advise` behaviour, not `agent`.
 1. Repeat smoke a few times for stability, then overnight trust runs.
 2. Escalated incidents never close when the service recovers by itself
    (re-page forever); needs an ack button or auto-close.

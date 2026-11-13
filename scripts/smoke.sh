@@ -6,8 +6,11 @@ CHAOS_URL=${CHAOS_URL:-http://127.0.0.1:7004}
 OBSERVER_URL=${OBSERVER_URL:-http://127.0.0.1:7001}
 GATEWAY_URL=${GATEWAY_URL:-http://127.0.0.1:7003}
 TIMEOUT_S=${TIMEOUT_S:-300}
+# the chaos panel answers only to the judge token
+: "${CHAOS_JUDGE_TOKEN:?missing required env var CHAOS_JUDGE_TOKEN (see .env)}"
+judge=(-H "X-Chaos-Token: $CHAOS_JUDGE_TOKEN")
 
-echo "reset: $(curl -fsS -X POST "$CHAOS_URL/chaos/reset")"
+echo "reset: $(curl -fsS -X POST "${judge[@]}" "$CHAOS_URL/chaos/reset")"
 
 echo "waiting for severity 0 at $OBSERVER_URL/health/now"
 deadline=$(( $(date +%s) + TIMEOUT_S ))
@@ -28,7 +31,7 @@ sys.exit(0 if h.get("prometheus_ok") is True and seen else 1)'; then
   exit 1
 fi
 
-injection=$(curl -fsS -X POST "$CHAOS_URL/chaos/bad-deploy")
+injection=$(curl -fsS -X POST "${judge[@]}" "$CHAOS_URL/chaos/bad-deploy")
 echo "inject: $injection"
 inject_ts=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["ts"])' "$injection")
 

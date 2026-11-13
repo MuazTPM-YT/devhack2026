@@ -4,7 +4,7 @@ import { test } from "node:test";
 
 import type { ServiceHealth } from "./chaos-api.ts";
 import { type BusRecord, initialState, type LiveState, reduce } from "./live.ts";
-import { incidentStats, incidentStatus, latencyLimit, parsePolicy, parseServices, serviceSentence, serviceStatus } from "./overview.ts";
+import { incidentStats, incidentStatus, latencyLimit, parsePolicy, parseServices, serviceSentence, serviceStatus, verdict } from "./overview.ts";
 
 const policyText = readFileSync(new URL("../../config/policy.yaml", import.meta.url), "utf8");
 const servicesText = readFileSync(new URL("../../config/services.yaml", import.meta.url), "utf8");
@@ -17,7 +17,7 @@ const health = (over: Partial<ServiceHealth> = {}): ServiceHealth => ({
 test("reads the real policy and service list", () => {
   assert.deepEqual(policy, { errThreshold: 0.05, latencyMultiplier: 2, latencyFloorMs: 100, maxAgeS: 1200 });
   const services = parseServices(servicesText);
-  assert.deepEqual(services.payment, { kind: "stateless", critical: true, actable: true });
+  assert.deepEqual(services.payment, { kind: "stateless", critical: true, actable: true, protected: false });
   assert.equal(Object.keys(services).length, 11);
 });
 
@@ -52,7 +52,41 @@ test("incident stats count outcomes, lost incidents and median fix time", () => 
     ["incident_opened", "e", 4000],
   );
   const st = incidentStats(s, 4100, 1200);
-  assert.deepEqual(st, { total: 5, open: 1, resolved: 2, escalated: 1, handedOff: 0, lost: 1, medianFixS: 150 });
+  assert.deepEqual(st, { total: 5, open: 1, resolved: 2, verified: 0, escalated: 1, handedOff: 0, lost: 1, medianFixS: 150 });
   assert.equal(incidentStatus(s.incidents.d, 4100, 1200), "lost");
   assert.equal(incidentStatus(s.incidents.d, 4100, null), "open");
+});
+
+test("unknown telemetry never reads as healthy", () => {
+  // blind: the observer is serving old numbers, however good they look
+  assert.equal(serviceStatus(health(), true), "unknown");
+  assert.equal(serviceStatus(health({ unhealthy: true }), true), "unknown");
+  assert.equal(serviceSentence(health(), policy, true), "Monitoring unavailable; health unknown.");
+  assert.equal(serviceSentence(undefined, policy), "No reading for this service; health unknown.");
+  assert.equal(serviceSentence(health({ err_ratio: null, p95_ms: null }), policy), "No requests measured in the last window; health not proven.");
+  // the observer says breaching but our copy of the limits shows nothing over: still not "inside baselines"
+  assert.equal(serviceSentence(health({ breaching: true }), policy), "Over a limit the observer measured.");
+});
+
+test("resolved is not the same as fixed", () => {
+  const closed = (status: string, held?: boolean) => run(
+    ["incident_opened", "v", 0], ["incident_resolved", "v", 90, { card: { status, text: "t", evidence_ids: [] }, prediction_held: held }],
+  ).incidents.v;
+  assert.equal(verdict(closed("FIXED", true)), "verified");
+  assert.equal(verdict(closed("RECOVERED, FIX NOT PROVEN", false)), "unproven");
+  assert.equal(verdict(closed("MITIGATED, NOT FIXED", true)), "mitigated");
+  assert.equal(verdict(closed("resolved")), "unproven");
+  assert.equal(verdict(run(["incident_opened", "o", 0]).incidents.o), null);
+  const stats = incidentStats(run(
+    ["incident_opened", "a", 0], ["incident_resolved", "a", 90, { card: { status: "FIXED", text: "t", evidence_ids: [] }, prediction_held: true }],
+    ["incident_opened", "b", 5], ["incident_resolved", "b", 95, { card: { status: "RECOVERED, FIX NOT PROVEN", text: "t", evidence_ids: [] }, prediction_held: false }],
+  ), 100, 1200);
+  assert.deepEqual([stats.resolved, stats.verified], [2, 1]);
+});
+
+test("a protected data store is approval-only, not watch-only", () => {
+  const parsed = parseServices(servicesText);
+  assert.deepEqual([parsed["valkey-cart"].protected, parsed["valkey-cart"].actable], [true, false]);
+  assert.deepEqual([parsed.accounting.protected, parsed.accounting.actable], [false, false]);
+  assert.equal(parsed.payment.protected, false);
 });

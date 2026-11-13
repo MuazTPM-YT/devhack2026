@@ -170,9 +170,16 @@ def current(obj: dict, path: str):
     return c.get(field) or ({} if field == "resources" else [] if field == "env" else None)
 
 
+# env is compared var by var: only the vars this entry changed, so an unrelated later var changes nothing
+def _env_live(old: list, new: list, now: list) -> bool:
+    o, n, live = ({e["name"]: e for e in env or []} for env in (old, new, now))
+    return all(live.get(k) == n.get(k) for k in o.keys() | n.keys() if o.get(k) != n.get(k))
+
+
 # is the change this entry recorded still what the cluster runs? (freshness step 3)
 def still_live(e: dict, obj: dict) -> bool:
-    return all(current(obj, p) == d["new"] for p, d in e["diff"].items())
+    return all(_env_live(d["old"], d["new"], current(obj, p)) if p.endswith("].env") else current(obj, p) == d["new"]
+               for p, d in e["diff"].items())
 
 
 def insert(conn: sqlite3.Connection, e: dict) -> int:

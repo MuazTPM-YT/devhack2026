@@ -70,7 +70,7 @@ class Observer:
             return None
         await self.expire_stuck_incident(now)
         health, event = self.detector.tick(now, readings, self.baselines, self.tracker.bad_pods(now))
-        self.health = {**health, "prometheus_ok": True}
+        self.health = {**health, "prometheus_ok": True, "last_ok_ts": now}
         if event:
             await self.announce(*event)
         elif self.undelivered and self.detector.incident:
@@ -167,7 +167,7 @@ def build_from_env() -> tuple[Observer, list[threading.Thread], threading.Event]
     from kubernetes import config as kube_config
 
     prom, kubeconfig, brain, gateway = require_env("PROMETHEUS_URL", "READER_KUBECONFIG", "BRAIN_URL", "GATEWAY_URL")
-    auth.token()  # brain and gateway refuse our POSTs without it; fail at start
+    auth.agent_start()  # brain and gateway refuse our POSTs without it; fail at start
     policy, queries, services = config.load("policy"), config.load("queries"), config.load("services")
     conn = connect(DEFAULT_PATH, shared=True)
     tracker = Tracker(conn, services["flag_config"]["configmap"])

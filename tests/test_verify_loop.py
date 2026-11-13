@@ -317,3 +317,88 @@ async def test_watchdog_on_a_fix_with_no_safe_undo_fails_closed(tmp_path):
     assert await w.gw.watchdog() == 1
     assert w.conn.execute("SELECT outcome FROM receipts").fetchone()[0] == "watchdog_failed"
     assert w.apps.dep["spec"]["template"]["spec"]["containers"][0]["image"] == GOOD  # fix left in place
+
+
+# ---- a fix the model chose itself (ActionRequest.origin == "model") ----------------------------------------
+def open_gate(w):
+    w.conn.execute("INSERT INTO ledger VALUES ('recent_change', 'rollback_deploy', 'payment', 'rehearsal', "
+                   "30, 0, NULL)")
+
+
+async def test_model_chosen_fix_asks_a_human_even_when_the_gate_is_open(tmp_path):
+    w = World(tmp_path)
+    open_gate(w)
+    d = await w.gw.submit(action(origin="model"))
+    assert (d.decision, d.failed_step) == ("awaiting_approval", "trust_gate")
+    assert "the agent chose this fix itself" in d.reason
+    assert all(p["dry_run"] == "All" for p in w.apps.patches)  # nothing was written
+    # the same action as the rule's own pick runs on the earned trust
+    w2 = World(tmp_path / "b")
+    open_gate(w2)
+    assert (await w2.gw.submit(action())).decision == "executed"
+
+
+@pytest.mark.parametrize("healths", [[healthy()], [sick()]])
+async def test_model_chosen_fix_neither_earns_nor_costs_rule_trust(tmp_path, healths):
+    w = World(tmp_path)
+    script = Script(w, healths)
+    w.gw.http = httpx.AsyncClient(transport=httpx.MockTransport(script))
+    w.gw.verify_every = 0
+    d = await w.gw.submit(action(origin="model"))
+    d = await w.gw.decide(d.approval_id, "approved", "u1")
+    assert d.decision == "executed"
+    script.active = True
+    await asyncio.wait_for(next(iter(w.gw.tasks)), 5)
+    assert ledger(w) == []
+    assert json.loads(w.conn.execute("SELECT trust_json FROM receipts").fetchone()[0])["origin"] == "model"
+
+
+async def test_model_chosen_fix_earns_no_rehearsal_credit(tmp_path):
+    w = World(tmp_path)
+    script = Script(w, [healthy()])
+    w.gw.http = httpx.AsyncClient(transport=httpx.MockTransport(script))
+    w.gw.verify_every = 0
+    w.gw.approvers.add(REHEARSAL_APPROVER)
+    d = await w.gw.submit(action(origin="model"))
+    d = await w.gw.decide(d.approval_id, "approved", REHEARSAL_APPROVER)
+    script.active = True
+    await asyncio.wait_for(next(iter(w.gw.tasks)), 5)
+    assert w.gw.rehearsal_credit(d.receipt_id, True)["credited"] is False and ledger(w) == []
+
+
+# chaos lab decoy: a newer, harmless change sits on top of the real one. The rule's pick would be the newer
+# entry; the model may point at the older one, and a human's yes must then run it, not bounce at freshness
+async def test_model_may_pick_an_older_change_than_the_rule_would(tmp_path):
+    def newer(w):
+        w.obs.journal.append({"id": 44, "object": "deployment/payment", "kind": "env", "ts": 955.0,
+                              "field_manager": "chaos-panel", "by_agent": False,
+                              "diff": {"containers[payment].env": {"old": [], "new": []}}, "inverse": []})
+
+    w = World(tmp_path)
+    newer(w)
+    d = await w.gw.submit(action(origin="model"))
+    assert (d.decision, d.failed_step) == ("awaiting_approval", "trust_gate")
+    assert (await w.gw.decide(d.approval_id, "approved", "u1")).decision == "executed"
+    # claimed as the rule's pick, the same stale entry is caught: the gateway derives the rule itself
+    w2 = World(tmp_path / "b")
+    newer(w2)
+    d2 = await w2.gw.submit(action())
+    assert (d2.decision, d2.failed_step) == ("awaiting_approval", "freshness") and "rule result changed" in d2.reason
+    assert (await w2.gw.decide(d2.approval_id, "approved", "u1")).decision == "escalated"
+
+
+async def test_origin_survives_the_mcp_call(tmp_path):
+    from brain.gateway_client import call_tool
+    from gateway.main import create_app
+    from schemas.models import ActionRequest
+
+    w = World(tmp_path)
+    open_gate(w)
+    app = create_app(w.gw)
+    async with app.router.lifespan_context(app):
+        http = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:7003",
+                                 headers=auth.headers())
+        d = await call_tool("http://127.0.0.1:7003", ActionRequest.model_validate(action(origin="model")), http=http)
+        assert (d.decision, d.failed_step) == ("awaiting_approval", "trust_gate")
+        stored = json.loads(w.conn.execute("SELECT action_json FROM approvals").fetchone()[0])
+        assert stored["origin"] == "model"

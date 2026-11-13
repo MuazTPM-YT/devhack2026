@@ -1,6 +1,6 @@
 import unittest
 
-from brain.rules import match, to_bytes
+from brain.rules import candidates, match, to_bytes
 
 SERVICES = {"payment": {"kind": "stateless", "actable": True}, "recommendation": {"kind": "stateless", "actable": True},
             "valkey-cart": {"kind": "stateful", "protected": True}}
@@ -66,6 +66,54 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(match(incident(None), [], [], SERVICES, POLICY), ("unknown", []))
         self.assertEqual(match(incident("payment"), [], [], SERVICES, POLICY, memory_ratio=0.5), ("unknown", []))
 
+    # the rule's own pick is always c1; the rest is what else the evidence supports
+    def test_candidates_start_with_the_rule_pick_then_older_changes(self):
+        journal = [change(40, "image", ts=900), change(42, "env", ts=980), change(43, "restart", ts=990)]
+        pattern, cands = candidates(incident("payment"), journal, [], SERVICES, POLICY)
+        _, actions = match(incident("payment"), journal, [], SERVICES, POLICY)
+        self.assertEqual(pattern, "recent_change")
+        self.assertEqual(cands[0]["action"], actions[0])
+        self.assertEqual([(c["id"], c["action"]["tool"], c["action"]["journal_entry"]) for c in cands],
+                         [("c1", "revert_config", 42), ("c2", "rollback_deploy", 40)])
+        self.assertEqual(cands[0]["basis"], "newest change, env on deployment/payment 20 s before errors began")
+        self.assertTrue(cands[1]["basis"].startswith("older change, image"))
+
+    # chaos lab decoy: a harmless env change lands after the real flag change, so the rule points at the decoy
+    def test_decoy_is_first_but_the_real_cause_is_on_the_list(self):
+        flags = {"paymentFailure": "payment"}
+        journal = [change(50, "flag", obj="configmap/flagd-config", ts=940,
+                          diff={"flags[paymentFailure].defaultVariant": {"old": "off", "new": "50%"}}),
+                   change(51, "env", ts=955)]
+        _, cands = candidates(incident("payment"), journal, [], SERVICES, POLICY, flag_map=flags)
+        self.assertEqual([(c["action"]["tool"], c["action"]["journal_entry"]) for c in cands],
+                         [("revert_config", 51), ("revert_config", 50)])
+
+    def test_resource_fixes_follow_a_recent_change_instead_of_being_dropped(self):
+        events = [{"id": "event:abc", "summary": "container recommendation OOMKilled, exit 137"}]
+        journal = [change(60, "flag", obj="configmap/flagd-config", ts=950,
+                          diff={"flags[recommendationCacheFailure].defaultVariant": {"old": "off", "new": "on"}})]
+        pattern, cands = candidates(incident("recommendation"), journal, events, SERVICES, POLICY, memory_limit="256Mi",
+                                    flag_map={"recommendationCacheFailure": "recommendation"})
+        self.assertEqual(pattern, "recent_change")
+        self.assertEqual([c["action"]["tool"] for c in cands], ["revert_config", "restart_service", "raise_limit"])
+        self.assertEqual([c["action"]["pattern"] for c in cands], ["recent_change", "resource", "resource"])
+
+    def test_candidates_never_widen_what_may_be_touched(self):
+        services = {**SERVICES, "fraud-detection": {"kind": "stateless"}}
+        self.assertEqual(candidates(incident("fraud-detection"), [change(1, "image", obj="deployment/fraud-detection")],
+                                    [], services, POLICY)[1], [])
+        store = [change(7, "replicas", obj="deployment/valkey-cart", diff={"replicas": {"old": 1, "new": 0}}),
+                 change(6, "image", obj="deployment/valkey-cart", ts=900)]
+        _, cands = candidates(incident("valkey-cart"), store, [], SERVICES, POLICY)
+        self.assertEqual([c["action"]["tool"] for c in cands], ["scale"])
+        self.assertEqual(candidates(incident(None), [], [], SERVICES, POLICY), ("unknown", []))
+        agent_only = [change(5, "image", by_agent=True)]
+        self.assertEqual(candidates(incident("payment"), agent_only, [], SERVICES, POLICY), ("unknown", []))
+
+    def test_candidates_are_capped(self):
+        journal = [change(i, "env", ts=900 + i) for i in range(1, 8)]
+        self.assertEqual(len(candidates(incident("payment"), journal, [], SERVICES, POLICY)[1]), 4)
+
     def test_to_bytes(self):
         self.assertEqual((to_bytes("1Gi"), to_bytes("256Mi"), to_bytes("500M"), to_bytes("1024")),
                          (2**30, 256 * 2**20, 500 * 10**6, 1024))
@@ -73,3 +121,18 @@ class RulesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_capabilities_list_only_tools_the_gateway_can_build():
+    from brain.capabilities import available
+    from gateway.mcp_server import TOOLS
+    from schemas import config
+    caps = available(config.load("policy"), config.load("services")["services"])
+    names = [c["tool"] for c in caps]
+    assert names == ["rollback_deploy", "revert_config", "restart_service", "scale", "raise_limit"]
+    assert set(names) < set(TOOLS) and "enable_degraded_mode" not in names
+    by = {c["tool"]: c for c in caps}
+    assert "valkey-cart" in by["scale"]["targets"] and "valkey-cart" not in by["restart_service"]["targets"]
+    assert "accounting" not in by["scale"]["targets"]
+    assert by["raise_limit"]["approval"] == "always asks a human" and "approval" not in by["revert_config"]
+    assert by["scale"]["limits"] == {"min": 1, "max": 3}

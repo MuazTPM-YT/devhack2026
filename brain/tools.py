@@ -71,6 +71,10 @@ class ToolBox:
     needs_prediction: bool = False
     ledger: dict[str, Evidence] = field(default_factory=dict)
     calls: int = 0
+    # agent chooses the fix: what it may accept (rule candidates) and what it may propose (built tools)
+    choose: bool = False
+    candidates: list[dict] = field(default_factory=list)
+    tools_ok: set[str] = field(default_factory=set)
 
     # what the model was shown, in the shape llm.check validates against
     def bundle(self) -> EvidenceBundle:
@@ -108,7 +112,7 @@ class ToolBox:
         shown = [Evidence.model_validate(redact_value(e.model_dump())) for e in evidence]
         shown = [e for e in shown if e.id in text]
         self.ledger.update((e.id, e) for e in shown)
-        await self.publish("llm_called", self.incident.id, {
+        await self.publish("tool_called", self.incident.id, {
             "tool": name, "args": redact_value(args), "ms": round((time.monotonic() - started) * 1000),
             "evidence_ids": [e.id for e in shown]})
         return text
@@ -165,7 +169,8 @@ class ToolBox:
         rows = (await self.get_json(f"{self.observer_url}/journal", **params))[-15:]
         evidence = [change_evidence(r) for r in rows]
         return [{"evidence_id": e.id, "object": r["object"], "kind": r["kind"],
-                 "s_before_onset": round(self.incident.onset_at - r["ts"]), "by": r.get("field_manager"),
+                 "s_before_onset": round(self.incident.onset_at - r["ts"]),
+                 "by": "agent" if r.get("by_agent") else "other",
                  "summary": e.summary} for r, e in zip(rows, evidence)], evidence
 
     async def dependencies(self, service: str, direction: str) -> tuple[Any, list[Evidence]]:

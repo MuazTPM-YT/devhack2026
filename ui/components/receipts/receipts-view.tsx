@@ -21,7 +21,7 @@ function Yes({ value, yes, no }: { value: boolean | null | undefined; yes: strin
 }
 
 const OUTCOME_TONE: Record<string, Tone> = {
-  success: "ok", right_by_accident: "ok", pending: "warn", undone: "bad", undo_failed: "bad", handed_off: "warn",
+  success: "ok", right_by_accident: "warn", pending: "warn", undone: "bad", undo_failed: "bad", handed_off: "warn",
 };
 
 function OutcomeTag({ outcome }: { outcome: string }) {
@@ -127,7 +127,9 @@ export function ReceiptsView() {
       <PageHead eyebrow="Receipts · every action, its diff and its undo" title="What Akira changed" aside={<AuditCheck />} />
       <Kpis label="Receipt figures" items={[
         { label: "Actions", value: data ? items.length : "–" },
-        { label: "Succeeded", value: data ? items.filter((i) => ["success", "right_by_accident"].includes(i.receipt.outcome)).length : "–", tone: "ok" },
+        { label: "Fix verified", value: data ? items.filter((i) => i.receipt.outcome === "success").length : "–", tone: "ok" },
+        // recovered, but the prediction made before the fix did not hold: the cause is not proven
+        { label: "Recovered, unproven", value: data ? items.filter((i) => i.receipt.outcome === "right_by_accident").length : "–", tone: "warn" },
         { label: "Undone", value: data ? items.filter((i) => i.receipt.outcome.startsWith("undo")).length : "–" },
         { label: "Prediction held", value: data ? `${items.filter((i) => i.receipt.prediction_held).length}/${items.filter((i) => i.receipt.prediction_held != null).length}` : "–" },
       ]} />

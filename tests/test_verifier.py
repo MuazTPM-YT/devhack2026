@@ -130,3 +130,32 @@ class VictimOutsideHealthTest(unittest.TestCase):
         v = Verification(0, start, "payment", ["checkout"], None, window_s=120, early_abort=True)
         v.step(5, health(0, payment=svc(err=0.01)), False)
         self.assertIsNone(v.step(20, health(0, payment=svc(err=0.01)), False))
+
+
+# observer down: it keeps serving its last numbers with prometheus_ok false. Old numbers prove nothing
+class StaleReadingsTest(unittest.TestCase):
+    def test_stale_healthy_numbers_never_count_as_recovered_or_as_the_prediction(self):
+        stale = {**FIXED, "prometheus_ok": False}
+        v = verification()
+        for t in (5, 10, 20, 30, 60):
+            self.assertIsNone(v.step(t, stale, False))
+        self.assertFalse(v.prediction_held)
+        self.assertFalse(v.recovered)
+        self.assertEqual(v.step(120, stale, False), "window_end")
+        self.assertTrue(v.blind)
+        self.assertEqual(v.outcome(harm_clean=True), "undo")
+
+    def test_fresh_numbers_after_a_blind_spell_start_the_stable_window_again(self):
+        v = verification()
+        self.assertIsNone(v.step(5, {**FIXED, "prometheus_ok": True}, False))
+        self.assertIsNone(v.step(15, {**FIXED, "prometheus_ok": False}, False))
+        self.assertIsNone(v.step(21, {**FIXED, "prometheus_ok": True}, False))  # 16 s after t=5, but not 15 s fresh
+        self.assertEqual(v.step(36, {**FIXED, "prometheus_ok": True}, False), "recovered")
+        self.assertFalse(v.blind)
+
+    def test_stale_severity_is_not_harm(self):
+        v = verification()
+        worse = {**health(12, payment=svc(True, True, 0.4), checkout=svc(True, True, 0.2), cart=svc(True, True)),
+                 "prometheus_ok": False}
+        self.assertIsNone(v.step(70, worse, False))
+        self.assertEqual(v.step(75, {**worse, "prometheus_ok": True}, False), "early_abort")
