@@ -25,6 +25,9 @@ check "agent can-i patch deployment/valkey-cart: no" '^no$' "${A[@]}" auth can-i
 check "agent can-i create pods: no" '^no$' "${A[@]}" auth can-i create pods
 check "agent can-i patch deployment/payment: yes" '^yes$' "${A[@]}" auth can-i patch deployment/payment
 check "reader can-i patch deployment/payment: no" '^no$' "${R[@]}" auth can-i patch deployment/payment
+# data stores: scale subresource only, so a human-approved scale-back can run (Muaz's call, scenario 5)
+check "agent can-i patch deployment/valkey-cart --subresource=scale: yes" '^yes$' "${A[@]}" auth can-i patch deployment/valkey-cart --subresource=scale
+check "agent can-i patch deployment/kafka: no" '^no$' "${A[@]}" auth can-i patch deployment/kafka
 
 img=${IMAGE_OK:-$("${A[@]}" get deploy payment -o jsonpath='{.spec.template.spec.containers[0].image}')}
 replicas=$("${A[@]}" get deploy payment -o jsonpath='{.spec.replicas}')
@@ -48,6 +51,11 @@ for mode in --dry-run=server ""; do
     check "[$tag] nothing saved (resourceVersion $rv_before)" '^same$' bash -c "[ '$rv_before' = '$rv_after' ] && echo same || echo 'changed to $rv_after'"
   fi
 done
+
+# server dry run only: never really scale a data store from this script
+check "[dry-run] valkey-cart scale to 1: allowed" 'patched' "${A[@]}" patch deploy valkey-cart --dry-run=server --subresource=scale --type=merge -p '{"spec":{"replicas":1}}'
+check "[dry-run] valkey-cart scale to 0: denied" 'replicas must stay between 1 and 3' "${A[@]}" patch deploy valkey-cart --dry-run=server --subresource=scale --type=merge -p '{"spec":{"replicas":0}}'
+check "[dry-run] valkey-cart image patch: forbidden" 'forbidden' "${A[@]}" patch deploy valkey-cart --dry-run=server --type=merge -p '{"spec":{"template":{"metadata":{"annotations":{"x":"y"}}}}}'
 
 echo "MANUAL | real rollback_deploy through the executor after a bad deploy: needs gateway executor (Phase 1)"
 echo "fails: $fails"

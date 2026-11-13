@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 from pydantic import ValidationError
 
+from brain.bundle import why_text
 from brain.major import shared_change
 from brain.rules import latest_change_before_onset
 from gateway import approvals, blast, freshness, policy, trust
@@ -22,7 +23,7 @@ from gateway.executor import (WriteRefused, list_json, patch_configmap, patch_de
 from gateway.receipts import ReceiptStore, build_incident_card
 from observer import journal
 from observer.kube_watch import service_of
-from schemas.models import ActionRequest, GatewayDecision, Incident, Receipt
+from schemas.models import ActionRequest, Card, GatewayDecision, Incident, Receipt
 
 log = logging.getLogger("gateway")
 
@@ -34,11 +35,26 @@ def forecast_text(plan: dict) -> str:
             f"surge {'on' if plan.get('surge') else 'off'}); healthy callers at risk: {hit}")
 
 
+def tier_of(gate: dict) -> str:
+    return "ask" if gate.get("approved_by") else "auto"
+
+
+# "payment errors 38.0% -> 0.4%" for the card's first line: first watched service with both readings
+def error_change(before: dict, after: dict | None, services: list[str]) -> str | None:
+    for s in services:
+        a = before.get("services", {}).get(s, {}).get("err_ratio")
+        b = (after or {}).get("services", {}).get(s, {}).get("err_ratio")
+        if a is not None and b is not None:
+            return f"{s} errors {a:.1%} -> {b:.1%}"
+    return None
+
+
+
 class Gateway:
     def __init__(self, conn: sqlite3.Connection, apps: Any, core: Any, http: httpx.AsyncClient, observer_url: str,
                  services: dict, policy_cfg: dict, publish: Callable[[dict], Awaitable[Any]],
                  receipts: ReceiptStore, approvers: set[str], clock: Callable[[], float] = time.time,
-                 graph: Any = None, flag_map: dict | None = None):
+                 graph: Any = None, flag_map: dict | None = None, rehearsal: bool = False):
         self.conn, self.apps, self.core, self.http, self.observer_url = conn, apps, core, http, observer_url
         self.services, self.policy, self.publish, self.receipts = services, policy_cfg, publish, receipts
         self.approvers, self.clock = approvers, clock
@@ -49,6 +65,8 @@ class Gateway:
         self.flag_map = flag_map or {}  # config/services.yaml `flags:` (flag -> service)
         self.heartbeats: dict[int, float] = {}
         self.verifying: dict[int, asyncio.Task] = {}
+        self.rehearsal = rehearsal  # ONCALL_REHEARSAL=1: bench trust runs, per-hour budget lifted
+        self.why: dict[str, str] = {}  # incident id -> card "Why" line; ponytail: never pruned, tiny per incident
 
     # ---- helpers -------------------------------------------------------------------------------
     def incident(self, incident_id: str) -> dict | None:
@@ -62,6 +80,9 @@ class Gateway:
         return Incident(id=row["id"], opened_at=row.get("opened_at") or 0, onset_at=row.get("onset_at") or 0,
                         unhealthy=[s for s in [culprit, *victims] if s], culprit=culprit, victims=victims,
                         major=bool(row.get("major")), severity=row.get("severity_at_open") or 0)
+
+    def card(self, row: dict, target: str | None, **kw: Any) -> Card:
+        return build_incident_card(self.card_incident(row, target), why=self.why.get(row["id"]), **kw)
 
     async def step(self, incident_id: str, steps: list[dict], name: str, passed: bool, reason: str | None = None):
         steps.append({"name": name, "passed": passed, "reason": reason})
@@ -91,7 +112,7 @@ class Gateway:
         if row is not None:
             gone = name == "freshness" and outcome == "refused"
             event = "incident_resolved" if gone else ("handed_off" if outcome == "handed_off" else "escalated")
-            card = build_incident_card(self.card_incident(row, target), decision=decision)
+            card = self.card(row, target, decision=decision)
             self.set_state(incident_id, {"incident_resolved": "resolved"}.get(event, event))
             await self.publish({"type": event, "incident_id": incident_id,
                                 "payload": {"card": card.model_dump(mode="json"), "briefing": reason or ""}})
@@ -149,6 +170,10 @@ class Gateway:
         except (httpx.HTTPError, ValueError) as e:
             return await self.stop(action, row, steps, "hands_off", "escalated", f"observer unreachable: {e}")
 
+        entry = next((r for r in journal_rows if r["id"] == action.journal_entry), None)
+        if (why := why_text(entry, row["onset_at"])) is not None:
+            self.why[action.incident_id] = why
+
         # 2 hands-off: a human changed something after we opened the incident
         human = [r for r in journal_rows if not r["by_agent"] and r["ts"] >= (row["opened_at"] or 0)]
         if human:
@@ -159,7 +184,11 @@ class Gateway:
         # 3 policy
         with self.lock:
             used = policy.usage(self.conn, action.incident_id, self.clock())
-        asking = not approved and self.policy["tools"][action.tool]["auto_eligible"] is False
+        if self.rehearsal:  # 3/hour would stretch the ~60 overnight trust runs over 20 h (Muaz chose)
+            used = {**used, "hour": 0}
+        protected = bool(self.services.get(action.target, {}).get("protected"))
+        # these can only end in an approval request, so an action still verifying doesn't block them
+        asking = not approved and (self.policy["tools"][action.tool]["auto_eligible"] is False or protected)
         ok, outcome, reason = policy.check(action.model_dump(), self.services, self.policy, used, asking=asking)
         if not ok:
             return await self.stop(action, row, steps, "policy", outcome, reason)
@@ -172,7 +201,6 @@ class Gateway:
         await self.step(action.incident_id, steps, "policy", True)
 
         # 4 dry run + snapshot
-        entry = next((r for r in journal_rows if r["id"] == action.journal_entry), None)
         try:
             plan = await asyncio.to_thread(self.prepare, action, entry)
         except WriteRefused as e:
@@ -211,13 +239,16 @@ class Gateway:
         else:
             rule_now = (action.pattern, action.journal_entry)
         if action.journal_entry is not None and entry is None:
-            return await self.stop(action, row, steps, "freshness", "awaiting_approval" if not approved else "escalated",
-                                   f"journal entry {action.journal_entry} not found")
+            missing = f"journal entry {action.journal_entry} not found"
+            if not approved:
+                return await self.ask(action, row, steps, plan, missing, step_name="freshness")
+            return await self.stop(action, row, steps, "freshness", "escalated", missing)
+        victims = json.loads(row.get("victims_json") or "[]")
         outcome, reason = freshness.check(health, action.target, (action.pattern, action.journal_entry), rule_now,
-                                          entry, plan["live"])
+                                          entry, plan["live"], victims)
         if outcome != "ok":
             if outcome == "awaiting_approval" and not approved:
-                return await self.ask(action, row, steps, plan, reason)
+                return await self.ask(action, row, steps, plan, reason, step_name="freshness")
             return await self.stop(action, row, steps, "freshness", outcome if outcome == "refused" else "escalated",
                                    reason)
         await self.step(action.incident_id, steps, "freshness", True)
@@ -228,6 +259,9 @@ class Gateway:
         with self.lock:
             gate = trust.check(self.conn, self.policy["trust"], self.policy["tools"][action.tool], action.pattern,
                                action.tool, action.target, kind)
+        if not approved and protected:
+            return await self.ask(action, row, steps, plan, f"{action.target} is a protected data store; "
+                                                            "a human must approve", gate)
         if not approved and row.get("major"):
             shared = shared_change(journal_rows, row["onset_at"] or 0, window_s)
             if not (action.pattern == "recent_change" and shared and action.journal_entry == shared["id"]):
@@ -250,7 +284,8 @@ class Gateway:
                                     self.policy["approval"]["expiry_seconds"])
         decision = GatewayDecision(decision="awaiting_approval", failed_step=step_name, reason=reason,
                                    approval_id=appr["id"])
-        card = build_incident_card(self.card_incident(row, action.target), decision=decision)
+        card = self.card(row, action.target, decision=decision,
+                         did=f"wants to {action.tool} {action.target}: {plan['summary']}")
         changed = ", ".join(sorted(plan["diff"]))[:500]
         await self.publish({"type": "approval_requested", "incident_id": action.incident_id, "payload": {
             "card": card.model_dump(mode="json"), "approval_id": appr["id"], "expires_at": appr["expires_at"],
@@ -337,10 +372,11 @@ class Gateway:
                                                action.prediction.model_dump() if action.prediction else None}),
                  json.dumps(plan.get("blast", {}))))
             self.conn.execute("UPDATE incidents SET state='verifying', tier=? WHERE id=?",
-                              ("auto" if gate.get("open") else "ask", action.incident_id))
+                              (tier_of(gate), action.incident_id))
             self.conn.commit()
         await self.publish({"type": "action_executed", "incident_id": action.incident_id,
-                            "payload": {"receipt_id": receipt_id, "tool": action.tool, "target": action.target}})
+                            "payload": {"receipt_id": receipt_id, "tool": action.tool, "target": action.target,
+                                        "tier": tier_of(gate)}})
         task = asyncio.create_task(self.verify(receipt_id, action, row, plan, receipt))
         self.tasks.add(task)
         self.verifying[receipt_id] = task
@@ -366,7 +402,7 @@ class Gateway:
                 result = v.step(self.clock(), health, bool(human))
             except (httpx.HTTPError, ValueError, KeyError) as e:  # observer blip: keep the clock running
                 log.warning("verify tick failed: %s", type(e).__name__)
-                if self.clock() - v.t0 >= cfg["window_seconds"]:
+                if self.clock() - v.t0 >= v.window_s:
                     result = "window_end"
             self.heartbeats[receipt_id] = self.clock()
             await self.publish({"type": "verify_tick", "incident_id": action.incident_id, "payload": {
@@ -374,29 +410,30 @@ class Gateway:
 
         if result == "handed_off":
             return await self.close(receipt_id, action, row, receipt, v, "handed_off", None,
-                                    f"{human[-1]['object']} changed by {human[-1]['field_manager']}")
+                                    f"{human[-1]['object']} changed by {human[-1]['field_manager']}", plan=plan)
         if result == "early_abort":
             await self.publish({"type": "early_abort", "incident_id": action.incident_id,
                                 "payload": {"receipt_id": receipt_id, "severity": health.get("severity"),
                                             "before": v.sev_before}})
             return await self.undo_and_close(receipt_id, action, row, receipt, v, pause=True, harm=None,
-                                             reason="severity rose after the action")
+                                             reason="severity rose after the action", plan=plan)
         after = await asyncio.to_thread(lambda: spec_hashes(list_json(self.apps.list_namespaced_deployment),
                                                             list_json(self.core.list_namespaced_config_map)))
         harm = harm_check(plan["hashes"], after, plan["declared"], {r["object"] for r in human},
-                          plan["health"], health, {action.target, *victims})
+                          plan["health"], health, {action.target, *victims, *plan["blast"].get("upstream", [])})
         await self.publish({"type": "harm_check", "incident_id": action.incident_id,
                             "payload": {"receipt_id": receipt_id, **harm}})
         outcome = v.outcome(harm["clean"])
         if outcome == "undo":
             reason = "did not recover" if not v.recovered else "harm check failed"
             return await self.undo_and_close(receipt_id, action, row, receipt, v, pause=False, harm=harm,
-                                             reason=reason, hash_after=namespace_hash(after))
-        return await self.close(receipt_id, action, row, receipt, v, outcome, harm, None, namespace_hash(after))
+                                             reason=reason, hash_after=namespace_hash(after), plan=plan)
+        return await self.close(receipt_id, action, row, receipt, v, outcome, harm, None, namespace_hash(after),
+                                plan=plan)
 
     async def undo_and_close(self, receipt_id: int, action: ActionRequest, row: dict, receipt: Receipt,
                              v: Verification, pause: bool, harm: dict | None, reason: str,
-                             hash_after: str | None = None) -> str:
+                             hash_after: str | None = None, plan: dict | None = None) -> str:
         try:
             await asyncio.to_thread(self.undo, action.target, receipt.inverse, pause)
         except WriteRefused as e:
@@ -409,13 +446,13 @@ class Gateway:
             self.heartbeats.pop(receipt_id, None)
             self.verifying.pop(receipt_id, None)
             await self.publish({"type": "escalated", "incident_id": action.incident_id, "payload": {
-                "card": build_incident_card(self.card_incident(row, action.target)).model_dump(mode="json"),
+                "card": self.card(row, action.target).model_dump(mode="json"),
                 "briefing": f"UNDO FAILED ({e.reason}); receipt #{receipt_id} needs a human now"}})
             self.set_state(action.incident_id, "escalated")
             return "undo_failed"
         await self.publish({"type": "action_undone", "incident_id": action.incident_id,
                             "payload": {"receipt_id": receipt_id, "reason": reason}})
-        return await self.close(receipt_id, action, row, receipt, v, "undone", harm, reason, hash_after)
+        return await self.close(receipt_id, action, row, receipt, v, "undone", harm, reason, hash_after, plan=plan)
 
     # pause an in-progress rollout first so the inverse lands on a still object (§6.4.9 Undo);
     # always unpause, a failed undo must not leave the Deployment paused
@@ -449,7 +486,8 @@ class Gateway:
                                                      {"op": "replace", "path": "/spec/paused", "value": False}], False)
 
     async def close(self, receipt_id: int, action: ActionRequest, row: dict, receipt: Receipt, v: Verification,
-                    outcome: str, harm: dict | None, reason: str | None, hash_after: str | None = None) -> str:
+                    outcome: str, harm: dict | None, reason: str | None, hash_after: str | None = None,
+                    plan: dict | None = None) -> str:
         final = receipt.model_copy(update={"outcome": outcome, "prediction_held": v.prediction_held,
                                            "harm_clean": harm["clean"] if harm else None,
                                            "elapsed_s": round(self.clock() - v.t0, 1),
@@ -457,10 +495,12 @@ class Gateway:
                                            "hash_after": hash_after})
         self.receipts.update(receipt_id, final)
         effect = ledger_effect({"undone": "undo"}.get(outcome, outcome))
+        by = receipt.trust.get("approved_by")
         with self.lock:
             self.conn.execute("UPDATE receipts SET outcome=?, hash_after=? WHERE id=?",
                               (outcome, hash_after, receipt_id))
-            if effect is not None and receipt.trust.get("approved_by") != approvals.REHEARSAL_APPROVER:
+            # real success needs a human's yes (§6.4.6); a failure always counts; the bench credits rehearsals
+            if effect is not None and by != approvals.REHEARSAL_APPROVER and (by or not effect):
                 trust.record(self.conn, action.pattern, action.tool, action.target, "real", effect, self.clock())
             self.conn.commit()
         event = {"success": "incident_resolved", "right_by_accident": "incident_resolved",
@@ -473,11 +513,17 @@ class Gateway:
         self.heartbeats.pop(receipt_id, None)
         self.verifying.pop(receipt_id, None)
         mitigated = action.tool == "restart_service" and outcome in ("success", "right_by_accident")
-        card = build_incident_card(self.card_incident(row, action.target), receipt=final, receipt_id=receipt_id,
-                                   mitigated=mitigated)
+        victims = json.loads(row.get("victims_json") or "[]")
+        card = self.card(row, action.target, receipt=final, receipt_id=receipt_id, mitigated=mitigated,
+                         took_s=self.clock() - (row.get("opened_at") or v.t0), did=(plan or {}).get("summary"),
+                         metric=error_change((plan or {}).get("health") or {}, v.last_health,
+                                             [action.target, *victims]))
+        # the bench (§9.1) reads tier, harm, prediction and forecast vs actual off the terminal event
         await self.publish({"type": event, "incident_id": action.incident_id, "payload": {
             "card": card.model_dump(mode="json"), "receipt_url": f"/receipts/{receipt_id}",
-            "briefing": reason or ""}})
+            "briefing": reason or "", "receipt_id": receipt_id, "tier": tier_of(receipt.trust),
+            "prediction_held": final.prediction_held, "harm_clean": final.harm_clean,
+            "forecast_s": final.forecast_s, "actual_added_s": final.added_disruption_s}})
         return outcome
 
     # Q2: bench reports ground truth; credit only finished rehearsal receipts, once
@@ -550,7 +596,7 @@ class Gateway:
                 await self.publish({"type": "action_undone", "incident_id": r["incident_id"],
                                     "payload": {"receipt_id": r["id"], "reason": "watchdog"}})
             self.set_state(r["incident_id"], "escalated")
-            card = build_incident_card(self.card_incident(row, r["target"]))
+            card = self.card(row, r["target"])
             await self.publish({"type": "escalated", "incident_id": r["incident_id"],
                                 "payload": {"card": card.model_dump(mode="json"), "briefing": reason}})
             done += 1
