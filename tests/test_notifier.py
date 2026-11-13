@@ -184,3 +184,25 @@ async def test_acknowledge_stops_repaging_and_needs_an_approver(tmp_path, monkey
     assert notifier.pages == ["b", "b"] and state.get("wakes") == {}
     view = AckView("i", controller)
     assert view.is_persistent() and [b.custom_id for b in view.children] == ["ack:i"]
+
+
+# live: inc-1794545567530 closed (handed_off) while a re-page was talking to Discord; the
+# re-page then wrote its stale list back and the closed incident paged every 2 min for 30 min
+async def test_incident_closed_during_repage_stays_closed(tmp_path):
+    card = {"incident_id": "i", "status": "WOKE YOU BECAUSE", "text": "help", "evidence_ids": []}
+    state = NotifierState(tmp_path / "s.db")
+    state.set("wakes", {"i": {"card": card, "briefing": "b", "last_page": 0}})
+
+    class SlowDiscord:
+        async def wake(self, card, briefing):
+            await consumer.handle({"seq": 1, "event": {"type": "handed_off", "incident_id": "i",
+                                                       "payload": {"card": card.model_dump()}}})
+            return "m1"
+
+        async def fyi(self, card, url):
+            pass
+
+    async with httpx.AsyncClient() as client:
+        consumer = NotificationConsumer(client, "http://gateway", SlowDiscord(), state, repage_s=1)
+        await consumer.repage_once()
+    assert state.get("wakes") == {}

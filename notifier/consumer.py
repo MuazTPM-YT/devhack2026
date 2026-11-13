@@ -67,16 +67,23 @@ class NotificationConsumer:
         return f"{self.gateway_url.rstrip('/')}{url}" if url.startswith("/") else url
 
     async def repage_once(self):
+        sent: dict[str, tuple[float, Any]] = {}
+        for incident_id, row in self.state.get("wakes", {}).items():
+            if self.state.get(f"ack:{incident_id}") or time.time() - row["last_page"] < self.repage_s:
+                continue
+            try:
+                message_id = await self.notifier.wake(Card.model_validate(row["card"]), row["briefing"])
+            except (discord.HTTPException, httpx.HTTPError):
+                continue
+            sent[incident_id] = (time.time(), message_id)
+        # re-read: an incident can close while we wait on Discord; writing the old list back revived it
         pending = self.state.get("wakes", {})
         for incident_id in [i for i in pending if self.state.get(f"ack:{i}")]:
             pending.pop(incident_id)  # a human acknowledged it: stop paging
-        for row in pending.values():
-            if time.time() - row["last_page"] >= self.repage_s:
-                try:
-                    message_id = await self.notifier.wake(Card.model_validate(row["card"]), row["briefing"])
-                except (discord.HTTPException, httpx.HTTPError):
-                    continue
-                row["last_page"], row["message_id"] = time.time(), message_id or row.get("message_id")
+        for incident_id, (ts, message_id) in sent.items():
+            if incident_id in pending:
+                row = pending[incident_id]
+                row["last_page"], row["message_id"] = ts, message_id or row.get("message_id")
         self.state.set("wakes", pending)
 
     async def repage(self):
