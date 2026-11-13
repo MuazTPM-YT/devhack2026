@@ -50,3 +50,6 @@
   font: inherit;
   font-size: 16px; /* under 16px iOS zooms the page into the select */
 }
+
+/* press feedback on touch too: instant, no hover gate */
+.row:active:not(.on) { background: var(--card-sunk); transition: none; }

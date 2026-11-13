@@ -73,3 +73,6 @@
 @media (max-width: 1100px) {
   .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* press feedback on touch too: instant, no hover gate */
+.row:active:not(.on) { background: var(--card-sunk); transition: none; }

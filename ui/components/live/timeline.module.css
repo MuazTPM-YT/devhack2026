@@ -108,3 +108,6 @@
   .route { display: none; }
   .payload { margin-left: 16px; }
 }
+
+/* press feedback on touch too: instant, no hover gate */
+.row:active:not(.on) { background: var(--card-sunk); transition: none; }

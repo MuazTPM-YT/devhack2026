@@ -80,11 +80,7 @@ export function ChaosView() {
         aside={mode ? <Tag tone={mode.tone} title={mode.title}>{mode.label}</Tag> : undefined} />
       {!tele.ok && tele.state !== "waiting" && <p className={styles.banner} role="alert">{tele.text}. An experiment started now cannot be read.</p>}
       <EnvStrip telemetry={tele} registry={reg} run={openRun} error={error} busy={busy === "reset"}
-                onReset={() => {
-                  if (window.confirm("Restore the whole shop from its healthy snapshot? This ends every experiment and can take a few minutes.")) {
-                    act("reset", resetShop);
-                  }
-                }} />
+                onReset={() => act("reset", resetShop)} />
 
       <div className={page.grid}>
         <div className={page.span8}>

@@ -51,6 +51,8 @@
 }
 
 .step:last-child { border-bottom: 0; }
+/* a read has no status icon: two columns, or the title lands in the 16 px icon slot */
+.read { grid-template-columns: minmax(0, 1fr) auto; font-size: 13px; }
 .pass { color: var(--ink); }
 .fail { color: var(--bad); }
 .ask { color: var(--warn-fill); }
