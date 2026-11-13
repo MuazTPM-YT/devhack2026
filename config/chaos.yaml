@@ -1,0 +1,59 @@
+# Reviewed list of what a judge may break from the Chaos Lab (chaos/registry.py).
+# Live discovery (flag variants, env keys, replicas) only narrows this list. A flag found in the
+# cluster but not listed here is reported as "pending review" and is never offered.
+version: 1
+limits:
+  max_active: 1            # one lab experiment at a time; compound faults come later
+  max_delay_s: 120
+  min_duration_s: 60
+  max_duration_s: 900
+  max_lifetime_s: 1800     # a lab fault nobody repaired is cleaned up after this
+  verify_timeout_s: 600    # shop still unhealthy this long after cleanup -> needs an operator
+  stable_s: 30
+  baseline_max_age_s: 30
+# family is the PS-4 failure type the judge is choosing; tested = seen to breach on this cluster
+flags:
+  paymentFailure:               {family: broken_configuration, unit: share of charges that fail, tested: true}
+  cartFailure:                  {family: broken_configuration, unit: share of cart calls that fail}
+  adFailure:                    {family: broken_configuration}
+  failedReadinessProbe:         {family: broken_configuration}
+  imageSlowLoad:                {family: broken_configuration, unit: delay per image}
+  productCatalogFailure:        {family: broken_configuration}
+  paymentUnreachable:           {family: dependency_failure}
+  kafkaQueueProblems:           {family: dependency_failure}
+  intlShippingSlowdown:         {family: dependency_failure, unit: delay per quote}
+  recommendationCacheFailure:   {family: resource_exhaustion, tested: true}
+  emailMemoryLeak:              {family: resource_exhaustion, unit: leak speed}
+  adHighCpu:                    {family: resource_exhaustion}
+  adManualGc:                   {family: resource_exhaustion}
+  productCatalogLockContention: {family: resource_exhaustion}
+  loadGeneratorFloodHomepage:   {family: workload_change}
+# reviewed bad builds, already imported into the cluster (scripts/build_bad_payment.sh)
+images:
+  payment: {image: "payment:v2-bad", family: bad_deployment, tested: true}
+# address env vars a judge may point at a wrong port or host
+env_addr:
+  checkout: [PAYMENT_ADDR, CART_ADDR, CURRENCY_ADDR, EMAIL_ADDR, SHIPPING_ADDR, PRODUCT_CATALOG_ADDR, KAFKA_ADDR]
+  frontend: [AD_ADDR, CART_ADDR, CHECKOUT_ADDR, CURRENCY_ADDR, PRODUCT_CATALOG_ADDR, RECOMMENDATION_ADDR, SHIPPING_ADDR]
+  cart: [VALKEY_ADDR]
+  recommendation: [PRODUCT_CATALOG_ADDR]
+  accounting: [KAFKA_ADDR]
+  fraud-detection: [KAFKA_ADDR]
+scale_zero: [valkey-cart, kafka, ad, recommendation]
+# a harmless change on the target a short while after the fault: the newest change is then not the cause
+decoy:
+  env: PROMO_BANNER
+  value: autumn
+  gap_s: 15
+  pairs_with: [flag_variant, broken_env, scale_zero]
+# customer journeys a service sits on, for the preview only
+journeys:
+  frontend: [browse, cart, checkout]
+  cart: [cart, checkout]
+  valkey-cart: [cart, checkout]
+  checkout: [checkout]
+  payment: [checkout]
+  kafka: [checkout]
+  email: [checkout]
+  recommendation: [browse]
+  ad: [browse]
