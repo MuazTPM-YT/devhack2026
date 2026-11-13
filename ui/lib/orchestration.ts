@@ -46,3 +46,13 @@ export function orchSummary(inc: Incident): string | null {
   if (running) parts.push("specialist on it");
   return parts.length ? parts.join(" · ") : null;
 }
+
+// "dependency:payment" -> "cause: payment"; reason codes read as words
+export function reasonText(reason: string): string {
+  const at = reason.indexOf(":");
+  const kind = at < 0 ? reason : reason.slice(0, at);
+  const rest = at < 0 ? "" : reason.slice(at + 1);
+  if (rest && (kind === "dependency" || kind === "change")) return `${kind === "dependency" ? "cause" : "change"}: ${rest}`;
+  return reason.replace(/_/g, " ");
+}
+

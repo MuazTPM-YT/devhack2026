@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Tag, type Tone } from "@/components/ui/tag";
 import { plural, words } from "@/lib/format";
 import type { Incident } from "@/lib/live";
+import { reasonText } from "@/lib/orchestration";
 
 import s from "./sheet.module.css";
 
@@ -25,7 +26,7 @@ export function Investigation({ incident }: { incident: Incident }) {
       </div>
       {o.services.length > 0 && (
         <p className={s.note}>
-          {o.services.join(", ")}{o.reasons.length > 0 && <> · {o.reasons.map(words).join(" · ")}</>}
+          {o.services.join(", ")}{o.reasons.length > 0 && <> · {o.reasons.map(reasonText).join(" · ")}</>}
         </p>
       )}
       {o.related.length > 0 && (

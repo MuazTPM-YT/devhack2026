@@ -28,7 +28,7 @@ export const EDGE_LABEL: Record<string, string> = {
   "brain>specialist": "one question code found (gated)",
   "specialist>llm": "scoped reads, typed finding",
   "llm>brain": "diagnosis + prediction",
-  "brain>gateway": "MCP tool call (/mcp)",
+  "brain>gateway": "fix request: MCP tool call, or an intent (/orchestration/actions) when coordinated",
   "gateway>notifier": "event bus → Discord card",
   "notifier>gateway": "POST /approvals/{id}/decide",
   "gateway>k8s": "patch as agent (dry run first)",

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { type BusRecord, initialState, reduce } from "./live.ts";
-import { modeLabel, orchSummary, type OrchestrationStatus } from "./orchestration.ts";
+import { modeLabel, orchSummary, type OrchestrationStatus, reasonText } from "./orchestration.ts";
 
 const base: OrchestrationStatus = { mode: "disabled", delegation_enabled: false, max_active_commanders: 2,
   max_model_requests: 9, phases: {}, specialists_running: 0, unknown_writes: 0 };
@@ -36,4 +36,10 @@ test("incident row summary: services, why grouped, related, fix and specialist",
   assert.equal(orchSummary(inc), "2 services · shared dependency · 1 related · fix queued · specialist on it");
   const legacy = [rec("incident_opened", { unhealthy: ["payment"] }, "inc-old")].reduce(reduce, initialState);
   assert.equal(orchSummary(legacy.incidents["inc-old"]), null);
+});
+
+test("reason codes read as words", () => {
+  assert.equal(reasonText("dependency:valkey-cart"), "cause: valkey-cart");
+  assert.equal(reasonText("change:journal:41"), "change: journal:41");
+  assert.equal(reasonText("shared_dependency"), "shared dependency");
 });
