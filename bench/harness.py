@@ -11,6 +11,7 @@ from typing import Any, Protocol
 import httpx
 
 from gateway.client import read_events
+from schemas import auth
 from schemas.models import GatewayDecision
 
 SCENARIOS = {
@@ -203,7 +204,7 @@ class HttpTrialServices:
         try:
             response = await self.client.post(
                 f"{self.gateway_url}/approvals/{approval_id}/decide",
-                json={"decision": "approved", "decided_by": "rehearsal-harness"},
+                json={"decision": "approved", "decided_by": "rehearsal-harness"}, headers=auth.headers(),
             )
             response.raise_for_status()
             decision = GatewayDecision.model_validate(response.json())
@@ -223,7 +224,7 @@ class HttpTrialServices:
         try:
             response = await self.client.post(
                 f"{self.gateway_url}/ledger/rehearsal",
-                json={"receipt_id": receipt_id, "diagnosis_matched": matched},
+                json={"receipt_id": receipt_id, "diagnosis_matched": matched}, headers=auth.headers(),
             )
             response.raise_for_status()
         except httpx.HTTPError:

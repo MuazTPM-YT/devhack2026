@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from notifier.consumer import NotificationConsumer
 from notifier.discord_bot import ApprovalController, DiscordNotifier
 from notifier.state import NotifierState
-from schemas import logs
+from schemas import auth, logs
 
 logs.setup()
 
@@ -33,6 +33,7 @@ def load_approvers() -> set[str]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     token = required("DISCORD_BOT_TOKEN")
+    auth.token()  # the gateway refuses decisions without it; fail at start
     channels = [int(required(name)) for name in (
         "DISCORD_FYI_CHANNEL_ID", "DISCORD_WAKE_CHANNEL_ID", "DISCORD_TICKETS_CHANNEL_ID",
         "DISCORD_ONCALL_ROLE_ID")]

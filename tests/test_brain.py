@@ -8,6 +8,7 @@ from brain.graph import DependencyGraph, downstream
 from brain.llm import DiagnosisService
 from brain.main import Brain, create_app
 from brain.providers.base import InferenceResponse
+from schemas import auth
 from schemas import config
 from schemas.db import connect
 from schemas.models import GatewayDecision, Incident
@@ -167,7 +168,7 @@ async def test_graph_cache_and_downstream():
 
 def test_post_incident_accepts_once(tmp_path):
     brain = make(World(), [diagnosis_json()], tmp_path)
-    with TestClient(create_app(brain)) as client:
+    with TestClient(create_app(brain), headers=auth.headers()) as client:
         body = INC.model_dump(mode="json")
         assert client.post("/incidents", json=body).json()["status"] == "accepted"
         assert client.post("/incidents", json=body).json()["status"] == "already_handled"
@@ -350,3 +351,44 @@ async def test_schema_refusal_escalates_with_why(tmp_path):
     assert text.startswith("NEEDS YOU: 40% of payment requests are failing") and "deployment/payment image change" in text
     assert "The fix the agent proposed is not allowed by its rules, so it was blocked." in text
     assert brain.conn.execute("SELECT state FROM incidents").fetchone()[0] == "escalated"
+
+
+# runbooks + experience memory reach the model as data and the rule's fix stays the rule's
+async def test_runbook_and_past_incidents_go_into_the_prompt(tmp_path):
+    from brain import runbooks
+
+    world = World()
+    brain = make(world, [diagnosis_json()], tmp_path)
+    brain.runbooks = runbooks.load()
+    brain.conn.execute("INSERT INTO incidents (id, opened_at, resolved_at, culprit, pattern, state) "
+                       "VALUES ('inc-0', 100, 190, 'payment', 'recent_change', 'resolved')")
+    brain.conn.execute("INSERT INTO receipts (incident_id, ts, tool, target, outcome) "
+                       "VALUES ('inc-0', 100, 'rollback_deploy', 'payment', 'success')")
+    seen = []
+    provider = brain.diagnoser.provider
+    real = provider.generate
+
+    async def spy(request):
+        seen.append(json.loads(request.messages[1]["content"]))
+        return await real(request)
+
+    provider.generate = spy
+    record = await brain.handle(INC)
+    sent = seen[0]
+    assert [rb["id"] for rb in sent["company_runbooks"]] == ["RB-01"]
+    assert sent["past_incidents"][0]["incident_id"] == "inc-0" and sent["past_incidents"][0]["outcome"] == "success"
+    assert record["action"]["tool"] == "rollback_deploy"
+    matched = next(e for e in world.published if e["type"] == "rule_matched")["payload"]
+    assert matched["runbooks"] == ["RB-01"] and matched["similar_before"] == 1
+
+
+async def test_escalation_carries_the_runbook(tmp_path):
+    from brain import runbooks
+
+    world = World()
+    world.gateway_down = True
+    brain = make(world, [diagnosis_json()], tmp_path)
+    brain.runbooks = runbooks.load()
+    await brain.handle(INC)
+    esc = world.published[-1]
+    assert esc["type"] == "escalated" and esc["payload"]["runbook"]["id"] == "RB-01"

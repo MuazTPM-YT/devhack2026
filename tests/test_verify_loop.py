@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from gateway.approvals import REHEARSAL_APPROVER
+from schemas import auth
 from test_gateway import BAD, GOOD, World, action
 
 
@@ -144,7 +145,7 @@ def test_rehearsal_route_needs_flag(tmp_path, monkeypatch, flag, code):
     from gateway.main import create_app
     monkeypatch.setenv("ONCALL_REHEARSAL", flag)
     w = World(tmp_path)
-    with TestClient(create_app(w.gw), base_url="http://127.0.0.1:7003") as client:
+    with TestClient(create_app(w.gw), base_url="http://127.0.0.1:7003", headers=auth.headers()) as client:
         r = client.post("/ledger/rehearsal", json={"receipt_id": 1, "diagnosis_matched": True})
         assert r.status_code == code
         if code == 200:
@@ -159,7 +160,8 @@ async def test_brain_mcp_client_reaches_real_gateway(tmp_path):
     w = World(tmp_path)
     app = create_app(w.gw)
     async with app.router.lifespan_context(app):
-        http = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:7003")
+        http = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:7003",
+                                 headers=auth.headers())
         d = await call_tool("http://127.0.0.1:7003", ActionRequest.model_validate(action()), http=http)
         assert d.decision == "awaiting_approval" and d.approval_id
         bad = await call_tool("http://127.0.0.1:7003",
