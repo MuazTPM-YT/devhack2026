@@ -20,6 +20,13 @@ def token(env: str = ENV) -> str:
     return value
 
 
+# start of an agent process (observer, brain, gateway, notifier): needs our token, and must not keep the
+# judge's. They load the same .env as the judge tooling, so the secret is dropped here, before any request
+def agent_start() -> str:
+    os.environ.pop(JUDGE_ENV, None)
+    return token()
+
+
 def headers(env: str = ENV, header: str = HEADER) -> dict[str, str]:
     return {header: token(env)}
 

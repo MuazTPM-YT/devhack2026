@@ -10,6 +10,12 @@ os.environ.setdefault("CHAOS_JUDGE_TOKEN", "judge-token-0123456789")
 from schemas.models import ActionRequest, Evidence, EvidenceBundle, Incident
 
 
+# agent services drop the judge token when they start; give every test a fresh one
+@pytest.fixture(autouse=True)
+def judge_token(monkeypatch):
+    monkeypatch.setenv("CHAOS_JUDGE_TOKEN", "judge-token-0123456789")
+
+
 @pytest.fixture
 def bundle():
     return EvidenceBundle(

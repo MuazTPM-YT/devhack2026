@@ -302,7 +302,7 @@ def create_app(brain: Brain | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        auth.token()  # fail at start, not on the first incident
+        auth.agent_start()  # fail at start, not on the first incident
         app.state.brain = brain or build_from_env()
         yield
         for t in tasks:
