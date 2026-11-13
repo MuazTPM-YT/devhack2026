@@ -8,28 +8,32 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 ENV = "ONCALL_API_TOKEN"
 HEADER = "X-Oncall-Token"
 READS = {"GET", "HEAD", "OPTIONS"}
+# the judge plane: who may break the shop. Never the same secret as the agent's own processes
+JUDGE_ENV = "CHAOS_JUDGE_TOKEN"
+JUDGE_HEADER = "X-Chaos-Token"
 
 
-def token() -> str:
-    value = os.environ.get(ENV, "").strip()
+def token(env: str = ENV) -> str:
+    value = os.environ.get(env, "").strip()
     if len(value) < 16:
-        raise RuntimeError(f"missing required env var(s): {ENV} (at least 16 characters)")
+        raise RuntimeError(f"missing required env var(s): {env} (at least 16 characters)")
     return value
 
 
-def headers() -> dict[str, str]:
-    return {HEADER: token()}
+def headers(env: str = ENV, header: str = HEADER) -> dict[str, str]:
+    return {header: token(env)}
 
 
-# every write (POST, DELETE, ...) needs the token; reads stay open so the browser UI can poll and stream
+# every write (POST, DELETE, ...) needs the token; reads stay open so the browser UI can poll and stream.
+# guard_reads: reads need it too (chaos: its GETs return the answers to a blind challenge)
 class TokenGuard:
-    def __init__(self, app: ASGIApp):
-        self.app = app
+    def __init__(self, app: ASGIApp, env: str = ENV, header: str = HEADER, guard_reads: bool = False):
+        self.app, self.env, self.header, self.guard_reads = app, env, header, guard_reads
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http" and scope["method"] not in READS:
-            supplied = dict(scope["headers"]).get(HEADER.lower().encode(), b"")
-            if not hmac.compare_digest(supplied, token().encode()):
-                await JSONResponse({"detail": f"missing or wrong {HEADER}"}, status_code=401)(scope, receive, send)
+        if scope["type"] == "http" and (self.guard_reads or scope["method"] not in READS):
+            supplied = dict(scope["headers"]).get(self.header.lower().encode(), b"")
+            if not hmac.compare_digest(supplied, token(self.env).encode()):
+                await JSONResponse({"detail": f"missing or wrong {self.header}"}, status_code=401)(scope, receive, send)
                 return
         await self.app(scope, receive, send)

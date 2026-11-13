@@ -165,7 +165,9 @@ shop() {
   command -v cloudflared >/dev/null || { echo "FAIL  cloudflared not installed" >&2; exit 1; }
   ensure_cluster
   port_forwards
-  # no .env: chaos must not chase a local OBSERVER_URL that does not exist on this machine
+  # no .env: chaos must not chase a local OBSERVER_URL that does not exist on this machine.
+  # The tunnel makes chaos public, so it answers only to the judge token; the backend gets it in the bundle
+  export CHAOS_JUDGE_TOKEN=${CHAOS_JUDGE_TOKEN:-$(openssl rand -hex 24)}
   launch chaos 7004 uv run --locked uvicorn chaos.main:app --host 127.0.0.1 --port 7004
   local api
   api=$(kubectl config view --raw --minify --context "$CONTEXT" -o jsonpath='{.clusters[0].cluster.server}')
@@ -186,6 +188,7 @@ PROMETHEUS_URL=$(cat "$RUN/tun-prometheus.url")
 JAEGER_URL=$shop_url/jaeger/ui
 NEXT_PUBLIC_JAEGER_URL=$shop_url/jaeger/ui
 CHAOS_URL=$(cat "$RUN/tun-chaos.url")
+CHAOS_JUDGE_TOKEN=$CHAOS_JUDGE_TOKEN
 EOF
    tar -C "$BUNDLE_DIR" -czf "$RUN/shop-bundle.tgz" .)
   echo

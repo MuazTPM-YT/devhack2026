@@ -1,5 +1,6 @@
 import copy
 import json
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,6 +12,7 @@ from chaos.faults import (BAD_PAYMENT_IMAGE, BROKEN_PAYMENT_ADDR, FLAG_CONFIGMAP
 from chaos.main import FAULTS, create_app
 from chaos.reset import TARGETS, diff_ops, ensure_snapshot, reset
 
+JUDGE = {"X-Chaos-Token": os.environ["CHAOS_JUDGE_TOKEN"]}
 GOOD_IMAGE = "ghcr.io/open-telemetry/demo:3.1.0-payment"
 GOOD_FLAGS = json.dumps({"flags": {LEAK_FLAG: {"defaultVariant": "off",
                                               "variants": {"off": False, "on": True}},
@@ -23,6 +25,11 @@ def deployment(name, image=None, replicas=1, env=None):
     return {"metadata": {"name": name}, "spec": {"replicas": replicas, "template": {"spec": {
         "containers": [{"name": name, "image": image or f"demo:{name}",
                         "env": env if env is not None else [{"name": "PORT", "value": "8080"}]}]}}}}
+
+
+# a client that holds the judge token, like the CLI, the bench and the UI server do
+def judge(app):
+    return TestClient(app, headers=JUDGE)
 
 
 # in-memory cluster that applies the patch types chaos sends and logs every call
@@ -187,7 +194,7 @@ def test_reset_patches_only_changed_and_waits_for_rollout(tmp_path):
 
 def test_http_inject_then_reset_records_ground_truth(tmp_path):
     fake = FakeKubectl()
-    with TestClient(create_app(tmp_path, fake)) as client:
+    with judge(create_app(tmp_path, fake)) as client:
         injected = client.post("/chaos/bad-deploy").json()
         assert injected["type"] == "bad_deploy" and injected["target"] == "payment"
         assert fake.image("payment") == BAD_PAYMENT_IMAGE
@@ -199,7 +206,7 @@ def test_http_inject_then_reset_records_ground_truth(tmp_path):
 
 def test_http_kubectl_failure_is_502_and_not_recorded(tmp_path):
     fake = FakeKubectl()
-    with TestClient(create_app(tmp_path, fake)) as client:
+    with judge(create_app(tmp_path, fake)) as client:
         fake.fail_on = "patch"
         response = client.post("/chaos/bad-deploy")
         assert response.status_code == 502 and "forbidden" in response.json()["detail"]
@@ -281,7 +288,7 @@ def test_wait_healthy_needs_a_stable_zero_or_times_out():
 
 
 def test_http_reset_reports_healthy(tmp_path):
-    with TestClient(create_app(tmp_path, FakeKubectl(), severity=lambda: 0, reset_stable_s=0)) as client:
+    with judge(create_app(tmp_path, FakeKubectl(), severity=lambda: 0, reset_stable_s=0)) as client:
         assert client.post("/chaos/reset").json()["healthy"] is True
 
 
@@ -310,7 +317,7 @@ def test_reset_undoes_every_fault_at_once(tmp_path):
     ("shared-outage", "shared_dependency", "kafka"),
 ])
 def test_http_each_fault_records_ground_truth(tmp_path, path, kind, target):
-    with TestClient(create_app(tmp_path, FakeKubectl())) as client:
+    with judge(create_app(tmp_path, FakeKubectl())) as client:
         response = client.post(f"/chaos/{path}")
         assert response.status_code == 200
         entry = response.json()
@@ -343,7 +350,7 @@ class FakeRaw:
 
 def test_judge_kubectl_splits_without_shell_and_records_writes(tmp_path):
     raw = FakeRaw()
-    with TestClient(create_app(tmp_path, FakeKubectl(), raw)) as client:
+    with judge(create_app(tmp_path, FakeKubectl(), raw)) as client:
         body = client.post("/chaos/kubectl", json={"command": "kubectl scale deploy/cart --replicas=0"}).json()
         assert body == {"ok": True, "output": "deployment.apps/cart scaled", "recorded": True}
         assert raw.calls == [["scale", "deploy/cart", "--replicas=0"]]
@@ -354,14 +361,14 @@ def test_judge_kubectl_splits_without_shell_and_records_writes(tmp_path):
 
 def test_judge_kubectl_shell_metacharacters_stay_plain_args(tmp_path):
     raw = FakeRaw()
-    with TestClient(create_app(tmp_path, FakeKubectl(), raw)) as client:
+    with judge(create_app(tmp_path, FakeKubectl(), raw)) as client:
         client.post("/chaos/kubectl", json={"command": "get pods; rm -rf / | cat $(id)"})
         assert raw.calls == [["get", "pods;", "rm", "-rf", "/", "|", "cat", "$(id)"]]
 
 
 def test_judge_kubectl_read_only_not_recorded(tmp_path):
     raw = FakeRaw((True, "NAME READY"))
-    with TestClient(create_app(tmp_path, FakeKubectl(), raw)) as client:
+    with judge(create_app(tmp_path, FakeKubectl(), raw)) as client:
         body = client.post("/chaos/kubectl", json={"command": "get pods -o wide"}).json()
         assert body["recorded"] is False
         assert client.get("/chaos/ground-truth").json() == []
@@ -374,13 +381,13 @@ def test_judge_kubectl_read_only_not_recorded(tmp_path):
 ])
 def test_judge_kubectl_verb_found_after_global_flags(tmp_path, command, recorded):
     raw = FakeRaw((True, "ok"))
-    with TestClient(create_app(tmp_path, FakeKubectl(), raw)) as client:
+    with judge(create_app(tmp_path, FakeKubectl(), raw)) as client:
         assert client.post("/chaos/kubectl", json={"command": command}).json()["recorded"] is recorded
 
 
 def test_judge_kubectl_failure_returns_output_not_500(tmp_path):
     raw = FakeRaw((False, 'Error from server (NotFound): deployments.apps "nope" not found'))
-    with TestClient(create_app(tmp_path, FakeKubectl(), raw)) as client:
+    with judge(create_app(tmp_path, FakeKubectl(), raw)) as client:
         body = client.post("/chaos/kubectl", json={"command": "delete deploy nope"}).json()
         assert body["ok"] is False and "NotFound" in body["output"]
 
@@ -388,7 +395,7 @@ def test_judge_kubectl_failure_returns_output_not_500(tmp_path):
 @pytest.mark.parametrize("command, status", [("", 422), ("kubectl", 400), ("get 'unclosed", 400)])
 def test_judge_kubectl_rejects_bad_input(tmp_path, command, status):
     raw = FakeRaw()
-    with TestClient(create_app(tmp_path, FakeKubectl(), raw)) as client:
+    with judge(create_app(tmp_path, FakeKubectl(), raw)) as client:
         assert client.post("/chaos/kubectl", json={"command": command}).status_code == status
         assert raw.calls == []
 
