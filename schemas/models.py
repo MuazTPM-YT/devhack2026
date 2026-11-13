@@ -1,6 +1,7 @@
+import json
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 Pattern = Literal["recent_change", "resource", "protected", "unknown"]
 
@@ -98,6 +99,12 @@ class Diagnosis(Model):
     candidate: str | None = None
     reason: str | None = Field(default=None, max_length=400)
     alternative: str | None = Field(default=None, max_length=400)
+
+    # glm-5.3-flash sends the object as a JSON string, every retry; unwrap it, bad JSON still fails
+    @field_validator("prediction", mode="before")
+    @classmethod
+    def unwrap_json_string(cls, v: Any) -> Any:
+        return json.loads(v) if isinstance(v, str) else v
 
 
 class GatewayDecision(Model):

@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
@@ -77,6 +78,14 @@ async def test_made_up_ids_forever_keep_rule_action_without_diagnosis():
     script = Script(*[lambda m, i: final(i, cite=("journal:99",))] * 5)
     result = await service(script).diagnose(make_box(), "recent_change", RULE)
     assert result.diagnosis is None and result.action == RULE and result.error == "invalid_diagnosis"
+
+
+# glm-5.3-flash, live 2026-11-14: sends prediction as a JSON string on every retry, never as an object
+async def test_prediction_sent_as_json_string_still_counts():
+    script = Script(lambda m, i: call("get_recent_changes"),
+                    *[lambda m, i: final(i, prediction=json.dumps(PREDICT))] * 3)
+    result = await service(script).diagnose(make_box(), "recent_change", RULE)
+    assert result.error is None and result.diagnosis.prediction.below == 0.05
 
 
 async def test_rule_action_needs_a_prediction():
