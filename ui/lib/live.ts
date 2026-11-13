@@ -175,6 +175,8 @@ function apply(inc: Incident, type: string, p: Record<string, unknown>, ts: numb
       break;
     }
     case "approval_requested":
+      // the gate that failed only handed the fix to a human; checks themselves did not stop it
+      if (next.stages.check === "failed") next.stages = { ...next.stages, check: "done" };
       next.approval = {
         id: str(p.approval_id) ?? "", forecast: str(p.forecast) ?? "", diff: str(p.diff) ?? "",
         expiresAt: num(p.expires_at) ?? 0, decision: null,

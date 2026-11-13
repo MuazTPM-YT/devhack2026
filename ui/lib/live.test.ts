@@ -125,3 +125,15 @@ test("each incident keeps its own events in order with payloads", () => {
   assert.deepEqual(s.incidents["inc-1"].events[1].payload, { culprit: "cart" });
   assert.deepEqual(s.incidents["inc-2"].events.map((e) => e.type), ["incident_opened"]);
 });
+
+test("a gate that asks a human does not leave check stopped", () => {
+  const s = run(
+    rec("incident_opened"),
+    rec("checklist_step", { name: "trust_gate", passed: false, reason: "trust bound 0.0 < 0.9" }),
+    rec("approval_requested", { approval_id: "a1", diff: "", forecast: "", expires_at: 0, card }),
+    rec("approval_decided", { approval_id: "a1", decision: "approved" }),
+    rec("action_executed", { receipt_id: 1, tool: "rollback_deploy", target: "payment" }),
+    rec("incident_resolved", { card }),
+  );
+  assert.equal(s.incidents["inc-1"].stages.check, "done");
+});
