@@ -29,6 +29,7 @@ log = logging.getLogger("brain.agent")
 pydantic_ai.BANNER_ENABLED = False  # its first-run ad would land in the service log
 
 MAX_ROUNDS = 6
+MIN_WORDS = 5  # a placeholder ("test", "n/a") is not an answer
 PROMPT_VERSION = "agent-2"
 HEAD = (
     "Diagnose a Kubernetes incident. You get a short brief, not the evidence: call the read tools to look "
@@ -90,8 +91,13 @@ def choice_error(out: Diagnosis, box: ToolBox) -> str | None:
             return "decision other needs proposed"
         if out.proposed.tool not in box.tools_ok:
             return f"{out.proposed.tool} is not an available capability: {sorted(box.tools_ok)}"
-    if not (out.reason or "").strip():
-        return "fill reason: one sentence on why this choice"
+    # seen live: after two rejections the model sent reason "test", cause "placeholder", and a human was paged
+    if len((out.reason or "").split()) < MIN_WORDS:
+        return f"reason must say in a real sentence (at least {MIN_WORDS} words) why this choice"
+    if not out.causes or any(len(c.explanation.split()) < MIN_WORDS for c in out.causes):
+        return f"give at least one cause, each explained in a real sentence (at least {MIN_WORDS} words)"
+    if out.decision == "decline" and not any(c.evidence_ids for c in out.causes):
+        return "decline must cite the evidence you looked at: put the tool-returned ids in a cause's evidence_ids"
     return None
 
 
@@ -134,6 +140,7 @@ class AgentDiagnosisService:
             needs = ctx.deps.needs_prediction
             if ctx.deps.choose:
                 if problem := choice_error(out, ctx.deps):
+                    log.info("agent answer for %s sent back: %s", ctx.deps.incident.id, problem)
                     raise ModelRetry(problem)
                 needs = out.decision == "accept"
                 if out.decision != "other":  # a proposal counts only when the model says so
@@ -141,6 +148,7 @@ class AgentDiagnosisService:
             try:
                 return check(out, ctx.deps.bundle(), needs)
             except ValueError as e:
+                log.info("agent answer for %s sent back: %s", ctx.deps.incident.id, e)
                 raise ModelRetry(f"{e}: cite only evidence ids returned by tools, name only services in play, "
                                  "and give a prediction when there is an action") from None
 

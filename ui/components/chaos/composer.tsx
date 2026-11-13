@@ -9,6 +9,7 @@ import { byFamily, choiceLabel, type Experiment, FAMILY, type Preview, type Regi
 
 import styles from "./lab.module.css";
 
+const ORDER = ["actable", "approval_only", "watch_only", "unwatched"];
 const STANDING_TONE = { actable: "ok", approval_only: "warn", watch_only: "idle", unwatched: "idle" } as const;
 
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
@@ -52,9 +53,9 @@ export function Composer({ registry, locked, onStarted }: {
   registry: Registry; locked: string | null; onStarted: (exp: Experiment) => void;
 }) {
   const [mode, setMode] = useState<"guided" | "blind">("guided");
+  // services Akira may act on first: that is where most experiments start
   const names = useMemo(() => Object.keys(registry.targets).sort((a, b) =>
-    Number(registry.targets[b].capabilities.some((c) => c.available)) - Number(registry.targets[a].capabilities.some((c) => c.available))
-    || a.localeCompare(b)), [registry]);
+    ORDER.indexOf(registry.targets[a].policy) - ORDER.indexOf(registry.targets[b].policy) || a.localeCompare(b)), [registry]);
   const [target, setTarget] = useState(names[0] ?? "");
   const [capId, setCapId] = useState("");
   const [choice, setChoice] = useState("");

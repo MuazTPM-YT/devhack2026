@@ -18,7 +18,7 @@ export function EnvStrip({ telemetry, registry, run, error, busy, onReset }: {
   const base = baselineText(registry?.baseline);
   return (
     <section className={styles.strip} aria-label="Environment">
-      <div className={`${styles.cell} ${telemetry.ok ? "" : styles.blind}`}>
+      <div className={`${styles.cell} ${telemetry.ok || telemetry.state === "waiting" ? "" : styles.blind}`}>
         <span className={styles.cellLabel}>Monitoring</span>
         <span className={styles.cellValue}><span className={`dot ${DOT[telemetry.state]}`} />{telemetry.text}</span>
       </div>

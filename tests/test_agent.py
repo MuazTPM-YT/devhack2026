@@ -227,7 +227,7 @@ async def test_accept_needs_a_prediction_and_a_reason():
     script, result = await choose(lambda m, i: chosen(i, "accept", "c1", prediction=None),
                                   lambda m, i: chosen(i, "accept", "c1", reason=" "),
                                   lambda m, i: chosen(i, "accept", "c1"))
-    assert retried(script) and sent_back(script, "fill reason") and result.action == RULE
+    assert retried(script) and sent_back(script, "reason must say") and result.action == RULE
 
 
 async def test_no_candidates_means_other_or_decline():
@@ -252,3 +252,34 @@ async def test_no_rule_proposal_in_advise_mode_is_marked_as_the_models():
                     lambda m, i: final(i, cite=("event:payment-1:payment:last",), proposed=proposal))
     result = await service(script).diagnose(make_box(), "unknown", None)
     assert result.action.origin == "model"
+
+
+# live, inc-1794577880789: after two rejected answers the model sent decision=decline, reason="test",
+# cause "placeholder", no evidence. It was accepted and a human was paged with "agent declined to act: test"
+async def test_placeholder_decline_is_rejected_and_the_rule_pick_goes_on():
+    def junk(m, i):
+        return ModelResponse(parts=[ToolCallPart(i.output_tools[0].name, {
+            "causes": [{"cause_class": "unknown", "culprit": "payment", "evidence_ids": [], "explanation": "placeholder"}],
+            "prediction": None, "proposed": None, "confidence": 0.0, "decision": "decline", "candidate": None,
+            "reason": "test", "alternative": "test"})])
+
+    script, result = await choose(junk, junk, junk)
+    assert sent_back(script, "reason must say")
+    assert result.diagnosis is None and result.error == "invalid_diagnosis"
+    assert result.action == RULE and result.action.origin == "rule"
+
+
+async def test_decline_must_show_what_was_looked_at():
+    def no_evidence(m, i):
+        return ModelResponse(parts=[ToolCallPart(i.output_tools[0].name, {
+            "causes": [{"cause_class": "unknown", "culprit": "payment", "evidence_ids": [],
+                        "explanation": "Nothing in the changes explains the errors on payment."}],
+            "prediction": None, "proposed": None, "confidence": 0.3, "decision": "decline", "candidate": None,
+            "reason": "The recorded change does not match the symptoms; check the payment provider first.",
+            "alternative": "A bad image, but the pods run the old one."})])
+
+    script, result = await choose(no_evidence,
+                                  lambda m, i: chosen(i, "decline", prediction=None,
+                                                      reason="The env change does not explain errors on checkout; "
+                                                             "check the payment provider status page first."))
+    assert sent_back(script, "decline must cite") and result.action is None and result.error is None

@@ -72,7 +72,7 @@ export function ChaosView() {
   return (
     <div className={page.page}>
       <PageHead eyebrow="Chaos Lab · judge controls · Akira has no path here" title="Break it your way, watch Akira respond" />
-      {!tele.ok && <p className={styles.banner} role="alert">{tele.text}. An experiment started now cannot be read.</p>}
+      {!tele.ok && tele.state !== "waiting" && <p className={styles.banner} role="alert">{tele.text}. An experiment started now cannot be read.</p>}
       <EnvStrip telemetry={tele} registry={reg} run={openRun} error={error} busy={busy === "reset"}
                 onReset={() => {
                   if (window.confirm("Restore the whole shop from its healthy snapshot? This ends every experiment and can take a few minutes.")) {
