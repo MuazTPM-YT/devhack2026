@@ -19,15 +19,18 @@ from brain import capabilities, rules
 from brain.bundle import build_bundle, collect_k8s, why_text
 from brain import major, memory, runbooks
 from brain.agent import AgentDiagnosisService, model_from_env
+from brain.coordinator import Coordinator, ModeMismatch
 from brain.culprit import dependency_change, fetch_error_traces, find_culprit
 from brain.gateway_client import call_tool
 from brain.graph import DependencyGraph
 from brain.llm import DiagnosisService
 from brain.redact import redact
 from brain.tools import KubeReader, ToolBox
-from schemas import auth, config
+from schemas import auth, config, migrations
 from schemas.db import DEFAULT_PATH, connect
 from schemas.models import ActionRequest, GatewayDecision, Incident, Pattern
+from schemas.orchestration import OrchestrationPolicy, SignalBatch, load_policy
+from schemas.workspace import Workspace
 from schemas import logs
 
 logs.setup()
@@ -63,6 +66,9 @@ class Brain:
         self.kube: Any = None  # brain.tools.KubeReader
         self.lock = threading.Lock()
         self.submit = submit or (lambda a: call_tool(self.gateway_url, a))
+        # orchestration (config/orchestration.yaml); disabled = observer POSTs /incidents as before
+        self.orch = OrchestrationPolicy()
+        self.coordinator: Coordinator | None = None
 
     async def publish(self, kind: str, incident_id: str | None, payload: dict) -> None:
         try:
@@ -326,6 +332,11 @@ def build_from_env() -> Brain:
     if mode != "bundle":
         brain.agent = AgentDiagnosisService(model_from_env(http), choose=mode == "agent")
         brain.prom_url, brain.queries, brain.kube = prom, config.load("queries"), KubeReader(core, custom, "shop")
+    brain.orch = load_policy()
+    if brain.orch.mode != "disabled":
+        wconn = connect(DEFAULT_PATH, shared=True)  # own connection: the workspace runs its own transactions
+        migrations.require(wconn)
+        brain.coordinator = Coordinator(brain, Workspace(wconn, brain.orch), brain.orch)
     return brain
 
 
@@ -354,6 +365,9 @@ def create_app(brain: Brain | None = None) -> FastAPI:
     @app.post("/incidents", status_code=202)
     async def incidents(incident: Incident) -> dict:
         b = app.state.brain
+        if b.orch.mode == "coordinated":  # two owners for one fault is worse than a loud refusal
+            log.error("legacy incident %s refused: brain is in coordinated mode, observer is not", incident.id)
+            raise HTTPException(409, "brain is in coordinated mode: observer must send /signals")
         if incident.id in b.results or any(t.get_name() == incident.id for t in tasks):
             # a re-POST is alert grouping: re-check for a major incident, never diagnose twice
             regroup = asyncio.create_task(b.regroup(incident), name=f"{incident.id}:regroup")
@@ -364,6 +378,19 @@ def create_app(brain: Brain | None = None) -> FastAPI:
         tasks.add(task)
         task.add_done_callback(_finished)
         return {"incident_id": incident.id, "status": "accepted"}
+
+    # observer episodes (orchestration shadow/coordinated); a redelivery returns the stored acknowledgement
+    @app.post("/signals")
+    async def signals(batch: SignalBatch) -> dict:
+        coordinator = app.state.brain.coordinator
+        if coordinator is None:
+            log.error("signals %s refused: orchestration is disabled in the brain", batch.delivery_id)
+            raise HTTPException(409, "orchestration disabled in the brain: observer must POST /incidents")
+        try:
+            return (await coordinator.on_signals(batch)).model_dump(mode="json")
+        except ModeMismatch as e:
+            log.error("signals %s refused: %s", batch.delivery_id, e)
+            raise HTTPException(409, str(e)) from None
 
     @app.get("/health")
     def health() -> dict:
