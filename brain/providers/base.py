@@ -3,6 +3,8 @@ from typing import Any, Protocol
 
 # live bundles: calls took 16-20 s, then hit 30 s and 45 s; rules still act if this runs out
 DEADLINE_S = 90
+# agent mode: whole tool loop (up to 6 rounds); each HTTP call still has DEADLINE_S
+AGENT_DEADLINE_S = 150
 
 
 @dataclass(frozen=True)
