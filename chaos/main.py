@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from chaos import faults, ground_truth
 from chaos.faults import KubectlError, Kubectl
 from chaos.reset import ensure_snapshot, reset
-from schemas import logs
+from schemas import auth, logs
 
 logs.setup()
 
@@ -88,10 +88,13 @@ def create_app(data_dir: Path = Path("data"), run: Kubectl = faults.kubectl,
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        auth.token()  # fail at start: every write below needs it
         app.state.snapshot = ensure_snapshot(snapshot_path, run)
         yield
 
     app = FastAPI(lifespan=lifespan)
+    # admin kubectl behind every POST: only holders of ONCALL_API_TOKEN (the UI server, bench, smoke)
+    app.add_middleware(auth.TokenGuard)
 
     # closure per fault; a default-arg lambda would show up as a query parameter
     def endpoint(fault: Callable[[Kubectl], dict[str, str]]) -> Callable[[], dict[str, Any]]:

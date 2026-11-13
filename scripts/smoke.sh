@@ -6,8 +6,9 @@ CHAOS_URL=${CHAOS_URL:-http://127.0.0.1:7004}
 OBSERVER_URL=${OBSERVER_URL:-http://127.0.0.1:7001}
 GATEWAY_URL=${GATEWAY_URL:-http://127.0.0.1:7003}
 TIMEOUT_S=${TIMEOUT_S:-300}
+: "${ONCALL_API_TOKEN:?set ONCALL_API_TOKEN, the same one the services use (chaos writes need it)}"
 
-echo "reset: $(curl -fsS -X POST "$CHAOS_URL/chaos/reset")"
+echo "reset: $(curl -fsS -X POST -H "X-Oncall-Token: $ONCALL_API_TOKEN" "$CHAOS_URL/chaos/reset")"
 
 echo "waiting for severity 0 at $OBSERVER_URL/health/now"
 deadline=$(( $(date +%s) + TIMEOUT_S ))
@@ -28,7 +29,7 @@ sys.exit(0 if h.get("prometheus_ok") is True and seen else 1)'; then
   exit 1
 fi
 
-injection=$(curl -fsS -X POST "$CHAOS_URL/chaos/bad-deploy")
+injection=$(curl -fsS -X POST -H "X-Oncall-Token: $ONCALL_API_TOKEN" "$CHAOS_URL/chaos/bad-deploy")
 echo "inject: $injection"
 inject_ts=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["ts"])' "$injection")
 
