@@ -194,3 +194,5 @@ async def test_prompt_asks_for_a_prediction(bundle, action, tmp_path):
     provider.generate = capture
     await DiagnosisService(provider, tmp_path).diagnose(bundle, "unknown")
     assert "prediction" in seen[0] and "within_s" in seen[0]
+    # live smoke 8: card said "image changed ... at 1794545702"
+    assert "never raw timestamps" in seen[0]
