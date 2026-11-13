@@ -208,6 +208,14 @@ def test_schema_refusal_reads_as_blocked_not_as_a_suggestion():
     assert card.text.splitlines()[1] == "Why: astronomy-db ran out of memory or CPU"
 
 
+# live inc-1794552167187: the page said "blocked" but not that astronomy-db is off-limits to the agent
+def test_schema_refusal_names_the_service_the_agent_may_not_change():
+    reason = ("Error executing tool raise_limit: 1 validation error for raise_limitArguments\ntarget\n  Input should "
+              "be 'payment', 'checkout' or 'kafka' [type=literal_error, input_value='astronomy-db', input_type=str]\n"
+              "    For further information vis")
+    assert explain(reason) == "astronomy-db is not on the list of services the agent may change, so it was blocked."
+
+
 # live: "astronomy-db is unhealthy" said nothing; a datastore has no request metrics, only sick pods
 def test_datastore_symptom_counts_sick_pods():
     db = INC.model_copy(update={"culprit": "astronomy-db", "unhealthy": ["astronomy-db"], "victims": []})
