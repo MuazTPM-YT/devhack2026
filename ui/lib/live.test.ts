@@ -241,3 +241,22 @@ test("a late event after the outcome leaves the stage tiles as they closed", () 
   assert.deepEqual(Object.values(inc.stages), ["done", "done", "done", "done", "done", "done"]);
   assert.equal(inc.orch!.intents["int-9"].status, "terminal");
 });
+
+test("coordinated demo ends resolved with a specialist, a finding and a closed fix", async () => {
+  const { DEMO_COORDINATED } = await import("./demo.ts");
+  const s = DEMO_COORDINATED.reduce<LiveState>((acc, step, i) => reduce(acc, {
+    seq: i + 1, ts: 1000 + step.at, event: { type: step.type, incident_id: "inc-demo-1", payload: step.payload },
+  }), initialState);
+  const inc = s.incidents["inc-demo-1"];
+  assert.equal(inc.outcome, "resolved");
+  assert.deepEqual(Object.values(inc.stages), ["done", "done", "done", "done", "done", "done"]);
+  const o = inc.orch!;
+  assert.deepEqual(o.services, ["checkout", "payment"]);
+  assert.deepEqual(Object.values(o.tasks).map((t) => t.state), ["succeeded"]);
+  assert.deepEqual(o.findings.map((f) => f.verdict), ["supported"]);
+  assert.equal(o.modelCalls, 5);
+  assert.equal(o.reusedReads, 2);
+  assert.equal(Object.values(o.intents)[0].status, "terminal");
+  assert.equal(inc.approval!.decision, "approved");
+  assert.ok(DEMO_COORDINATED.every((step, i) => i === 0 || step.at >= DEMO_COORDINATED[i - 1].at));
+});

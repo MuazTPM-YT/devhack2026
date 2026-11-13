@@ -2,7 +2,7 @@
 
 import { useEffect, useReducer, useState } from "react";
 
-import { DEMO_SCRIPT } from "./demo.ts";
+import { DEMO_RUNS } from "./demo.ts";
 import { type BusRecord, EVENT_TYPES, initialState, reduce } from "./live.ts";
 
 export type Link = "connecting" | "live" | "down" | "demo";
@@ -20,9 +20,11 @@ export function useLive(demo: boolean | null) {
     const start = Date.now() / 1000;
     // each replay is a new incident, so the old one stays intact in the list
     const id = `inc-demo-${run + 1}`;
-    const timers = DEMO_SCRIPT.map((step, i) => {
+    const timers = DEMO_RUNS[run % DEMO_RUNS.length].map((step, i) => {
       const card = step.payload.card as Record<string, unknown> | undefined;
-      const payload = card ? { ...step.payload, card: { ...card, incident_id: id } } : step.payload;
+      // the script counts seconds from its start; an approval expiry must be a real clock time
+      const expires = typeof step.payload.expires_at === "number" ? { expires_at: start + step.payload.expires_at } : {};
+      const payload = { ...step.payload, ...expires, ...(card ? { card: { ...card, incident_id: id } } : {}) };
       return setTimeout(() => dispatch({
         seq: run * 1000 + i + 1,
         ts: start + step.at,
