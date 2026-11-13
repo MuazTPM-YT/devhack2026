@@ -542,3 +542,22 @@ async def test_followup_expiry_keeps_resolved_and_files_ticket(tmp_path):
     c = NotificationConsumer(None, "http://gw", Fake(), NotifierState(tmp_path / "n.db"))  # type: ignore[arg-type]
     await c.handle({"seq": 1, "event": done})
     assert sent == ["ticket"]
+
+
+# kafka scaled to 0 in a major incident: "no scale up" also blocked putting back the journaled replica count,
+# the one right fix. Restoring exactly the old value is allowed, with a human's yes; anything else stays out
+async def test_major_incident_allows_approved_restore_of_journaled_replicas(tmp_path):
+    w = World(tmp_path)
+    w.apps.dep["spec"]["replicas"] = 0
+    w.conn.execute("UPDATE incidents SET major=1")
+    w.obs.journal.append({"id": 42, "object": "deployment/payment", "kind": "replicas", "ts": 955.0,
+                          "field_manager": "chaos-panel", "by_agent": False,
+                          "diff": {"replicas": {"old": 2, "new": 0}}, "inverse": [{"op": "scale", "replicas": 2}]})
+    up = await w.gw.submit(action(tool="scale", params={"replicas": 3}, journal_entry=42, evidence_ids=["journal:42"]))
+    assert up.decision == "refused" and up.reason == "major incident: no scale up"
+    d = await w.gw.submit(action(tool="scale", params={"replicas": 2}, journal_entry=42, evidence_ids=["journal:42"]))
+    assert d.decision == "awaiting_approval" and "needs a human" in d.reason  # restore rule, not the trust gate
+    d = await w.gw.decide(d.approval_id, "approved", "u1")
+    assert d.decision == "executed" and w.apps.dep["spec"]["replicas"] == 2
+    for t in w.gw.tasks:
+        t.cancel()

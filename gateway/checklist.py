@@ -260,8 +260,15 @@ class Gateway:
             plan = await asyncio.to_thread(self.prepare, action, entry)
         except WriteRefused as e:
             return await self.stop(action, row, steps, "dry_run", e.outcome, e.reason)
+        # major incident: no scale up, except putting back exactly the count a non-agent change took away
+        # (kafka scaled to 0); that restore always waits for a human (Muaz chose)
+        restore = False
         if row.get("major") and action.tool == "scale" and action.params["replicas"] > plan["replicas"]:
-            return await self.stop(action, row, steps, "dry_run", "refused", "major incident: no scale up")
+            restore = (entry is not None and entry["kind"] == "replicas" and not entry["by_agent"]
+                       and entry["object"] == f"deployment/{action.target}"
+                       and action.params["replicas"] == entry["diff"]["replicas"]["old"])
+            if not restore:
+                return await self.stop(action, row, steps, "dry_run", "refused", "major incident: no scale up")
         await self.step(action.incident_id, steps, "dry_run", True, f"{len(plan['diff'])} spec paths change")
 
         # 5 blast radius + net benefit
@@ -317,6 +324,9 @@ class Gateway:
         if not approved and needs_human:
             return await self.ask(action, row, steps, plan, f"runbook {', '.join(needs_human)} requires a human "
                                                             "to approve this action", gate)
+        if not approved and restore:
+            return await self.ask(action, row, steps, plan, "major incident: scaling back to the count before "
+                                                            "the outage needs a human", gate)
         if not approved and protected:
             return await self.ask(action, row, steps, plan, f"{action.target} is a protected data store; "
                                                             "a human must approve", gate)
