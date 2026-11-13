@@ -44,6 +44,8 @@
   color: var(--ox);
 }
 
+.mark { border-radius: 6px; flex: none; }
+
 .brandName { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); }
 
 .closeBtn, .menuBtn {
@@ -138,7 +140,6 @@
   }
   .menuBtn, .closeBtn { display: inline-flex; }
   .topBrand { display: inline-flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; color: var(--ink); }
-  .topBrand svg { color: var(--ox); }
   .side {
     width: min(280px, 84vw);
     transform: translateX(-100%);
