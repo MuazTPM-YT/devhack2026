@@ -1,4 +1,4 @@
-// live page request flow (not /flow, see flow.ts): how one incident moves through the services; each event becomes a path
+// live page request flow: how one incident moves through the services; each event becomes a path
 // between components (flow map) and a plain sentence (timeline). Pure functions, fed by Incident.events from live.ts.
 
 import { type IncidentEvent, STAGE_OF, STAGES, type Stage } from "./live.ts";
