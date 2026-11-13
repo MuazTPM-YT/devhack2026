@@ -17,7 +17,7 @@ export function Tag({ tone, children, title }: { tone: Tone; children: ReactNode
   return (
     <span className={`${styles.tag} ${styles[tone]}`} title={title}>
       <Shape tone={tone} />
-      {children}
+      <span className={styles.text}>{children}</span>
     </span>
   );
 }

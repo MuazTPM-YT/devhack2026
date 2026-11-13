@@ -1,6 +1,7 @@
 import type { Incident } from "@/lib/live";
 import type { ReceiptView } from "@/lib/use-receipt";
 
+import { SheetSection } from "./sheet-section";
 import s from "./sheet.module.css";
 
 const W = 320;
@@ -31,11 +32,8 @@ export function Severity({ incident, receipt }: { incident: Incident; receipt: R
   const held = receipt?.prediction_held;
 
   return (
-    <section className={s.sec} aria-labelledby="sec-severity">
-      <div className={s.head}>
-        <h2 id="sec-severity" className={s.title}>Severity</h2>
-        {held != null && <span className={`label ${held ? "ok" : "bad"}`}>prediction {held ? "held" : "missed"}</span>}
-      </div>
+    <SheetSection id="sec-severity" title="Severity"
+      aside={held != null && <span className={`label ${held ? "ok" : "bad"}`}>prediction {held ? "held" : "missed"}</span>}>
       <div className={s.counts}>
         <div><span className={s.big}>{now ?? "–"}</span><span className={s.small}>now</span></div>
         <div><span className={s.big}>{incident.severityAtOpen ?? "–"}</span><span className={s.small}>at open</span></div>
@@ -69,6 +67,6 @@ export function Severity({ incident, receipt }: { incident: Incident; receipt: R
           </div>
         </>
       )}
-    </section>
+    </SheetSection>
   );
 }

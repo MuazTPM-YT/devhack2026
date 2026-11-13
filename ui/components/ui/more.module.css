@@ -1,0 +1,45 @@
+.more { margin: 0 0 12px; }
+
+.summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px; /* tap target */
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ox);
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--radius-sm);
+}
+.summary::-webkit-details-marker { display: none; }
+/* chevron: points right when closed, down when open */
+.summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 160ms var(--ease-out);
+}
+.more[open] > .summary::before { transform: rotate(45deg); }
+
+.body { padding-top: 4px; font-size: 13px; color: var(--ink-soft); overflow-wrap: anywhere; }
+.body > :last-child { margin-bottom: 0; }
+
+@media (hover: hover) and (pointer: fine) {
+  .summary:hover { text-decoration: underline; }
+}
+
+/* open and close by height where the browser can animate to auto; elsewhere it just opens */
+.more { interpolate-size: allow-keywords; }
+.more::details-content {
+  block-size: 0;
+  overflow: clip;
+  transition: block-size 240ms var(--ease-out), content-visibility 240ms allow-discrete;
+}
+.more[open]::details-content { block-size: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .more::details-content { transition: none; }
+}

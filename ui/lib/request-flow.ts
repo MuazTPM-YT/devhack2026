@@ -313,6 +313,12 @@ export function flowAt(events: IncidentEvent[], upto: number, open: boolean): Fl
   return { nodes, edges, path: focus ? path : [], focus };
 }
 
+// components worth drawing: the specialist only when one was asked or ran, over the whole incident
+export function nodesFor(events: IncidentEvent[]): NodeId[] {
+  const ran = events.some((ev, i) => pathOf(ev, events[i - 1] ?? null).includes("specialist"));
+  return (Object.keys(NODES) as NodeId[]).filter((id) => id !== "specialist" || ran);
+}
+
 export type Row =
   | { kind: "event"; ev: IncidentEvent; index: number }
   | { kind: "ticks"; first: IncidentEvent; last: IncidentEvent; count: number; index: number };

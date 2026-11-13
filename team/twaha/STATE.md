@@ -1,11 +1,70 @@
 # Twaha [T]: state
 
-**Last updated:** 2026-11-13
-**Current phase:** Orchestration P0-P8 coded on `twaha/orchestration`, offline checks only, off by default
-**Branch:** `twaha/orchestration` off `origin/main` `7c6d808`, 14 commits, not pushed
+**Last updated:** 2026-11-14
+**Current phase:** UI shows the orchestrator (Agents band) on `twaha/ui-agents`, checked in the browser
+**Branch:** `twaha/ui-agents` off `origin/main` `5fa827d`, pushed 2026-11-14, PR open
 **Implementation:** PRs #8, #12, #15, #43 merged
 
 ## Done (with proof)
+
+- Calmer UI pass (`twaha/ui-agents`, 2026-11-14, Twaha asked: fewer words, fix obvious AI-design tells, motion,
+  a little personality, folding side panels, balanced layout). UI only.
+  - Tells removed: kicker above page titles (facts now under the title, `PageHead meta`), `01`-`06` on stage
+    tiles, uppercase letter-spaced micro-labels (card titles, tags, table heads now sentence case), Geist ->
+    Atkinson Hyperlegible Next + Mono (Twaha picked it over Schibsted Grotesk from two screenshots). Kept:
+    paper/oxblood palette (Twaha's call: structure + typeface only).
+  - Fewer words: sheet sections fold (`components/live/sheet-section.tsx`, native `<details>`), outcome shows the
+    card's first line (`lead()` in `lib/format.ts`) with "Full card" and "Why" behind a click
+    (`components/ui/more.tsx`), incident rows two lines, timeline detail only for picked or warn/bad rows, live
+    figures without small print (now tooltips), healthy service cards without a sentence.
+  - Folding: left nav to the icon rail, incident list and details sheet to 44 px tabs; remembered in
+    localStorage `akira.panels` (`lib/prefs.ts`, `lib/use-prefs.ts`). Live sides are both 300 px; content pages
+    centred, max 1320 px.
+  - Motion: working stage and open lane spans breathe, changed figures slide in, folds open by height, mark
+    beats while an incident is open. Wording: "All quiet" when no incident.
+  - Proof: `tsc --noEmit` clean; 84 `node:test` pass (was 81); `next build` OK with 2 warnings ("Failed to find
+    font override values for font Atkinson Hyperlegible ..., skipping fallback font"; `adjustFontFallback: false`
+    did not silence it under Turbopack, harmless). Browser: live (real incident and demo), overview, receipts,
+    chaos at 1440-1680 px and live at 375 px, panels open and folded: no console errors, no sideways scroll.
+    impeccable page scan: 1 finding left (cream background).
+  - Flow map bleed fixed (`0fe0b69`): node words were SVG text cut by character count ("Prometheus · Jaeger"
+    123 px in a 116 px box). Now HTML inside each box with an ellipsis, boxes 124 px. 27 labels measured on 3
+    views, 0 outside a box.
+  - NOT done: Python checks not rerun after this pass (no Python file touched; last run 897 passed, 1 known
+    fail). Reduced motion checked in CSS only. Receipts and Chaos Lab got the shared changes only (head, labels,
+    tags, centring), no page-specific word cutting. Overview keeps 11 cards in rows of 4, 4, 3.
+  - ASSUMED: sections open by default = Outcome, Severity, Approval while pending; closed = Scope, Checklist
+    (opens itself when a gate fails), Blast radius, Evidence. Selected-row side stripes kept.
+
+- Agents band (`twaha/ui-agents`, 2026-11-14). Plan: `~/.claude/plans/ok-everything-works-well-velvet-snowflake.md`.
+  UI only, no backend change, no new dependency.
+  - `/live` centre column: `ui/components/live/agent-lanes.tsx`, one lane per agent on one time axis (Commander
+    or the single Agent, each specialist with a real task id, the Fix), hand-off and finding connectors plus the
+    same as text, model requests against `max_model_requests` (coordinated incidents only). Shows for
+    single-agent incidents too. Pure derivation `agentLanes()` / `nowLine()` in `ui/lib/orchestration.ts`.
+  - Sheet "Investigation" is now "Scope" (grouping only). Flow map draws the Specialist box only when one ran.
+    Overview head shows the run mode and what the open incident is doing.
+  - Bug fixed with a test that failed first: `action_intent_changed terminal` arrives after `incident_resolved`
+    and re-lit the Act tile (`ui/lib/live.ts`).
+  - `/live?demo=1` opens on a scripted coordinated incident (`DEMO_COORDINATED`); "Replay demo" alternates with
+    the single-agent script.
+  - impeccable 4.8.0 from git tag `skill-v4.8.0` copied to `.claude/skills/impeccable/` (untracked; its hooks and
+    agents not installed). `npx impeccable@4.8.0` is only a shim, its installer pulls unpinned files from
+    impeccable.style, so that route was not used. Detector: static scan 2 -> 0 findings; page scan 17 -> 2, the
+    2 left are Anirudh's choices (Geist, warm paper background).
+  - Proof: UI `tsc --noEmit` clean; 81 `node:test` pass (was 69) through a compile step
+    (`tsc lib/*.test.ts --ignoreConfig --target es2023 ... --rewriteRelativeImportExtensions` into a folder two
+    levels under a dir with a `config` symlink, then `node --test`); `next build` OK. Browser (headless Chrome over
+    DevTools, dev server on :3000): demo coordinated and single-agent runs at 1680, 1200, 375 px, no console
+    errors, no sideways scroll; real incidents `inc-a79795ff0631` (specialist failed), `inc-59f5f970337b`
+    (specialist with no calls), `inc-1794599627824` (single agent, 8 requests, 19 reads) render. Repo:
+    `uv run pytest` 897 passed, 1 failed = local budget 30 (`test_policy`); Ruff clean; mypy clean 99 files.
+  - Seen, not diagnosed: in `inc-a79795ff0631` the specialist was asked at +1m19s, about 50 s after the fix was
+    applied (+26 s).
+  - NOT done: reduced-motion checked in CSS only, not in a browser; no live coordinated run with a finding
+    (0 `finding_recorded` in the audit log so far), that path is covered by the demo and unit tests only.
+  - ASSUMED: lane names "Commander" / "Agent" / "Specialist" / "Fix"; reads within 0.5 s share one tick; side
+    stripes on selected rows kept (only the outcome quote was flagged).
 
 - Orchestration (`twaha/orchestration`), from `reports/akira-orchestration-implementation-handoff.md`.
   Plan: `~/.claude/plans/read-reports-akira-orchestration-impleme-cheeky-sparrow.md`. Twaha OK'd edits in

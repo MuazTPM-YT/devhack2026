@@ -1318,3 +1318,17 @@ Seeded from reading the plan. Reply under each one.
   (`gateway.checklist.*`, `gateway.receipts.build_incident_card`, ...) still work. T: unpushed work in
   `gateway/checklist.py` will conflict; move your hunk to the new file named above.
 
+- [T] 2026-11-14 for A,M: Branch `twaha/ui-agents` (off main `5fa827d`, 8 commits, not pushed), UI only. New
+  "Agents" band on `/live` (`ui/components/live/agent-lanes.tsx`, logic in `ui/lib/orchestration.ts`
+  `agentLanes()`): lanes for commander / specialists / fix, shown for single-agent incidents too. A: edits in your
+  files: `investigation.tsx` keeps scope only (heading "Scope"), `evidence.tsx` lost its request/read counts,
+  `flow-map.tsx` hides the Specialist box unless one ran, `demo.ts` gained `DEMO_COORDINATED` (first load of
+  `?demo=1`; "Replay demo" alternates), `stage-strip` / `timeline` labels raised to 11 px, timeline markers got
+  shapes, outcome quote has a top rule instead of a side stripe, service cards are square. A new event type
+  still needs a line in `EVENT_TYPES`; a new per-task event should carry `task_id` to land on its lane.
+  -> [T] 2026-11-14: same branch, 6 more commits, UI only, Twaha's call. A: your design decisions touched:
+  typeface is now Atkinson Hyperlegible Next + Mono (was Geist); `PageHead` takes `title` + `meta` (the `eyebrow`
+  prop is gone, facts sit under the title); `.card-title`, `.label`, `Tag`, table heads are sentence case, no
+  uppercase; stage tiles have no numbers. Palette unchanged. New shared pieces: `components/ui/more.tsx`
+  (disclosure), `components/live/sheet-section.tsx` (folding sheet section), `lib/use-prefs.ts` (`usePref("nav" |
+  "list" | "sheet")`, localStorage `akira.panels`). Nav, incident list and details sheet fold.

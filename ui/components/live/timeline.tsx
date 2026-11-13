@@ -79,12 +79,12 @@ export function Timeline({ incident, selected, onSelect, now, className }: {
                   </div>
                 )}
                 <button type="button" className={on ? `${styles.row} ${styles.on}` : styles.row}
-                  aria-pressed={on} onClick={() => onSelect(on ? null : row.index)}>
+                  title={!on && line.detail ? line.detail : undefined} aria-pressed={on} onClick={() => onSelect(on ? null : row.index)}>
                   <span className={styles.time}>{since(ev.ts, incident.openedAt)}</span>
                   <span className={`${styles.marker} ${styles[line.tone] ?? ""}`} aria-hidden="true" />
                   <span className={styles.body}>
                     <span className={`${styles.title} ${styles[`t_${line.tone}`] ?? ""}`}>{line.title}</span>
-                    {line.detail && <span className={styles.detail}>{line.detail}</span>}
+                    {line.detail && (on || line.tone === "warn" || line.tone === "bad") && <span className={styles.detail}>{line.detail}</span>}
                   </span>
                   <span className={styles.route}>{path.map((id) => NODES[id].title).join(" → ")}</span>
                 </button>

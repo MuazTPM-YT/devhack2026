@@ -101,12 +101,33 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
+  .railBtn:hover { background: var(--card-sunk); color: var(--ink); }
   .link:hover:not(.on) { background: var(--card-sunk); color: var(--ink); }
   .closeBtn:hover { background: var(--card-sunk); }
 }
 
+.foot { margin: auto 0 0; display: flex; flex-direction: column; gap: 10px; }
+
+/* folds the menu to its icon rail; desktop only, tablets are a rail already and phones use the drawer */
+.railBtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-mute);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, transform 160ms var(--ease-out);
+}
+.railBtn svg { transition: transform 240ms var(--ease-out); }
+.railBtn:active { transform: scale(0.97); }
+
 .status {
-  margin: auto 0 0;
   padding: 12px 10px 0;
   border-top: 1px solid var(--line);
   display: flex;
@@ -122,6 +143,21 @@
 .top { display: none; }
 .scrim { display: none; }
 
+/* desktop: the viewer may fold the menu to the same rail tablets get */
+@media (min-width: 1101px) {
+  .side { transition: width 240ms var(--ease-out), padding 240ms var(--ease-out); }
+  .main { transition: margin-left 240ms var(--ease-out); }
+  .app[data-rail="true"] .side { width: var(--side-rail); padding: 18px 10px 14px; align-items: center; }
+  .app[data-rail="true"] .main { margin-left: var(--side-rail); }
+  .app[data-rail="true"] :is(.brandName, .linkText, .status dd, .statusName) { display: none; }
+  .app[data-rail="true"] .brandRow { padding: 0; }
+  .app[data-rail="true"] :is(.link, .railBtn) { justify-content: center; padding: 0; width: 44px; position: relative; }
+  .app[data-rail="true"] .badge { position: absolute; top: 2px; right: -2px; min-width: 16px; padding: 0 4px; font-size: 11px; }
+  .app[data-rail="true"] .status { padding: 12px 0 0; align-items: center; }
+  .app[data-rail="true"] .foot { align-items: center; }
+  .app[data-rail="true"] .railBtn svg { transform: rotate(180deg); }
+}
+
 @media (max-width: 1100px) and (min-width: 721px) {
   .side { width: var(--side-rail); padding: 16px 10px; align-items: center; }
   .main { margin-left: var(--side-rail); padding: 20px 20px 32px; }
@@ -130,6 +166,7 @@
   .link { justify-content: center; padding: 0; width: 44px; position: relative; }
   .badge { position: absolute; top: 2px; right: -2px; min-width: 16px; padding: 0 4px; font-size: 10px; }
   .status { padding: 12px 0 0; align-items: center; }
+  .railBtn { display: none; }
 }
 
 @media (max-width: 720px) {
@@ -145,6 +182,7 @@
     border-bottom: 1px solid var(--line);
   }
   .menuBtn, .closeBtn { display: inline-flex; }
+  .railBtn { display: none; }
   .topBrand { display: inline-flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; color: var(--ink); }
   .side {
     width: min(280px, 84vw);
@@ -164,7 +202,16 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .side, .side[data-open="true"], .closeBtn, .menuBtn { transition: none; }
+  .side, .side[data-open="true"], .closeBtn, .menuBtn, .main, .railBtn, .railBtn svg { transition: none; }
   .badge { transition: opacity 200ms ease; }
   .closeBtn:active, .menuBtn:active { transform: none; }
+}
+
+/* an incident is open: the mark has a pulse, two beats and a rest */
+.mark[data-live="true"] { animation: beat 2.4s var(--ease-in-out) infinite; }
+@keyframes beat {
+  0%, 30%, 100% { transform: none; }
+  8% { transform: scale(1.1); }
+  16% { transform: scale(1); }
+  22% { transform: scale(1.06); }
 }

@@ -205,7 +205,8 @@ const num = (v: unknown): number | null => (typeof v === "number" && Number.isFi
 const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
 
 function apply(inc: Incident, type: string, p: Record<string, unknown>, ts: number): Incident {
-  const stage = STAGE_OF[type];
+  // a closed incident keeps its tiles: the fix's own record still reports after the outcome
+  const stage = inc.outcome == null ? STAGE_OF[type] : undefined;
   let next: Incident = stage ? { ...inc, stages: advance(inc.stages, stage) } : { ...inc };
   switch (type) {
     case "incident_opened":

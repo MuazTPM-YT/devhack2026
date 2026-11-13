@@ -5,18 +5,20 @@ import { useState } from "react";
 
 import { ServiceMap } from "@/components/map/service-map";
 import { Kpis } from "@/components/ui/kpis";
+import { More } from "@/components/ui/more";
 import { PageHead } from "@/components/ui/page-head";
 import { Tag, type Tone } from "@/components/ui/tag";
 import type { ServiceHealth } from "@/lib/chaos-api";
 import { clock, duration, plural } from "@/lib/format";
 import { telemetry } from "@/lib/lab";
 import { useLiveContext } from "@/lib/live-context";
-import { culpritIncident, openIncidentIds } from "@/lib/orchestration";
+import { culpritIncident, modeLabel, nowLine, openIncidentIds } from "@/lib/orchestration";
 import {
   incidentStats, latencyLimit, type Policy, serviceSentence, type ServiceInfo, serviceStatus,
   type ServiceStatus,
 } from "@/lib/overview";
 import { useNow } from "@/lib/use-now";
+import { useOrchestrationStatus } from "@/lib/use-orchestration";
 
 import styles from "./overview-view.module.css";
 
@@ -81,7 +83,7 @@ function ServiceCard({ name, health, info, policy, culprit, incidentId, blind }:
         text={err == null ? "–" : `${(err * 100).toFixed(1)}%`} tone={errTone} />
       <Bar label="p95 latency" value={p95} limit={limit} scale={(limit ?? p95 ?? 1) * 1.5}
         text={p95 == null ? "–" : `${Math.round(p95)} ms`} tone={latTone} />
-      <p className={styles.sentence}>{serviceSentence(health, policy, blind)}</p>
+      {serviceStatus(health, blind) !== "ok" && <p className={styles.sentence}>{serviceSentence(health, policy, blind)}</p>}
       <div className={styles.foot}>
         <span>{info ? `${info.kind}${info.critical ? " · critical" : ""}` : "not in services.yaml"}</span>
         {culprit && incidentId
@@ -93,7 +95,8 @@ function ServiceCard({ name, health, info, policy, culprit, incidentId, blind }:
 }
 
 export function OverviewView({ services }: { services: Record<string, ServiceInfo> }) {
-  const { state, observer, policy } = useLiveContext();
+  const { state, observer, policy, link } = useLiveContext();
+  const mode = modeLabel(useOrchestrationStatus(link !== "demo"));
   const now = useNow(true, 5000);
   const [view, setView] = useState<"cards" | "map">("cards");
   const health = observer.health;
@@ -112,21 +115,25 @@ export function OverviewView({ services }: { services: Record<string, ServiceInf
   const openIds = openIncidentIds(state, now, policy.maxAgeS);
   const openId = openIds[0] ?? null;
   const openInc = openId ? state.incidents[openId] : null;
+  const doing = openInc ? nowLine(openInc)?.text ?? null : null;
 
   return (
     <div className={styles.page}>
       <PageHead
-        eyebrow={`namespace shop${health ? ` · numbers from ${clock(health.last_ok_ts ?? health.ts)}` : ""}`}
         title="Overview"
-        aside={openIds.length > 1
-          ? <Link className="btn btn-dark" href="/live">{openIds.length} open incidents →</Link>
-          : openInc && <Link className="btn btn-dark" href={`/live?incident=${encodeURIComponent(openInc.id)}`}>Open live incident →</Link>}
+        meta={`Namespace shop${health ? ` · numbers from ${clock(health.last_ok_ts ?? health.ts)}` : ""}`}
+        aside={<>
+          {mode && <Tag tone={mode.tone} title={mode.title}>{mode.label}</Tag>}
+          {openIds.length > 1
+            ? <Link className="btn btn-dark" href="/live">{openIds.length} open incidents →</Link>
+            : openInc && <Link className="btn btn-dark" href={`/live?incident=${encodeURIComponent(openInc.id)}`}>Open live incident →</Link>}
+        </>}
       />
 
       <Kpis label="Shop and agent figures" items={[
         { label: "Services", value: names.length || "–" },
         { label: "Unhealthy", value: health && !blind ? bad.length : "–", sub: blind ? "unknown" : undefined, tone: bad.length ? "bad" : undefined },
-        { label: "Severity", value: health && !blind ? health.severity : "–", sub: blind ? "unknown" : "0 is healthy", tone: !blind && health?.severity ? "warn" : undefined },
+        { label: "Severity", value: health && !blind ? health.severity : "–", sub: blind ? "unknown" : undefined, title: "0 is healthy", tone: !blind && health?.severity ? "warn" : undefined },
         { label: "Incidents", value: stats.total, sub: `${stats.open} open${stats.lost ? ` · ${stats.lost} lost` : ""}` },
         { label: "Fix verified", value: stats.verified, tone: stats.verified ? "ok" : undefined,
           sub: stats.resolved ? `${stats.resolved - stats.verified} recovered unproven${stats.medianFixS != null ? ` · median ${duration(stats.medianFixS)}` : ""}` : "none yet" },
@@ -144,7 +151,7 @@ export function OverviewView({ services }: { services: Record<string, ServiceInf
               ? <>Akira is on {openIds.length} incidents: {openIds.map((id, i) => (
                 <span key={id}>{i > 0 && ", "}<Link href={`/live?incident=${encodeURIComponent(id)}`} className="mono">{id}</Link></span>
               ))}.</>
-              : openInc ? <>Akira is on it in incident <Link href={`/live?incident=${encodeURIComponent(openInc.id)}`} className="mono">{openInc.id}</Link>.</> : "No incident is open yet."}</p>
+              : openInc ? <>Akira is on it in incident <Link href={`/live?incident=${encodeURIComponent(openInc.id)}`} className="mono">{openInc.id}</Link>{doing ? `: ${doing[0].toLowerCase()}${doing.slice(1)}` : ""}.</> : "No incident is open yet."}</p>
         ) : (
           <p>{!health ? "Waiting for the first reading…"
             : breaching.length ? `${plural(breaching.length, "service")} over a limit, not yet unhealthy: ${breaching.join(", ")}.`
@@ -152,11 +159,15 @@ export function OverviewView({ services }: { services: Record<string, ServiceInf
                 : `All ${names.length} services are inside their baselines.`}{" "}
             {stats.total > 0 && `Akira has handled ${plural(stats.total, "incident")}: ${stats.verified} verified fixed, ${stats.resolved - stats.verified} recovered unproven, woke a human for ${stats.escalated + stats.handedOff}.`}</p>
         )}
-        {view === "cards" && <p className={styles.legend}>
-          Each card is one service. Top bar: error ratio, the tick is the {((policy.errThreshold ?? 0.05) * 100).toFixed(0)}% line.
-          Bottom bar: p95 latency, the tick is its limit ({policy.latencyMultiplier ?? 2}× baseline and at least
-          {" "}{policy.latencyFloorMs ?? 100} ms above it). A bar past its tick is a breach; held for 30 s it opens an incident.
-        </p>}
+        {view === "cards" && (
+          <More label="How to read a card">
+            <p className={styles.legend}>
+              Top bar: error ratio, the tick is the {((policy.errThreshold ?? 0.05) * 100).toFixed(0)}% line.
+              Bottom bar: p95 latency, the tick is its limit ({policy.latencyMultiplier ?? 2}× baseline and at least
+              {" "}{policy.latencyFloorMs ?? 100} ms above it). A bar past its tick is a breach; held for 30 s it opens an incident.
+            </p>
+          </More>
+        )}
       </div>
 
       <div className={styles.switch} role="group" aria-label="Show services as">

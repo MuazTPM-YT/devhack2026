@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { describe, failedAt, flowAt, pathOf, rows, stageTimes } from "./request-flow.ts";
+import { describe, failedAt, flowAt, nodesFor, pathOf, rows, stageTimes } from "./request-flow.ts";
 import type { IncidentEvent } from "./live.ts";
 
 let seq = 0;
@@ -173,4 +173,14 @@ test("orchestration events read as sentences", () => {
   assert.equal(unknown.title, "Fix execution unknown");
   assert.equal(describe(ev("llm_called", { kind: "call", task_id: "t1", usage: { prompt_tokens: 10 } })).title,
     "Specialist model request");
+});
+
+test("the specialist is drawn only when one was asked or ran", () => {
+  const ev = (type: string, payload: Record<string, unknown> = {}): IncidentEvent => ({ seq: 1, ts: 1, type, payload });
+  assert.equal(nodesFor([]).length, 8);
+  const alone = [ev("incident_opened"), ev("llm_called", { usage: { requests: 4 } }), ev("tool_called", { tool: "get_pods" })];
+  assert.ok(!nodesFor(alone).includes("specialist"));
+  assert.ok(!nodesFor([ev("delegation_decided", { status: "none_needed" })]).includes("specialist"));
+  assert.ok(nodesFor([ev("incident_opened"), ev("delegation_decided", { status: "admitted", task_id: "t1" })]).includes("specialist"));
+  assert.ok(nodesFor([ev("tool_called", { tool: "get_pods", task_id: "t1" })]).includes("specialist"));
 });

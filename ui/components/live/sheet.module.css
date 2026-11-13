@@ -9,20 +9,38 @@
 .sec { padding: 14px 16px 16px; border-bottom: 1px solid var(--line); min-width: 0; }
 .sec:last-child { border-bottom: 0; }
 
-.head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+
+/* a section folds: its header stays and says the gist, a chevron shows which way it goes */
+.fold > .head { cursor: pointer; list-style: none; min-height: 28px; border-radius: var(--radius-sm); }
+.fold > .head::-webkit-details-marker { display: none; }
+.fold > .head::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-right: 2px;
+  border-right: 1.5px solid var(--ink-mute);
+  border-bottom: 1.5px solid var(--ink-mute);
+  transform: rotate(-45deg);
+  transition: transform 160ms var(--ease-out);
+}
+.fold[open] > .head::before { transform: rotate(45deg); }
+.fold > .head .title { margin-right: auto; }
+.aside { display: inline-flex; align-items: center; gap: 6px; }
+.body { padding-top: 10px; }
+.fold:not([open]) { padding-bottom: 14px; }
 
 .title {
   margin: 0;
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .quote {
   margin: 0 0 12px;
   padding: 10px 12px;
-  border-left: 3px solid var(--ink);
+  border-top: 2px solid var(--ink);
   background: var(--paper);
   font-size: 13px;
   line-height: 1.5;
@@ -108,3 +126,16 @@
   .link:hover { text-decoration: underline; }
 }
 .noteTop { margin: 12px 0 0; }
+.pre { margin: 0; white-space: pre-line; }
+
+/* open and close by height where the browser can animate to auto; elsewhere it just opens */
+.fold { interpolate-size: allow-keywords; }
+.fold::details-content {
+  block-size: 0;
+  overflow: clip;
+  transition: block-size 240ms var(--ease-out), content-visibility 240ms allow-discrete;
+}
+.fold[open]::details-content { block-size: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .fold::details-content { transition: none; }
+}

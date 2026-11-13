@@ -227,3 +227,36 @@ test("old run summaries without kind still count their requests", () => {
   assert.equal(s.incidents["inc-legacy"].llmCalls, 4);
   assert.equal(s.incidents["inc-legacy"].orch, null);
 });
+
+test("a late event after the outcome leaves the stage tiles as they closed", () => {
+  const s = run(
+    rec("incident_opened", { unhealthy: ["payment"] }, "inc-late"),
+    rec("action_executed", { receipt_id: 3, tool: "revert_config", target: "payment" }, "inc-late"),
+    rec("verify_tick", { receipt_id: 3, severity: 0, recovered: true }, "inc-late"),
+    rec("incident_resolved", { card, prediction_held: true }, "inc-late"),
+    // coordinated mode: the fix's own record closes after the incident does
+    rec("action_intent_changed", { intent_id: "int-9", status: "terminal", plan_revision: 1 }, "inc-late"),
+  );
+  const inc = s.incidents["inc-late"];
+  assert.deepEqual(Object.values(inc.stages), ["done", "done", "done", "done", "done", "done"]);
+  assert.equal(inc.orch!.intents["int-9"].status, "terminal");
+});
+
+test("coordinated demo ends resolved with a specialist, a finding and a closed fix", async () => {
+  const { DEMO_COORDINATED } = await import("./demo.ts");
+  const s = DEMO_COORDINATED.reduce<LiveState>((acc, step, i) => reduce(acc, {
+    seq: i + 1, ts: 1000 + step.at, event: { type: step.type, incident_id: "inc-demo-1", payload: step.payload },
+  }), initialState);
+  const inc = s.incidents["inc-demo-1"];
+  assert.equal(inc.outcome, "resolved");
+  assert.deepEqual(Object.values(inc.stages), ["done", "done", "done", "done", "done", "done"]);
+  const o = inc.orch!;
+  assert.deepEqual(o.services, ["checkout", "payment"]);
+  assert.deepEqual(Object.values(o.tasks).map((t) => t.state), ["succeeded"]);
+  assert.deepEqual(o.findings.map((f) => f.verdict), ["supported"]);
+  assert.equal(o.modelCalls, 5);
+  assert.equal(o.reusedReads, 2);
+  assert.equal(Object.values(o.intents)[0].status, "terminal");
+  assert.equal(inc.approval!.decision, "approved");
+  assert.ok(DEMO_COORDINATED.every((step, i) => i === 0 || step.at >= DEMO_COORDINATED[i - 1].at));
+});

@@ -3,18 +3,22 @@
 import { useSearchParams } from "next/navigation";
 import { type ReactNode, useState } from "react";
 
+import { Icon } from "@/components/icon";
 import { Kpis } from "@/components/ui/kpis";
 import { PageHead } from "@/components/ui/page-head";
 import { Tag } from "@/components/ui/tag";
+import { DEMO_STATUS } from "@/lib/demo";
 import { clock, duration, words } from "@/lib/format";
 import type { Incident } from "@/lib/live";
 import { useLiveContext } from "@/lib/live-context";
 import { modeLabel } from "@/lib/orchestration";
 import { incidentStatus, verdict } from "@/lib/overview";
 import { useOrchestrationStatus } from "@/lib/use-orchestration";
+import { usePref } from "@/lib/use-prefs";
 import { useNow } from "@/lib/use-now";
 import { useReceipt } from "@/lib/use-receipt";
 
+import { AgentLanes } from "./agent-lanes";
 import { Approval } from "./approval";
 import { Blast } from "./blast";
 import { Checklist } from "./checklist";
@@ -30,7 +34,7 @@ import { Timeline } from "./timeline";
 import styles from "./live-view.module.css";
 
 function headline(inc: Incident | null, elapsed: number | null): string {
-  if (!inc) return "Waiting for an incident";
+  if (!inc) return "All quiet";
   const name = who(inc);
   // recovered is not fixed: only a recovery that matched the prediction is called a fix
   const proved = verdict(inc);
@@ -43,12 +47,27 @@ function headline(inc: Incident | null, elapsed: number | null): string {
   return `Working on ${name}`;
 }
 
+// folds a side pane away, or brings it back from its tab
+function Fold({ pane, closed, side, onClick }: { pane: string; closed: boolean; side: "left" | "right"; onClick: () => void }) {
+  return (
+    <button type="button" className={closed ? styles.tab : styles.foldBtn} data-side={side} onClick={onClick}
+      aria-expanded={!closed} title={closed ? `Show ${pane.toLowerCase()}` : `Hide ${pane.toLowerCase()}`}>
+      <Icon name="fold" size={16} />
+      {closed ? <span>{pane}</span> : <span className="sr-only">Hide {pane.toLowerCase()}</span>}
+    </button>
+  );
+}
+
 // one incident: figures, stages, flow and timeline in the middle, the decision sheet on the right
-function IncidentBody({ incident, demo, list, picker }: {
-  incident: Incident | null; demo: boolean; list: ReactNode; picker: ReactNode;
+function IncidentBody({ incident, demo, list, picker, listClosed, onList }: {
+  incident: Incident | null; demo: boolean; list: ReactNode; picker: ReactNode; listClosed: boolean; onList: () => void;
 }) {
+  const [sheetClosed, toggleSheet] = usePref("sheet");
   const { policy, link, replay } = useLiveContext();
-  const mode = modeLabel(useOrchestrationStatus(link !== "demo"));
+  const polled = useOrchestrationStatus(link !== "demo");
+  // the replay has no gateway to ask: its coordinated run brings its own answer
+  const orch = link === "demo" ? (incident?.orch ? DEMO_STATUS : null) : polled;
+  const mode = modeLabel(orch);
   const [selected, setSelected] = useState<number | null>(null);
   const open = incident != null && incident.outcome == null;
   const now = useNow(open);
@@ -61,10 +80,11 @@ function IncidentBody({ incident, demo, list, picker }: {
   return (
     <>
       <PageHead
-        eyebrow={incident ? <>Live incident · <span className="mono">{incident.id}</span> · opened {clock(incident.openedAt)}</> : "Live incident"}
         title={headline(incident, elapsed)}
+        meta={incident ? <><span className="mono">{incident.id}</span> · opened {clock(incident.openedAt)}</>
+          : "Nothing is broken right now. Akira is watching."}
         aside={<>
-          <span className={styles.picker}>{picker}</span>
+          <span className={styles.picker} data-on={listClosed}>{picker}</span>
           {mode && <Tag tone={mode.tone} title={mode.title}>{mode.label}</Tag>}
           {status && <Tag tone={statusTag(incident, status).tone}>{statusTag(incident, status).label}</Tag>}
           {link === "demo" && <button type="button" className="btn" onClick={replay}>Replay demo</button>}
@@ -73,24 +93,37 @@ function IncidentBody({ incident, demo, list, picker }: {
 
       {incident && (
         <Kpis label="Incident figures" items={[
-          { label: "Severity", value: sev ?? "–", sub: incident.severityAtOpen != null ? `${incident.severityAtOpen} at open` : undefined, tone: sev ? "warn" : "ok" },
-          { label: "Unhealthy", value: incident.unhealthy.length, sub: incident.groupings ? `${incident.groupings} folded in` : undefined },
-          { label: "Culprit", value: incident.culprit ?? "–", sub: incident.victims.length ? `victims ${incident.victims.join(", ")}` : undefined },
-          { label: "Pattern", value: incident.pattern ? words(incident.pattern) : "–", sub: incident.tools.length ? incident.tools.join(", ") : undefined },
-          { label: "Gates", value: gates.length ? `${gates.filter((g) => g.passed).length}/${gates.length}` : "–", sub: "passed" },
-          { label: open ? "Open for" : "Took", value: elapsed == null ? "–" : duration(elapsed), sub: incident.onsetAt != null ? `detected ${duration(incident.openedAt - incident.onsetAt)} after onset` : undefined },
+          { label: "Severity", value: sev ?? "–", tone: sev ? "warn" : "ok", title: incident.severityAtOpen != null ? `${incident.severityAtOpen} at open` : undefined },
+          { label: "Unhealthy", value: incident.unhealthy.length, title: incident.unhealthy.join(", ") || undefined },
+          { label: "Culprit", value: incident.culprit ?? "–", title: incident.victims.length ? `victims: ${incident.victims.join(", ")}` : undefined },
+          { label: "Pattern", value: incident.pattern ? words(incident.pattern) : "–", title: incident.tools.length ? `rule proposes ${incident.tools.join(", ")}` : undefined },
+          { label: "Gates passed", value: gates.length ? `${gates.filter((g) => g.passed).length} of ${gates.length}` : "–" },
+          { label: open ? "Open for" : "Took", value: elapsed == null ? "–" : duration(elapsed), title: incident.onsetAt != null ? `detected ${duration(incident.openedAt - incident.onsetAt)} after onset` : undefined },
         ]} />
       )}
 
-      <div className={styles.layout}>
-        <div className={styles.list}>{list}</div>
+      <div className={styles.layout} data-list={listClosed ? "closed" : "open"} data-sheet={!incident ? "none" : sheetClosed ? "closed" : "open"}>
+        <div className={styles.list}>
+          {listClosed ? <Fold pane="Incidents" closed side="left" onClick={onList} /> : list}
+        </div>
         <div className={styles.center}>
           <StageStrip incident={incident} now={now} />
+          {incident && (
+            <AgentLanes incident={incident} live={status === "open"} maxRequests={orch?.max_model_requests ?? null}
+              now={status === "lost" ? incident.events.at(-1)?.ts ?? now : now} />
+          )}
           <FlowMap incident={incident} upto={selected} />
           <Timeline incident={incident} selected={selected} onSelect={setSelected} now={now} />
         </div>
-        {incident && (
+        {incident && sheetClosed && (
+          <div className={styles.sheet}><Fold pane="Details" closed side="right" onClick={toggleSheet} /></div>
+        )}
+        {incident && !sheetClosed && (
           <aside className={`${sheet.sheet} ${styles.sheet}`} aria-label="Incident details">
+            <div className={styles.sheetBar}>
+              <span className="label">Details</span>
+              <Fold pane="Details" closed={false} side="right" onClick={toggleSheet} />
+            </div>
             <Outcome incident={incident} receipt={receipt} />
             <Approval incident={incident} now={now} />
             <Investigation incident={incident} />
@@ -109,6 +142,7 @@ export function LiveView() {
   const { state, link, policy } = useLiveContext();
   const asked = useSearchParams().get("incident");
   const now = useNow(true, 5000);
+  const [listClosed, toggleList] = usePref("list");
   const id = asked && state.incidents[asked] ? asked : state.current;
   const incident = id ? state.incidents[id] : null;
 
@@ -118,7 +152,9 @@ export function LiveView() {
         <p className={styles.note}>Incident <span className="mono">{asked}</span> is not on the bus; showing the latest one.</p>
       )}
       <IncidentBody key={incident?.id ?? "none"} incident={incident} demo={link === "demo"}
-        list={<IncidentList state={state} picked={id} now={now} maxAgeS={policy.maxAgeS} />}
+        listClosed={listClosed} onList={toggleList}
+        list={<IncidentList state={state} picked={id} now={now} maxAgeS={policy.maxAgeS}
+          action={<Fold pane="Incidents" closed={false} side="left" onClick={toggleList} />} />}
         picker={<IncidentSelect state={state} picked={id} />} />
     </div>
   );

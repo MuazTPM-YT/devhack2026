@@ -9,6 +9,7 @@ const PATHS = {
   copy: "M7 7h9.5v9.5H7zM13 7V3.5H3.5V13H7",
   check: "M4.5 10.5 8 14l7.5-8",
   out: "M11.5 3.5h5v5M16.5 3.5 9.5 10.5M14.5 11.5v5h-11v-11h5",
+  fold: "M10.5 5.5 6 10l4.5 4.5M15 5.5 10.5 10l4.5 4.5",
 } as const;
 
 export type IconName = keyof typeof PATHS;

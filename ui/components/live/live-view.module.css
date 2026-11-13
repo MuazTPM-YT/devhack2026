@@ -8,29 +8,93 @@
   font-size: 13px;
 }
 
-/* three panes on wide screens: incident list | flow + timeline | decision sheet */
+/* three panes: incident list | agents, flow, timeline | decision sheet. The two sides are the same width,
+   and each folds to a tab of the same width, so the page stays balanced whatever is open */
 .layout {
+  --side: 300px;
+  --tab: 44px;
+  --list-w: var(--side);
+  --sheet-w: var(--side);
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) 340px;
+  grid-template-columns: var(--list-w) minmax(0, 1fr) var(--sheet-w);
   grid-template-areas: "list center sheet";
   gap: var(--gap);
   align-items: start;
+  transition: grid-template-columns 240ms var(--ease-out);
+}
+.layout[data-list="closed"] { --list-w: var(--tab); }
+.layout[data-sheet="closed"] { --sheet-w: var(--tab); }
+/* no incident yet: nothing to put in the sheet, the centre takes its room */
+.layout[data-sheet="none"] { grid-template-columns: var(--list-w) minmax(0, 1fr); grid-template-areas: "list center"; }
+
+.list { grid-area: list; position: sticky; top: 16px; min-width: 0; }
+.center { grid-area: center; display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
+.sheet { grid-area: sheet; position: sticky; top: 16px; max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain; min-width: 0; }
+
+.sheetBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 4px 6px 4px 16px;
+  border-bottom: 1px solid var(--ink);
 }
 
-.list { grid-area: list; position: sticky; top: 16px; }
-.center { grid-area: center; display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
-.sheet { grid-area: sheet; position: sticky; top: 16px; max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain; }
-
 .picker { display: none; }
+.picker[data-on="true"] { display: inline-flex; }
+
+/* the fold control: a quiet icon button in a pane's header */
+.foldBtn, .tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-mute);
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: background-color 120ms ease, color 120ms ease, transform 160ms var(--ease-out);
+}
+.foldBtn { width: 36px; height: 36px; }
+.foldBtn:active, .tab:active { transform: scale(0.97); }
+.foldBtn[data-side="right"] svg, .tab[data-side="left"] svg { transform: rotate(180deg); }
+
+/* a folded pane: a tab as tall as a pane header, its name running down the edge */
+.tab {
+  width: 100%;
+  min-height: 132px;
+  padding: 12px 0;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--line);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.tab span { writing-mode: vertical-rl; }
+
+@media (hover: hover) and (pointer: fine) {
+  .foldBtn:hover, .tab:hover { background: var(--card-sunk); color: var(--ink); }
+}
 
 @media (max-width: 1599px) {
-  .layout { grid-template-columns: minmax(0, 1fr) 320px; grid-template-areas: "center sheet"; }
+  .layout, .layout[data-sheet="none"] { grid-template-columns: minmax(0, 1fr) var(--sheet-w); grid-template-areas: "center sheet"; }
+  .layout[data-sheet="none"] { grid-template-columns: minmax(0, 1fr); grid-template-areas: "center"; }
   .list { display: none; }
   .picker { display: inline-flex; }
 }
 
 @media (max-width: 1100px) {
   /* one column: the outcome ("needs you") comes before the flow and timeline */
-  .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "sheet" "center"; }
+  .layout, .layout[data-sheet="closed"] { grid-template-columns: minmax(0, 1fr); grid-template-areas: "sheet" "center"; }
   .sheet { position: static; max-height: none; }
+  .tab { min-height: 44px; flex-direction: row; padding: 0 14px; justify-content: flex-start; }
+  .tab span { writing-mode: horizontal-tb; }
+  .tab[data-side="right"] svg, .foldBtn[data-side="right"] svg { transform: rotate(-90deg); }
+  .tab[data-side="right"] svg { transform: rotate(90deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .layout, .foldBtn, .tab { transition: none; }
+  .foldBtn:active, .tab:active { transform: none; }
 }

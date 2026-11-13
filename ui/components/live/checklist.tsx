@@ -1,6 +1,7 @@
 import { plural, since, words } from "@/lib/format";
 import type { Incident } from "@/lib/live";
 
+import { SheetSection } from "./sheet-section";
 import s from "./sheet.module.css";
 
 // gates that hand the fix to a human are not failures: amber, not red
@@ -22,27 +23,24 @@ export function Checklist({ incident }: { incident: Incident }) {
   const steps = incident.checklist;
   const passed = steps.filter((x) => x.passed).length;
   return (
-    <section className={s.sec} aria-labelledby="sec-checklist">
-      <div className={s.head}>
-        <h2 id="sec-checklist" className={s.title}>Checklist</h2>
-        {steps.length > 0 && <span className="label">{passed} of {plural(steps.length, "gate")} passed</span>}
-      </div>
+    <SheetSection id="sec-checklist" title="Checklist" open={steps.some((x) => !x.passed && !ASKS.has(x.name))}
+      aside={steps.length > 0 && <span className="label">{passed} of {plural(steps.length, "gate")} passed</span>}>
       {steps.length === 0 ? (
-        <p className={s.empty}>Gates run once a fix is proposed: schema, hands-off, policy, dry run, net benefit, freshness, trust gate.</p>
+        <p className={s.empty}>Gates run once a fix is proposed.</p>
       ) : (
         <ol className={s.steps}>
           {steps.map((step, i) => (
-            <li key={`${step.name}-${i}`} className={s.step}>
+            <li key={`${step.name}-${i}`} className={s.step} title={step.reason ?? undefined}>
               <Mark kind={step.passed ? "pass" : ASKS.has(step.name) ? "ask" : "fail"} />
               <span>
                 <span className={s.stepName}>{words(step.name)}</span>
-                {step.reason && <span className={s.reason}>{step.reason}</span>}
+                {step.reason && !step.passed && <span className={s.reason}>{step.reason}</span>}
               </span>
               <span className={s.at}>{since(step.ts, incident.openedAt)}</span>
             </li>
           ))}
         </ol>
       )}
-    </section>
+    </SheetSection>
   );
 }

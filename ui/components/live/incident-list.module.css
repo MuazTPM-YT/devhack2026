@@ -7,14 +7,15 @@
 
 .title {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  margin: 0;
-  padding: 12px 14px;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 6px 4px 14px;
   border-bottom: 1px solid var(--ink);
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
+.title h2 { display: flex; gap: 8px; margin: 0; font-size: 13.5px; }
+.title .num { font-weight: 400; color: var(--ink-mute); }
 
 .none { margin: 0; padding: 12px 14px; font-size: 13px; color: var(--ink-mute); }
 
