@@ -880,3 +880,60 @@ Seeded from reading the plan. Reply under each one.
 - [M] 2026-11-13 for A,T: Muaz set `major_incident.min_services: 3` (was 4), so kafka
   down (checkout + accounting + fraud-detection) is a major incident. Plan §4.2 updated.
   Side effect: any 3 services first breaching within 120 s now count as major.
+- [A] 2026-11-13 for M,T: Spec audit fixes on `anirudh/spec-fixes` (Anirudh
+  asked; Muaz OK'd edits to your files). One commit per fix, each with a test
+  that fails before it. Full suite 366 passed, ruff/mypy clean, UI 13 pass.
+  M's files:
+  - `brain/culprit.py` `dependency_change` now counts flag entries via the
+    `flags:` map and returns `(entry, service)`; an origin we can't act on
+    (frontend-proxy) lets the incident's sick services be candidates. Flag
+    flip was ending `unknown` -> escalated.
+  - `brain/bundle.py` log lines: JSON compacted to level+msg+error, repeats
+    counted, 240 chars, still <= 50 lines; events: newest 10. Prompt went
+    43,547 -> ~3,400 tokens.
+  - `brain/providers/base.py` `max_tokens` 1500 -> 4096: deepseek-v4.1-flash
+    spends hidden reasoning tokens from it; live answers used 1444-1739, so
+    1500 cut them off (`finish_reason=length` -> `invalid_response`).
+  - `brain/main.py`: `handle_safely` escalates if `handle` crashes;
+    `regroup` re-checks major on the observer's re-POST (alerts grouped),
+    publishes `major_incident`, sets `major=1` (+ ranked culprit), never
+    submits a second action. UPDATE uses `major=MAX(major, ?)`.
+  - `observer/main.py`: incident with no terminal event is closed and
+    escalated after `detection.incident_max_age_seconds: 1200` (new key).
+  - `gateway/checklist.py`: hands-off ignores `chaos-panel` (plan 6.4.2
+    step 2; live, a flag inject handed off an unrelated incident). Verifier
+    gets `prediction_delay_s = flag_extra_seconds` for ConfigMap actions
+    (flag revert predicted 60 s, recovered ~110 s, lost trust credit).
+  - `POST /receipts/{id}/clear` {decided_by}: approver-only way out of a
+    `watchdog_failed` block (kept blocking on purpose; had to edit the DB
+    by hand twice). Logs a `human_clear` checklist_step.
+  - `schemas/logs.py` + `logs.setup()` in every main: level and time on
+    every log line (only the gateway had them, via MCP).
+  - Plan 6.3.3 text now says 3 services (matches 4.2/policy.yaml) and that
+    the check reruns on regroup. Stale VERIFY comments removed.
+  Mine: chaos reset waits for 30 s of observer severity 0 (needs
+  `--env-file` for `OBSERVER_URL`; ground truth gets `healthy`), restarts
+  checkout/accounting/fraud-detection after kafka comes back (checkout hung
+  85 min on the dead broker), flagd-ui live-file write removed.
+  Live, all on this branch: bad deploy `FIXED in 1m 32s`, prediction held,
+  harm clean (first fully proven fix); broken config `FIXED in 1m 37s`,
+  prediction held; flag flip resolved (was escalated); memory leak resolved
+  by reverting the leak flag (general rule wins over the resource case,
+  plan 6.3.6 order; plan 7's restart path needs a leak with no journaled
+  change); human edit mid-incident -> `handed_off` by `kubectl-set`;
+  stale -> `refused: problem no longer present`; approval expiry ->
+  escalated; datastore-down major on regroup with valkey-cart ranked first.
+  Still open, for M:
+  1. Cluster RBAC is older than `k8s/rbac-agent.yaml` (your valkey-cart/
+     kafka scale rule): data-store scale gets 403 at dry run, and
+     security_check shows 3 FAIL, all that rule. Needs
+     `kubectl --context k3d-oncall apply -f k8s/rbac-agent.yaml`.
+  2. Back-to-back faults while an approval is pending merge into the open
+     incident (seen: scenario 8's fault absorbed until scenario 7's
+     follow-up approval expired). Fix means the observer ending an incident
+     whose services recovered; your call, so not done.
+  3. Trace origin is usually frontend-proxy; the dependency rescue covers
+     it now, root cause not found.
+  4. 1 of 8 LLM calls still passed 30 s (9-19 s typical).
+  5. security_check MANUAL row is stale: rollback through the executor is
+     proven by smoke.sh.
