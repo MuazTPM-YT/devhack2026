@@ -227,3 +227,17 @@ test("old run summaries without kind still count their requests", () => {
   assert.equal(s.incidents["inc-legacy"].llmCalls, 4);
   assert.equal(s.incidents["inc-legacy"].orch, null);
 });
+
+test("a late event after the outcome leaves the stage tiles as they closed", () => {
+  const s = run(
+    rec("incident_opened", { unhealthy: ["payment"] }, "inc-late"),
+    rec("action_executed", { receipt_id: 3, tool: "revert_config", target: "payment" }, "inc-late"),
+    rec("verify_tick", { receipt_id: 3, severity: 0, recovered: true }, "inc-late"),
+    rec("incident_resolved", { card, prediction_held: true }, "inc-late"),
+    // coordinated mode: the fix's own record closes after the incident does
+    rec("action_intent_changed", { intent_id: "int-9", status: "terminal", plan_revision: 1 }, "inc-late"),
+  );
+  const inc = s.incidents["inc-late"];
+  assert.deepEqual(Object.values(inc.stages), ["done", "done", "done", "done", "done", "done"]);
+  assert.equal(inc.orch!.intents["int-9"].status, "terminal");
+});
