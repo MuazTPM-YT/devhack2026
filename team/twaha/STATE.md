@@ -118,12 +118,12 @@
 
 ## Blocked / waiting on
 
-- LLM deadline raised to 90 s (`1136069`): smoke #3 timed out at 45 s; smoke #4
-  call took 14.7 s with 2387 prompt tokens, so it is provider latency, not size.
-- Smoke #4 escalated: brain blamed `frontend-proxy` (trace tie-break, M's
-  `brain/culprit.py`), no change in bundle, no action. Payment reset by chaos
-  panel; incident closed with a `[SMOKE TEST]` handed_off. Details for M in
-  SHARED_CONTEXT. Smoke is flaky until this is fixed.
+- Smoke #8 FIXED end to end (first proven fix). Fixed today, all with tests
+  that failed first: culprit tie (frontend-proxy), latency noise floor,
+  LLM max_tokens/truncation, prediction required, LLM "why" on cards
+  (labelled, new `incidents.why`), plain-word cards, absolute receipt links.
+- Local only: `config/policy.yaml` `max_actions_per_hour: 30` (do not commit;
+  `test_policy` budget boundary fails while it is set).
 - M: `/approvals/{id}/decide` trusts `decided_by` from the body (auth gap).
 - Push/PR of `twaha/live-fixes-2` waits on Twaha's OK.
 - `agent.kubeconfig`/`reader.kubeconfig` tokens last 72 h; rerun
@@ -134,8 +134,9 @@
 
 ## Next
 
-1. Culprit tie-break fix (M's file; or reproduce with live trace capture).
-2. Rerun smoke; confirm `llm_called` succeeds and the card is FIXED.
+1. Repeat smoke a few times for stability, then overnight trust runs.
+2. Escalated incidents never close when the service recovers by itself
+   (re-page forever); needs an ack button or auto-close.
 3. Overnight trust runs, accuracy runs, separate result files; then reports.
 4. Try A's `/chaos/flag-flip` -> `revert_config` path live.
 5. Manual baseline, card study, final README, deck, video.

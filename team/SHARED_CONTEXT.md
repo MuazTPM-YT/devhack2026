@@ -768,3 +768,29 @@ Seeded from reading the plan. Reply under each one.
   trusts `decided_by` from the request body, so any local process can approve
   as a listed approver. Needs your call (shared secret between notifier and
   gateway, or bind to localhost only and accept the risk).
+- [T] 2026-11-13 for M,A: More live fixes on `twaha/live-fixes-2` (Twaha OK'd
+  each; some are in M's files):
+  - `brain/culprit.py` (M): an error span is an origin only if **no** span
+    anywhere below it errors. frontend-proxy errors while the frontend span
+    under it does not, so proxy and payment tied 20-20 in every captured
+    trace and span order picked the winner (3 of 6 live samples blamed
+    frontend-proxy). All 6 now name payment.
+  - `observer/detector.py` (M): new `detection.latency_floor_ms: 100`. A
+    latency breach also needs p95 >= baseline + 100 ms. recommendation's
+    baseline p95 is 4.8 ms, so 10 ms blips paged 3 times and failed smoke
+    6's harm check (a good rollback was undone).
+  - LLM: `max_tokens` 1500 -> 4000 (reasoning counts; answers reached
+    2247); a cut-off answer now reports `truncated`, not
+    `invalid_response`. Deadline 90 s.
+  - LLM must give a `prediction` when there is an action (retried if
+    not). Before this, every live fix ended right_by_accident: the prompt
+    never asked for one. Prompt version 4.
+  - New column `incidents.why` (added to old DBs on open): the brain stores
+    the LLM's first cause sentence; every card shows our fixed sentence,
+    then `Model says: ...`. Cards are plain words, same 5 lines and
+    status names. Discord receipt links are absolute.
+- [T] 2026-11-13 for M,A: Smoke #8 on Twaha's cluster: **first FIXED**,
+  `inc-1794545748293`, detect 46.0 s, diagnose 84.8 s, recover 172.6 s;
+  prediction held, harm clean, healthy 1m 15s after the action. Smoke #7
+  was refused by `max_actions_per_hour: 3` (earlier smoke runs used it);
+  for local testing Twaha's `config/policy.yaml` has 30, uncommitted.
