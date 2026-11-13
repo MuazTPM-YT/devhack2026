@@ -13,6 +13,7 @@ from schemas.models import Event
 
 
 _active_bus: EventBus | None = None
+AUDIT_PATH = "data/audit.jsonl"  # tests point this at a temp dir (tests/conftest.py)
 
 
 def active_bus() -> EventBus:
@@ -29,7 +30,7 @@ async def lifespan(app: FastAPI):
     bus = getattr(app.state, "event_bus", None)
     lock = None
     if bus is None:
-        path = Path(getattr(app.state, "audit_path", "data/audit.jsonl"))
+        path = Path(getattr(app.state, "audit_path", AUDIT_PATH))
         lock = writer_lock(path)
         bus = EventBus(AuditLog(path))
     _active_bus = bus

@@ -10,6 +10,12 @@ os.environ.setdefault("CHAOS_JUDGE_TOKEN", "judge-token-0123456789")
 from schemas.models import ActionRequest, Evidence, EvidenceBundle, Incident
 
 
+# a test gateway app must never append to the live data/audit.jsonl (it did, until the writer lock refused it)
+@pytest.fixture(autouse=True)
+def private_audit_log(monkeypatch, tmp_path):
+    monkeypatch.setattr("gateway.events.AUDIT_PATH", str(tmp_path / "audit.jsonl"))
+
+
 # agent services drop the judge token when they start; give every test a fresh one
 @pytest.fixture(autouse=True)
 def judge_token(monkeypatch):
