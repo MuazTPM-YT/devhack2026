@@ -107,6 +107,24 @@ start_agent() {
   launch ui "$UI_PORT" bash -c "$source_cmd; set +a; cd ui && exec npm run dev"
 }
 
+# a blind observer reads severity 0: the stack looks fine and catches nothing (collector pushes got rejected)
+telemetry_check() {
+  local seen=0
+  for _ in $(seq 1 9); do
+    seen=$(curl -s --max-time 5 http://127.0.0.1:7001/health/now | python3 -c '
+import json, sys
+h = json.load(sys.stdin)
+ok = h.get("prometheus_ok") is True
+print(sum(1 for v in h.get("services", {}).values() if v.get("err_ratio") is not None or v.get("p95_ms") is not None) if ok else 0)' 2>/dev/null || echo 0)
+    [ "$seen" -gt 0 ] && { echo "OK    telemetry: $seen services with readings"; return; }
+    sleep 5
+  done
+  echo "FAIL  observer has no metric readings after 45 s: the agent is blind, faults go unseen" >&2
+  echo "      try: kubectl --context $CONTEXT -n shop rollout restart ds/otel-collector-agent" >&2
+  echo "      then: scripts/demo.sh status, and rerun this command" >&2
+  exit 1
+}
+
 need_env() { [ -f .env ] || { echo "FAIL  .env missing (copy .env.example and fill it)" >&2; exit 1; }; }
 
 up() {
@@ -115,6 +133,7 @@ up() {
   port_forwards
   launch chaos 7004 uv run --locked --env-file .env uvicorn chaos.main:app --host 127.0.0.1 --port 7004
   start_agent .env
+  telemetry_check
   echo
   echo "UI      http://localhost:$UI_PORT"
   echo "shop    http://localhost:8080"
@@ -192,6 +211,7 @@ backend() {
   fi
   echo "shop cluster reachable through tunnel"
   start_agent .env "$REMOTE_DIR/remote.env"
+  telemetry_check
   echo
   echo "UI      http://localhost:$UI_PORT"
   echo "logs    scripts/demo.sh logs   (files in $RUN)"

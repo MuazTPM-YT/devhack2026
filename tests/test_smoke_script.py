@@ -5,10 +5,13 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 T0 = 1000.0
+HEALTHY = {"severity": 0, "prometheus_ok": True, "services": {"payment": {"err_ratio": 0.0, "p95_ms": 5.0}}}
 
 
 # chaos + observer + gateway in one stub; /events replays one incident and closes
-def serve(events: list[str]) -> ThreadingHTTPServer:
+def serve(events: list[str], health: dict | None = None) -> ThreadingHTTPServer:
+    health = health or HEALTHY
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
@@ -26,7 +29,7 @@ def serve(events: list[str]) -> ThreadingHTTPServer:
 
         def do_GET(self):
             if self.path == "/health/now":
-                return self.reply(json.dumps({"severity": 0}))
+                return self.reply(json.dumps(health))
             records = [{"ts": T0 + i + 1, "event": {"type": t, "incident_id": "inc-1"}} for i, t in enumerate(events)]
             self.reply("".join(f"data: {json.dumps(r)}\n\n" for r in records), "text/event-stream")
 
@@ -35,8 +38,8 @@ def serve(events: list[str]) -> ThreadingHTTPServer:
     return server
 
 
-def smoke(events: list[str]) -> subprocess.CompletedProcess:
-    server = serve(events)
+def smoke(events: list[str], health: dict | None = None) -> subprocess.CompletedProcess:
+    server = serve(events, health)
     url = f"http://127.0.0.1:{server.server_address[1]}"
     try:
         env = {**os.environ, "CHAOS_URL": url, "OBSERVER_URL": url, "GATEWAY_URL": url, "TIMEOUT_S": "10"}
@@ -56,3 +59,11 @@ def test_resolved_without_an_action_fails():
     result = smoke(["incident_opened", "diagnosis_ready", "incident_resolved"])
     assert result.returncode == 1, result.stdout + result.stderr
     assert "no action" in result.stdout
+
+
+# live 2026-11-13: span metrics stopped reaching Prometheus; severity 0 then meant "blind", not "healthy"
+def test_blind_observer_fails_before_injecting():
+    blind = {"severity": 0, "prometheus_ok": True, "services": {"payment": {"err_ratio": None, "p95_ms": None}}}
+    result = smoke(["incident_opened", "action_executed", "incident_resolved"], blind)
+    assert result.returncode == 1 and "inject:" not in result.stdout
+    assert "rollout restart ds/otel-collector-agent" in result.stderr
