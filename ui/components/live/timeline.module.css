@@ -115,3 +115,8 @@
 
 /* press feedback on touch too: instant, no hover gate */
 .row:active:not(.on) { background: var(--card-sunk); transition: none; }
+
+.item { transition: opacity 200ms var(--ease-out); }
+@starting-style {
+  .item { opacity: 0; }
+}

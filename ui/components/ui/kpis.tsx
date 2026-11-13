@@ -11,7 +11,7 @@ export function Kpis({ items, label }: { items: Kpi[]; label: string }) {
       {items.map((k) => (
         <div key={k.label} className={styles.cell} title={k.title}>
           <dt className={styles.label}>{k.label}</dt>
-          <dd className={`${styles.value} ${k.tone ? styles[k.tone] : ""}`}
+          <dd key={typeof k.value === "object" ? k.label : String(k.value)} className={`${styles.value} ${k.tone ? styles[k.tone] : ""}`}
             data-long={typeof k.value === "string" && k.value.length > 12}>{k.value}</dd>
           {k.sub != null && <dd className={styles.sub}>{k.sub}</dd>}
         </div>

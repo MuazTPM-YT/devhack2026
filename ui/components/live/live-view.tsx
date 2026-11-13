@@ -34,7 +34,7 @@ import { Timeline } from "./timeline";
 import styles from "./live-view.module.css";
 
 function headline(inc: Incident | null, elapsed: number | null): string {
-  if (!inc) return "Waiting for an incident";
+  if (!inc) return "All quiet";
   const name = who(inc);
   // recovered is not fixed: only a recovery that matched the prediction is called a fix
   const proved = verdict(inc);
@@ -81,7 +81,8 @@ function IncidentBody({ incident, demo, list, picker, listClosed, onList }: {
     <>
       <PageHead
         title={headline(incident, elapsed)}
-        meta={incident ? <><span className="mono">{incident.id}</span> · opened {clock(incident.openedAt)}</> : undefined}
+        meta={incident ? <><span className="mono">{incident.id}</span> · opened {clock(incident.openedAt)}</>
+          : "Nothing is broken right now. Akira is watching."}
         aside={<>
           <span className={styles.picker} data-on={listClosed}>{picker}</span>
           {mode && <Tag tone={mode.tone} title={mode.title}>{mode.label}</Tag>}

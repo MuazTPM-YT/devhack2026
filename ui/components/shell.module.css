@@ -206,3 +206,12 @@
   .badge { transition: opacity 200ms ease; }
   .closeBtn:active, .menuBtn:active { transform: none; }
 }
+
+/* an incident is open: the mark has a pulse, two beats and a rest */
+.mark[data-live="true"] { animation: beat 2.4s var(--ease-in-out) infinite; }
+@keyframes beat {
+  0%, 30%, 100% { transform: none; }
+  8% { transform: scale(1.1); }
+  16% { transform: scale(1); }
+  22% { transform: scale(1.06); }
+}

@@ -30,3 +30,14 @@
 .bad { color: var(--bad); }
 .warn { color: var(--warn); }
 .ok { color: var(--ok); }
+
+/* a figure that changed slides up into place (the dd is re-keyed on its value) */
+.value { transition: opacity 240ms var(--ease-out), transform 240ms var(--ease-out); }
+@starting-style {
+  .value { opacity: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  @starting-style {
+    .value { transform: translateY(4px); }
+  }
+}

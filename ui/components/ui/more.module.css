@@ -31,3 +31,15 @@
 @media (hover: hover) and (pointer: fine) {
   .summary:hover { text-decoration: underline; }
 }
+
+/* open and close by height where the browser can animate to auto; elsewhere it just opens */
+.more { interpolate-size: allow-keywords; }
+.more::details-content {
+  block-size: 0;
+  overflow: clip;
+  transition: block-size 240ms var(--ease-out), content-visibility 240ms allow-discrete;
+}
+.more[open]::details-content { block-size: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .more::details-content { transition: none; }
+}

@@ -25,8 +25,8 @@ const LINK_DOT: Record<LinkState, string> = { live: "dot-ok", connecting: "dot-w
 const LINK_TEXT: Record<LinkState, string> = { live: "streaming", connecting: "connecting", down: "unreachable", demo: "demo replay" };
 
 // red sun over the peak: the agent's mark
-function Mark({ size = 24 }: { size?: number }) {
-  return <Image src="/mark.png" width={size} height={size} alt="" className={styles.mark} />;
+function Mark({ size = 24, live = false }: { size?: number; live?: boolean }) {
+  return <Image src="/mark.png" width={size} height={size} alt="" className={styles.mark} data-live={live} />;
 }
 
 function Status() {
@@ -60,7 +60,7 @@ function Sidebar({ open, instant, onClose, rail, onRail }: {
     <aside id="sidebar" className={styles.side} data-open={open} data-instant={instant} aria-label="Main">
       <div className={styles.brandRow}>
         <Link href="/" className={styles.brand} onClick={onClose}>
-          <Mark />
+          <Mark live={openCount > 0} />
           <span className={styles.brandName}>Akira</span>
         </Link>
         <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Close menu">

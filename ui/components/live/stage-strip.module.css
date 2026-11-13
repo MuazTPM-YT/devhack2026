@@ -31,3 +31,9 @@
 @media (max-width: 760px) {
   .strip { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; }
 }
+
+/* the one stage being worked on breathes, so the eye finds "now" without reading */
+.active { animation: working 2.4s var(--ease-in-out) infinite; }
+@keyframes working {
+  50% { border-top-color: var(--rose); }
+}

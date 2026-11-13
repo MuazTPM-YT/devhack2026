@@ -142,3 +142,9 @@
     .lane { transform: translateY(-4px); }
   }
 }
+
+/* still running: the open end of a span breathes */
+.live { animation: running 2.4s var(--ease-in-out) infinite; }
+@keyframes running {
+  50% { opacity: 0.45; }
+}

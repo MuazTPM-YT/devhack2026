@@ -127,3 +127,15 @@
 }
 .noteTop { margin: 12px 0 0; }
 .pre { margin: 0; white-space: pre-line; }
+
+/* open and close by height where the browser can animate to auto; elsewhere it just opens */
+.fold { interpolate-size: allow-keywords; }
+.fold::details-content {
+  block-size: 0;
+  overflow: clip;
+  transition: block-size 240ms var(--ease-out), content-visibility 240ms allow-discrete;
+}
+.fold[open]::details-content { block-size: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .fold::details-content { transition: none; }
+}
