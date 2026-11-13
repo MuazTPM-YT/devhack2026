@@ -34,6 +34,8 @@ export function Outcome({ incident, receipt }: { incident: Incident; receipt: Re
   const briefing = incident.briefing && !incident.card?.text.includes(incident.briefing) ? incident.briefing : null;
   const choice = incident.choice;
   const rule = choice?.ruleChoice ?? null;
+  // the card often quotes the agent's reason already; say it once
+  const reason = choice?.reason && !incident.card?.text.includes(choice.reason) ? choice.reason : null;
   return (
     <section className={s.sec} aria-labelledby="sec-outcome">
       <div className={s.head}>
@@ -53,7 +55,7 @@ export function Outcome({ incident, receipt }: { incident: Incident; receipt: Re
               : choice.origin === "model" ? `${ownPick(choice)}; a human approves it.`
                 : "Agent agreed with the rule's pick."}
           </strong>{" "}
-          {choice.reason}
+          {reason}
           {choice.decision === "decline" && rule && <> Rule suggested <span className="mono">{rule.tool} → {rule.target}</span>.</>}
           {choice.alternative && <><br /><span className="muted">Also weighed: {choice.alternative}</span></>}
         </p>

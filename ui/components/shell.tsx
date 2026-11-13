@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
@@ -22,15 +23,9 @@ const NAV: { href: string; label: string; icon: IconName }[] = [
 const LINK_DOT: Record<LinkState, string> = { live: "dot-ok", connecting: "dot-warn", down: "dot-bad", demo: "dot-warn" };
 const LINK_TEXT: Record<LinkState, string> = { live: "streaming", connecting: "connecting", down: "unreachable", demo: "demo replay" };
 
-// pulse line in a ring: the agent's mark
+// red sun over the peak: the agent's mark
 function Mark({ size = 24 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 26 26" aria-hidden="true">
-      <circle cx="13" cy="13" r="12" fill="none" stroke="currentColor" strokeWidth="1.3" />
-      <path d="M5 13.5h4l2-5 3 9 2-4h5" fill="none" stroke="currentColor" strokeWidth="1.6"
-        strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return <Image src="/mark.png" width={size} height={size} alt="" className={styles.mark} />;
 }
 
 function Status() {

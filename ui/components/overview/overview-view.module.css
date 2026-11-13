@@ -70,10 +70,16 @@
   background: var(--card);
   color: var(--ink-soft);
   cursor: pointer;
+  transition: transform 160ms var(--ease-out);
 }
 .switchBtn + .switchBtn { border-left: 1px solid var(--line-strong); }
 .switchBtn[aria-pressed="true"] { background: var(--ink); color: var(--frame); }
 .switchBtn:active { transform: scale(0.97); }
 @media (hover: hover) and (pointer: fine) {
   .switchBtn[aria-pressed="false"]:hover { color: var(--ink); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switchBtn { transition: none; }
+  .switchBtn:active { transform: none; }
 }
