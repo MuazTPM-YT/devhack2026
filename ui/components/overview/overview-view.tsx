@@ -7,6 +7,7 @@ import { PageHead } from "@/components/ui/page-head";
 import { Tag, type Tone } from "@/components/ui/tag";
 import type { ServiceHealth } from "@/lib/chaos-api";
 import { clock, duration, plural } from "@/lib/format";
+import { telemetry } from "@/lib/lab";
 import { useLiveContext } from "@/lib/live-context";
 import {
   incidentStats, incidentStatus, latencyLimit, type Policy, serviceSentence, type ServiceInfo, serviceStatus,
@@ -21,7 +22,15 @@ const STATUS: Record<ServiceStatus, { tone: Tone; label: string; rank: number }>
   breaching: { tone: "warn", label: "Breaching", rank: 1 },
   ok: { tone: "ok", label: "OK", rank: 2 },
   nodata: { tone: "idle", label: "No data", rank: 3 },
+  unknown: { tone: "idle", label: "Unknown", rank: 3 },
 };
+
+// what Akira may do to a service, from config/services.yaml: act, act only with a human's yes, or only watch
+function standing(info: ServiceInfo): { label: string; title: string } | null {
+  if (info.actable) return null;
+  if (info.protected) return { label: "Approval only", title: "Protected data store: Akira may restore its replica count, and only after a human approves" };
+  return { label: "Watch only", title: "Akira diagnoses this service but never changes it" };
+}
 
 // value against a limit: fill to the value, black tick at the limit; past the scale the fill is full
 function Bar({ label, value, limit, scale, text, tone }: {
@@ -43,11 +52,12 @@ function Bar({ label, value, limit, scale, text, tone }: {
   );
 }
 
-function ServiceCard({ name, health, info, policy, culprit, incidentId }: {
+function ServiceCard({ name, health, info, policy, culprit, incidentId, blind }: {
   name: string; health: ServiceHealth | undefined; info: ServiceInfo | undefined; policy: Policy;
-  culprit: boolean; incidentId: string | null;
+  culprit: boolean; incidentId: string | null; blind: boolean;
 }) {
-  const st = STATUS[serviceStatus(health)];
+  const st = STATUS[serviceStatus(health, blind)];
+  const may = info ? standing(info) : null;
   const limit = latencyLimit(health?.baseline_p95_ms ?? null, policy);
   const errLine = policy.errThreshold ?? 0.05;
   const err = health?.err_ratio ?? null;
@@ -62,18 +72,18 @@ function ServiceCard({ name, health, info, policy, culprit, incidentId }: {
       </div>
       <div className={styles.tags}>
         <Tag tone={st.tone}>{st.label}</Tag>
-        {info && !info.actable && <Tag tone="idle" title="Akira watches this service but never changes it">Watch only</Tag>}
+        {may && <Tag tone="idle" title={may.title}>{may.label}</Tag>}
       </div>
       <Bar label="Errors" value={err} limit={policy.errThreshold} scale={errLine * 3}
         text={err == null ? "–" : `${(err * 100).toFixed(1)}%`} tone={errTone} />
       <Bar label="p95 latency" value={p95} limit={limit} scale={(limit ?? p95 ?? 1) * 1.5}
         text={p95 == null ? "–" : `${Math.round(p95)} ms`} tone={latTone} />
-      <p className={styles.sentence}>{serviceSentence(health, policy)}</p>
+      <p className={styles.sentence}>{serviceSentence(health, policy, blind)}</p>
       <div className={styles.foot}>
         <span>{info ? `${info.kind}${info.critical ? " · critical" : ""}` : "not in services.yaml"}</span>
         {culprit && incidentId
           ? <Link href={`/live?incident=${encodeURIComponent(incidentId)}`} className={styles.open}>Open incident →</Link>
-          : <span className="num">{health?.bad_pods ? plural(health.bad_pods, "bad pod") : "pods ready"}</span>}
+          : <span className="num">{!health || blind ? "pod state unknown" : health.bad_pods ? plural(health.bad_pods, "bad pod") : "no bad pods"}</span>}
       </div>
     </article>
   );
@@ -83,10 +93,16 @@ export function OverviewView({ services }: { services: Record<string, ServiceInf
   const { state, observer, policy } = useLiveContext();
   const now = useNow(true, 5000);
   const health = observer.health;
+  const tele = telemetry(health, observer.error, now);
+  // old numbers behind a fresh response: every card is unknown, none is healthy
+  const blind = health != null && !tele.ok;
   const names = [...new Set([...Object.keys(services), ...Object.keys(health?.services ?? {})])];
-  const rank = (n: string) => STATUS[serviceStatus(health?.services[n])].rank;
+  const status = (n: string) => serviceStatus(health?.services[n], blind);
+  const rank = (n: string) => STATUS[status(n)].rank;
   names.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
-  const bad = names.filter((n) => serviceStatus(health?.services[n]) === "unhealthy");
+  const bad = names.filter((n) => status(n) === "unhealthy");
+  const breaching = names.filter((n) => status(n) === "breaching");
+  const unmeasured = names.filter((n) => status(n) === "nodata");
   const stats = incidentStats(state, now, policy.maxAgeS);
   const openId = state.order.find((id) => incidentStatus(state.incidents[id], now, policy.maxAgeS) === "open") ?? null;
   const openInc = openId ? state.incidents[openId] : null;
@@ -94,29 +110,35 @@ export function OverviewView({ services }: { services: Record<string, ServiceInf
   return (
     <div className={styles.page}>
       <PageHead
-        eyebrow={`Overview · namespace shop${health ? ` · as of ${clock(health.ts)}` : ""}`}
+        eyebrow={`Overview · namespace shop${health ? ` · numbers from ${clock(health.last_ok_ts ?? health.ts)}` : ""}`}
         title="Shop at a glance"
         aside={openInc && <Link className="btn btn-dark" href={`/live?incident=${encodeURIComponent(openInc.id)}`}>Open live incident →</Link>}
       />
 
       <Kpis label="Shop and agent figures" items={[
         { label: "Services", value: names.length || "–" },
-        { label: "Unhealthy", value: health ? bad.length : "–", tone: bad.length ? "bad" : undefined },
-        { label: "Severity", value: health ? health.severity : "–", sub: "0 is healthy", tone: health?.severity ? "warn" : undefined },
+        { label: "Unhealthy", value: health && !blind ? bad.length : "–", sub: blind ? "unknown" : undefined, tone: bad.length ? "bad" : undefined },
+        { label: "Severity", value: health && !blind ? health.severity : "–", sub: blind ? "unknown" : "0 is healthy", tone: !blind && health?.severity ? "warn" : undefined },
         { label: "Incidents", value: stats.total, sub: `${stats.open} open${stats.lost ? ` · ${stats.lost} lost` : ""}` },
-        { label: "Fixed", value: stats.resolved, sub: stats.medianFixS != null ? `median ${duration(stats.medianFixS)}` : "none yet", tone: stats.resolved ? "ok" : undefined },
+        { label: "Fix verified", value: stats.verified, tone: stats.verified ? "ok" : undefined,
+          sub: stats.resolved ? `${stats.resolved - stats.verified} recovered unproven${stats.medianFixS != null ? ` · median ${duration(stats.medianFixS)}` : ""}` : "none yet" },
         { label: "Woke a human", value: stats.escalated + stats.handedOff, sub: `${stats.escalated} escalated · ${stats.handedOff} handed off` },
       ]} />
 
       <div className={styles.lede}>
         {observer.error && !health ? (
           <p className={styles.alert}>No reading from the observer ({observer.error}). Start it on :7001.</p>
+        ) : blind ? (
+          <p className={styles.alert} role="alert">{tele.text}. The cards below show the last numbers, not the shop now.</p>
         ) : bad.length ? (
           <p><b>{bad.length} of {names.length} services are unhealthy:</b> {bad.join(", ")}.{" "}
             {openInc ? <>Akira is on it in incident <Link href={`/live?incident=${encodeURIComponent(openInc.id)}`} className="mono">{openInc.id}</Link>.</> : "No incident is open yet."}</p>
         ) : (
-          <p>{health ? `All ${names.length} services are inside their baselines.` : "Waiting for the first reading…"}{" "}
-            {stats.total > 0 && `Akira has handled ${plural(stats.total, "incident")}: fixed ${stats.resolved}, woke a human for ${stats.escalated + stats.handedOff}.`}</p>
+          <p>{!health ? "Waiting for the first reading…"
+            : breaching.length ? `${plural(breaching.length, "service")} over a limit, not yet unhealthy: ${breaching.join(", ")}.`
+              : unmeasured.length ? `${names.length - unmeasured.length} of ${names.length} services are inside their baselines; ${unmeasured.length} have no measurements (${unmeasured.join(", ")}).`
+                : `All ${names.length} services are inside their baselines.`}{" "}
+            {stats.total > 0 && `Akira has handled ${plural(stats.total, "incident")}: ${stats.verified} verified fixed, ${stats.resolved - stats.verified} recovered unproven, woke a human for ${stats.escalated + stats.handedOff}.`}</p>
         )}
         <p className={styles.legend}>
           Each card is one service. Top bar: error ratio, the tick is the {((policy.errThreshold ?? 0.05) * 100).toFixed(0)}% line.
@@ -128,7 +150,7 @@ export function OverviewView({ services }: { services: Record<string, ServiceInf
       <div className={styles.grid}>
         {names.map((n) => (
           <ServiceCard key={n} name={n} health={health?.services[n]} info={services[n]} policy={policy}
-            culprit={openInc?.culprit === n} incidentId={openInc?.id ?? null} />
+            blind={blind} culprit={openInc?.culprit === n} incidentId={openInc?.id ?? null} />
         ))}
       </div>
     </div>

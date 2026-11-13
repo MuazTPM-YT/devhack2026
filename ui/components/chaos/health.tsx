@@ -4,21 +4,23 @@ import type { HealthNow } from "@/lib/chaos-api";
 import { clock } from "@/lib/format";
 import { serviceStatus } from "@/lib/overview";
 
-const RANK = { unhealthy: 0, breaching: 1, ok: 2, nodata: 3 } as const;
+const RANK = { unhealthy: 0, breaching: 1, ok: 2, nodata: 3, unknown: 3 } as const;
 const TAG = {
   unhealthy: <Tag tone="bad">Unhealthy</Tag>, breaching: <Tag tone="warn">Breaching</Tag>,
-  ok: <Tag tone="ok">OK</Tag>, nodata: <Tag tone="idle">No data</Tag>,
+  ok: <Tag tone="ok">OK</Tag>, nodata: <Tag tone="idle">No data</Tag>, unknown: <Tag tone="idle">Unknown</Tag>,
 };
 
 // observer /health/now as a table, worst first
 export function Health({ health, error }: { health: HealthNow | null; error: string | null }) {
+  // stale numbers keep their values in the table but lose their verdict
+  const blind = health?.prometheus_ok === false || (error != null && health != null);
   const rows = health ? Object.entries(health.services)
-    .sort(([an, a], [bn, b]) => RANK[serviceStatus(a)] - RANK[serviceStatus(b)] || an.localeCompare(bn)) : [];
+    .sort(([an, a], [bn, b]) => RANK[serviceStatus(a, blind)] - RANK[serviceStatus(b, blind)] || an.localeCompare(bn)) : [];
   return (
     <article className="card">
       <div className="card-head">
         <h2 className="card-title">Health now</h2>
-        <span className="label">{error ? "observer offline" : health ? `read ${clock(health.ts)}` : "waiting"}</span>
+        <span className="label">{error ? "observer offline" : health ? `${blind ? "stale, " : ""}numbers from ${clock(health.last_ok_ts ?? health.ts)}` : "waiting"}</span>
       </div>
       {error && !health ? (
         <p className="empty bad">No reading from the observer ({error}). Start it on :7001.</p>
@@ -29,7 +31,7 @@ export function Health({ health, error }: { health: HealthNow | null; error: str
             <tbody>
               {rows.map(([name, s]) => (
                 <tr key={name}>
-                  <td>{TAG[serviceStatus(s)]}</td>
+                  <td>{TAG[serviceStatus(s, blind)]}</td>
                   <td>{name}</td>
                   <td className={page.num}>{s.err_ratio == null ? "–" : `${(s.err_ratio * 100).toFixed(1)}%`}</td>
                   <td className={page.num}>{s.p95_ms == null ? "–" : `${Math.round(s.p95_ms)} ms`}</td>

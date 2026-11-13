@@ -47,7 +47,7 @@ export const DEMO_SCRIPT: DemoStep[] = [
         text: "payment v2-bad rolled back to 3.1.0. Errors on payment, checkout and frontend back to baseline in 12 s.",
         evidence_ids: ["change:payment-image", "metric:payment-err", "trace:checkout-payment"],
       },
-      receipt_url: "/receipts/1",
+      receipt_url: "/receipts/1", prediction_held: true,
     },
   },
 ];

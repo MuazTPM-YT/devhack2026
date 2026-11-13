@@ -9,7 +9,7 @@ import { Tag } from "@/components/ui/tag";
 import { clock, duration, words } from "@/lib/format";
 import type { Incident } from "@/lib/live";
 import { useLiveContext } from "@/lib/live-context";
-import { incidentStatus } from "@/lib/overview";
+import { incidentStatus, verdict } from "@/lib/overview";
 import { useNow } from "@/lib/use-now";
 import { useReceipt } from "@/lib/use-receipt";
 
@@ -18,7 +18,7 @@ import { Blast } from "./blast";
 import { Checklist } from "./checklist";
 import { Evidence } from "./evidence";
 import { FlowMap } from "./flow-map";
-import { IncidentList, IncidentSelect, STATUS_TAG, who } from "./incident-list";
+import { IncidentList, IncidentSelect, statusTag, who } from "./incident-list";
 import { Outcome } from "./outcome";
 import { Severity } from "./severity";
 import sheet from "./sheet.module.css";
@@ -29,7 +29,12 @@ import styles from "./live-view.module.css";
 function headline(inc: Incident | null, elapsed: number | null): string {
   if (!inc) return "Waiting for an incident";
   const name = who(inc);
-  if (inc.outcome === "resolved") return `${name} fixed in ${duration(elapsed ?? 0)}`;
+  // recovered is not fixed: only a recovery that matched the prediction is called a fix
+  const proved = verdict(inc);
+  const took = duration(elapsed ?? 0);
+  if (proved === "verified") return `${name} fixed in ${took}`;
+  if (proved === "mitigated") return `${name} mitigated in ${took}, permanent fix needed`;
+  if (proved === "unproven") return `${name} recovered in ${took}, fix not proven`;
   if (inc.outcome === "escalated") return `${name}: woke a human`;
   if (inc.outcome === "handed_off") return `${name}: handed off`;
   return `Working on ${name}`;
@@ -56,7 +61,7 @@ function IncidentBody({ incident, demo, list, picker }: {
         title={headline(incident, elapsed)}
         aside={<>
           <span className={styles.picker}>{picker}</span>
-          {status && <Tag tone={STATUS_TAG[status].tone}>{STATUS_TAG[status].label}</Tag>}
+          {status && <Tag tone={statusTag(incident, status).tone}>{statusTag(incident, status).label}</Tag>}
           {link === "demo" && <button type="button" className="btn" onClick={replay}>Replay demo</button>}
         </>}
       />

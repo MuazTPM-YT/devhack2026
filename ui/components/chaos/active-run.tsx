@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { STATUS_TAG, who } from "@/components/live/incident-list";
+import { statusTag, who } from "@/components/live/incident-list";
 import { Tag } from "@/components/ui/tag";
 import type { HealthNow } from "@/lib/chaos-api";
 import { duration } from "@/lib/format";
@@ -86,7 +86,7 @@ export function ActiveRun({ run, live, health, policy, busy, onStop, onReveal }:
           <dl className={styles.facts}>
             <dt>Incident</dt>
             <dd>
-              {status && <Tag tone={STATUS_TAG[status].tone}>{STATUS_TAG[status].label}</Tag>}{" "}
+              {status && <Tag tone={statusTag(incident, status).tone}>{statusTag(incident, status).label}</Tag>}{" "}
               <Link href={`/live?incident=${encodeURIComponent(incident.id)}`}>Open {incident.id} →</Link>
             </dd>
             <dt>Suspect</dt>

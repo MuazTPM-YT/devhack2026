@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Tag, type Tone } from "@/components/ui/tag";
 import { clock, duration } from "@/lib/format";
 import type { Incident, LiveState } from "@/lib/live";
-import { type IncidentStatus, incidentStatus } from "@/lib/overview";
+import { type IncidentStatus, incidentStatus, VERDICT, verdict } from "@/lib/overview";
 
 import styles from "./incident-list.module.css";
 
@@ -17,6 +17,12 @@ export const STATUS_TAG: Record<IncidentStatus, { tone: Tone; label: string }> =
   handed_off: { tone: "warn", label: "Handed off" },
   lost: { tone: "idle", label: "No outcome" },
 };
+
+// resolved splits into what was actually proven (lib/overview.ts verdict)
+export function statusTag(inc: Incident | null, status: IncidentStatus): { tone: Tone; label: string } {
+  const proved = inc ? verdict(inc) : null;
+  return proved ? VERDICT[proved] : STATUS_TAG[status];
+}
 
 const MAX = 60;
 
@@ -35,7 +41,7 @@ export function IncidentList({ state, picked, now, maxAgeS }: {
           {ids.map((id) => {
             const inc = state.incidents[id];
             const status = incidentStatus(inc, now, maxAgeS);
-            const st = STATUS_TAG[status];
+            const st = statusTag(inc, status);
             const took = (inc.closedAt ?? now) - inc.openedAt;
             return (
               <li key={id}>

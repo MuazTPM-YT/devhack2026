@@ -39,16 +39,18 @@ function Mark({ size = 24 }: { size?: number }) {
 function Status() {
   const { link, observer } = useLiveContext();
   const sev = observer.health?.severity;
-  const obsDot = observer.error ? "dot-bad" : observer.health ? (sev ? "dot-warn" : "dot-ok") : "dot-warn";
+  // the observer answering is not the observer seeing: prometheus_ok false means its numbers are old
+  const blind = observer.health?.prometheus_ok === false;
+  const obsDot = observer.error || blind ? "dot-bad" : observer.health ? (sev ? "dot-warn" : "dot-ok") : "dot-warn";
   return (
     <dl className={styles.status}>
       <div title={`Gateway event stream: ${LINK_TEXT[link]}`}>
         <dt><span className={`dot ${LINK_DOT[link]}`} /><span className={styles.statusName}>Gateway</span></dt>
         <dd>{LINK_TEXT[link]}</dd>
       </div>
-      <div title={observer.error ? `Observer: ${observer.error}` : "Observer severity, 0 is healthy"}>
+      <div title={observer.error ? `Observer: ${observer.error}` : blind ? "Observer cannot read Prometheus; health unknown" : "Observer severity, 0 is healthy"}>
         <dt><span className={`dot ${obsDot}`} /><span className={styles.statusName}>Observer</span></dt>
-        <dd>{observer.error ? "unreachable" : sev == null ? "–" : `severity ${sev}`}</dd>
+        <dd>{observer.error ? "unreachable" : blind ? "blind" : sev == null ? "–" : `severity ${sev}`}</dd>
       </div>
     </dl>
   );
