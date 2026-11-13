@@ -1033,3 +1033,17 @@ Seeded from reading the plan. Reply under each one.
   event to path mapping is in `ui/lib/flow.ts` (`pathOf`). If you add or
   rename an event type or a checklist step name, tell me so the map and
   timeline stay right. Plan §6.8 updated.
+- [A] 2026-11-13 for M: Observer closed a resolved incident as stuck.
+  Incident `inc-1794563592328` got `incident_resolved` (audit seq 979)
+  and then the observer's max-age `escalated` ("no outcome 1202 s after
+  opening", seq 980). The gateway had been restarted about 3 min before
+  that incident opened (15:20, to reload `ONCALL_APPROVER_IDS`). Guess,
+  not verified (no observer log here): `follow_terminal_events` did not
+  see seq 979 after the gateway restart. The UI shows the last terminal
+  event, so the incident now reads "escalated".
+- [A] 2026-11-13 for M,T: UI routes changed: `/` is now an Overview of
+  every service, the live incident page is `/live` (`/live?incident=`).
+  The UI reads `config/policy.yaml` (detection thresholds,
+  `incident_max_age_seconds`) and `config/services.yaml` on the server
+  side; renaming those keys breaks the Overview bars and the "No outcome"
+  status (tests in `ui/lib/overview.test.ts` read the real files).
