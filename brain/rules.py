@@ -37,10 +37,23 @@ def latest_change_before_onset(journal: list[dict], culprit: str, onset: float, 
     return max(hits, key=lambda j: (j["ts"], j["id"]), default=None)
 
 
-# -> (pattern, actions). pattern: recent_change | resource | protected | unknown
+# -> (pattern, actions). pattern: recent_change | resource | protected | unknown.
+# A watch-only service (in services.yaml, neither actable nor protected: accounting, fraud-detection) keeps
+# its pattern but gets no action: live, a restart_service on fraud-detection was proposed, refused by the
+# MCP schema and escalated with a confusing "validation error" briefing
 def match(incident: dict, journal: list[dict], events: list[dict], services: dict, policy: dict,
           memory_ratio: float | None = None, memory_limit: str | None = None,
           flag_map: dict | None = None) -> tuple[str, list[dict]]:
+    pattern, actions = _match(incident, journal, events, services, policy, memory_ratio, memory_limit, flag_map)
+    svc = services.get(incident.get("culprit") or "", {})
+    if actions and not svc.get("actable") and not svc.get("protected"):
+        return pattern, []
+    return pattern, actions
+
+
+def _match(incident: dict, journal: list[dict], events: list[dict], services: dict, policy: dict,
+           memory_ratio: float | None, memory_limit: str | None,
+           flag_map: dict | None) -> tuple[str, list[dict]]:
     culprit = incident.get("culprit")
     if culprit is None or culprit not in services:
         return "unknown", []

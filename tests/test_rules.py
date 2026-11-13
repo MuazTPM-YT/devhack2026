@@ -16,6 +16,13 @@ def change(id_, kind, obj="deployment/payment", ts=960.0, by_agent=False, diff=N
 
 
 class RulesTest(unittest.TestCase):
+    # live: OOMKilled fraud-detection (watched, never acted on) got a restart proposal the gateway refused
+    def test_watch_only_service_keeps_pattern_but_gets_no_action(self):
+        services = {**SERVICES, "fraud-detection": {"kind": "stateless"}}
+        oom = [{"id": "event:fd:last", "summary": "container app last ended OOMKilled, exit 137"}]
+        pattern, actions = match(incident("fraud-detection"), [], oom, services, POLICY, 0.95, "300Mi")
+        self.assertEqual((pattern, actions), ("resource", []))
+
     def test_bad_deploy_rolls_back(self):
         pattern, actions = match(incident("payment"), [change(41, "image")], [], SERVICES, POLICY)
         self.assertEqual(pattern, "recent_change")
