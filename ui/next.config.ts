@@ -12,7 +12,8 @@ const config: NextConfig = {
     return [
       { source: "/api/gateway/:path*", destination: `${gateway}/:path*` },
       { source: "/api/observer/:path*", destination: `${observer}/:path*` },
-      { source: "/api/chaos/:path*", destination: `${chaos}/chaos/:path*` },
+      // read only: faults and the admin kubectl run from chaos/cli.py, never through the browser
+      { source: "/api/chaos/ground-truth", destination: `${chaos}/chaos/ground-truth` },
     ];
   },
 };

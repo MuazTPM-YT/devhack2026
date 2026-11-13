@@ -6,8 +6,8 @@
   margin: 0 0 8px;
   font-family: var(--mono);
   font-size: 13px;
-  font-weight: 400;
-  color: var(--ox-deep);
+  font-weight: 600;
+  color: var(--ink);
 }
 
 .who { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
@@ -29,7 +29,6 @@
   position: absolute;
   inset: 0 auto 0 0;
   border: 1px solid var(--ox);
-  border-radius: 4px;
 }
 
 .median, .medianManual {
@@ -38,11 +37,10 @@
   bottom: 3px;
   left: 0;
   background: var(--ox);
-  border-radius: 3px;
 }
 
-.worstManual { border-color: var(--rose); }
-.medianManual { background: var(--rose); }
+.worstManual { border-color: var(--ink-mute); }
+.medianManual { background: var(--ink-mute); }
 
 .none { font-size: 12px; color: var(--ink-mute); }
 

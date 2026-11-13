@@ -176,6 +176,33 @@ at start. Read routes stay open for the UI. A manual approval is now:
 
 The notifier and Go adapter are not exercised live by the offline suite.
 
+## Breaking the shop (chaos CLI)
+
+Faults are injected from the terminal, not from the UI. The CLI talks to the
+chaos panel on `:7004` (`CHAOS_URL`), so every change is logged in
+`data/ground_truth.jsonl`. The agent never reads that file. Every fault
+stays until `reset`.
+
+Interactive shell: run `uv run -m chaos.cli` with no command. Type `/` for
+a dropdown of commands (arrow keys to pick, Tab or Enter to fill in);
+`/inject <Tab>` lists the faults; `/watch` streams the agent's steps live;
+the bottom bar shows gateway and observer state and the current severity.
+
+One-shot commands (scripts, CI):
+
+```bash
+uv run python -m chaos.cli list                       # faults you can inject
+uv run python -m chaos.cli inject bad-deploy          # break payment; watch http://localhost:3000/live
+uv run python -m chaos.cli status                     # severity and per-service health (observer :7001)
+uv run python -m chaos.cli kubectl -n shop scale deploy/cart --replicas=0   # break it your own way (admin)
+uv run python -m chaos.cli truth                      # what was really broken and when
+uv run python -m chaos.cli reset                      # undo everything, wait until healthy
+```
+
+`kubectl` runs as cluster admin without a shell: pipes and `$()` are passed
+to kubectl as plain words. Read-only verbs (`get`, `describe`, `logs`, ...)
+are not logged. Every other verb is logged as ground truth.
+
 ## Benchmarks and adversarial checks
 
 The harness resets before every trial, waits for 60 seconds of zero severity,

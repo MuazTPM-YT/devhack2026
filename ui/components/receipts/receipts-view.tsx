@@ -1,9 +1,13 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import outcome from "@/components/live/outcome.module.css";
+import sheet from "@/components/live/sheet.module.css";
 import page from "@/components/page.module.css";
+import { Kpis } from "@/components/ui/kpis";
+import { PageHead } from "@/components/ui/page-head";
+import { Tag, type Tone } from "@/components/ui/tag";
 import { words } from "@/lib/format";
 import { type AuditResult, listReceipts, type ReceiptItem, verifyAudit } from "@/lib/receipts";
 
@@ -16,10 +20,12 @@ function Yes({ value, yes, no }: { value: boolean | null | undefined; yes: strin
   return <span className={value ? "ok" : "bad"}>{value ? yes : no}</span>;
 }
 
-function outcomeDot(o: string) {
-  if (o === "success") return "dot dot-ok";
-  if (o === "pending") return "dot dot-warn";
-  return o === "undone" ? "dot dot-bad" : "dot";
+const OUTCOME_TONE: Record<string, Tone> = {
+  success: "ok", right_by_accident: "ok", pending: "warn", undone: "bad", undo_failed: "bad", handed_off: "warn",
+};
+
+function OutcomeTag({ outcome }: { outcome: string }) {
+  return <Tag tone={OUTCOME_TONE[outcome] ?? "idle"}>{words(outcome)}</Tag>;
 }
 
 // hash chain over data/audit.jsonl: names the first broken record if anyone edited the log
@@ -37,7 +43,7 @@ function AuditCheck() {
     : <span className="bad">{state.error}</span>;
   return (
     <div className={styles.audit}>
-      <button type="button" className={styles.verify} onClick={run} disabled={state === "busy"}>
+      <button type="button" className="btn btn-dark" onClick={run} disabled={state === "busy"}>
         {state === "busy" ? "Checking…" : "Verify audit log"}
       </button>
       <span aria-live="polite" className={styles.auditText}>{text}</span>
@@ -51,9 +57,9 @@ function Detail({ item }: { item: ReceiptItem }) {
     <article className="card">
       <div className="card-head">
         <h2 className="card-title">Receipt #{item.id}</h2>
-        <span className="pill pill-dark">{words(r.outcome)}</span>
+        <OutcomeTag outcome={r.outcome} />
       </div>
-      <blockquote className={outcome.card}>{item.card.text}</blockquote>
+      <blockquote className={sheet.quote}>{item.card.text}</blockquote>
 
       <dl className={styles.facts}>
         <div><dt>Action</dt><dd className="mono">{r.tool} → {r.target}</dd></div>
@@ -104,25 +110,27 @@ export function ReceiptsView() {
   const [data, setData] = useState<{ items: ReceiptItem[]; listed: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<number | null>(null);
+  // ?receipt=13 (from the live page) opens that receipt; otherwise the newest
+  const asked = Number(useSearchParams().get("receipt")) || null;
 
   useEffect(() => {
     listReceipts()
-      .then((d) => { setData(d); setPicked(d.items[0]?.id ?? null); })
+      .then((d) => { setData(d); setPicked(d.items.some((i) => i.id === asked) ? asked : (d.items[0]?.id ?? null)); })
       .catch((e: Error) => setError(e.message));
-  }, []);
+  }, [asked]);
 
   const items = data?.items ?? [];
   const current = items.find((i) => i.id === picked) ?? null;
 
   return (
     <div className={page.page}>
-      <div className={page.head}>
-        <div>
-          <p className="label">Every action the agent took, what it changed and how to undo it</p>
-          <h1 className={page.title}>Receipts</h1>
-        </div>
-        <AuditCheck />
-      </div>
+      <PageHead eyebrow="Receipts · every action, its diff and its undo" title="What Akira changed" aside={<AuditCheck />} />
+      <Kpis label="Receipt figures" items={[
+        { label: "Actions", value: data ? items.length : "–" },
+        { label: "Succeeded", value: data ? items.filter((i) => ["success", "right_by_accident"].includes(i.receipt.outcome)).length : "–", tone: "ok" },
+        { label: "Undone", value: data ? items.filter((i) => i.receipt.outcome.startsWith("undo")).length : "–" },
+        { label: "Prediction held", value: data ? `${items.filter((i) => i.receipt.prediction_held).length}/${items.filter((i) => i.receipt.prediction_held != null).length}` : "–" },
+      ]} />
 
       <div className={page.grid}>
         <article className={`card ${page.span4}`}>
@@ -146,7 +154,7 @@ export function ReceiptsView() {
                     <span className={styles.rowId}>#{i.id}</span>
                     <span className={styles.rowMain}>
                       <span className="mono">{i.receipt.tool} → {i.receipt.target}</span>
-                      <span className={styles.rowSub}><span className={outcomeDot(i.receipt.outcome)} />{words(i.receipt.outcome)}</span>
+                      <span className={styles.rowSub}><OutcomeTag outcome={i.receipt.outcome} /></span>
                     </span>
                   </button>
                 </li>

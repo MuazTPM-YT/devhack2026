@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 
 import page from "@/components/page.module.css";
+import { Kpis } from "@/components/ui/kpis";
+import { PageHead } from "@/components/ui/page-head";
+import { Tag } from "@/components/ui/tag";
 import { words } from "@/lib/format";
 import { loadTrust, type Pair, type TrustRow } from "@/lib/trust";
 
@@ -22,10 +25,8 @@ function Meter({ bound, bar }: { bound: number; bar: number }) {
 }
 
 function Gate({ open }: { open: boolean | null }) {
-  if (open == null) return <span className="pill"><span className="dot" />unknown</span>;
-  return open
-    ? <span className="pill"><span className="dot dot-ok" />open · auto</span>
-    : <span className="pill"><span className="dot dot-bad" />closed · ask</span>;
+  if (open == null) return <Tag tone="idle">Unknown</Tag>;
+  return open ? <Tag tone="ok">Open · auto</Tag> : <Tag tone="warn">Closed · asks</Tag>;
 }
 
 export function TrustView() {
@@ -42,17 +43,16 @@ export function TrustView() {
 
   return (
     <div className={page.page}>
-      <div className={page.head}>
-        <div>
-          <p className="label">The agent fixes on its own only where its record proves it</p>
-          <h1 className={page.title}>Trust</h1>
-        </div>
-        <div className={page.figures}>
-          <div><span className="figure">{rows.length}</span><span className="label">fixes on record</span></div>
-          <div><span className="figure">{data?.full ? open : "–"}</span><span className="label">gates open</span></div>
-          <div><span className="figure">{bar != null ? pct(bar) : "–"}</span><span className="label">bar to open</span></div>
-        </div>
-      </div>
+      <PageHead eyebrow="Trust · ledger of verified fixes" title="Earned autonomy" />
+      <Kpis label="Trust figures" items={[
+        { label: "Fix kinds on record", value: rows.length },
+        { label: "Gates open", value: data?.full ? open : "–", sub: "act without asking", tone: open ? "ok" : undefined },
+        { label: "Bar to open", value: bar != null ? pct(bar) : "–", sub: "95% lower bound must reach it" },
+      ]} />
+      <p className={page.lede}>
+        Akira acts on its own only for a (pattern, action, target) whose record proves it: the 95% lower bound on its
+        success rate must clear the bar, and any failure closes the gate again. Everything else waits for a human.
+      </p>
 
       {data && !data.full && (
         <p className={page.note}>

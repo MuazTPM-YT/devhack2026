@@ -1,61 +1,46 @@
-import { words } from "@/lib/format";
+import { plural, words } from "@/lib/format";
 import type { Incident } from "@/lib/live";
 
-import styles from "./evidence.module.css";
+import s from "./sheet.module.css";
 
 const KINDS = ["changes", "metrics", "traces", "events", "logs"] as const;
-const MAX_DOTS = 8;
 
 // shop's Jaeger behind frontend-proxy (plan §3.3)
 const JAEGER = process.env.NEXT_PUBLIC_JAEGER_URL ?? "http://localhost:8080/jaeger/ui";
 
-export function Evidence({ incident, className }: { incident: Incident | null; className?: string }) {
-  const bundle = incident?.bundle ?? {};
+export function Evidence({ incident }: { incident: Incident }) {
+  const bundle = incident.bundle;
   const total = KINDS.reduce((n, k) => n + (bundle[k] ?? 0), 0);
-  const culprit = incident?.culprit;
+  const max = Math.max(8, ...KINDS.map((k) => bundle[k] ?? 0));
   return (
-    <article className={`card ${className ?? ""}`}>
-      <div className="card-head">
-        <h2 className="card-title">Evidence sent</h2>
-        {culprit && (
-          <a className="pill" href={`${JAEGER}/search?service=${encodeURIComponent(culprit)}`} target="_blank" rel="noreferrer">
-            traces in Jaeger ↗
+    <section className={s.sec} aria-labelledby="sec-evidence">
+      <div className={s.head}>
+        <h2 id="sec-evidence" className={s.title}>Evidence sent</h2>
+        {incident.culprit && (
+          <a className="pill" href={`${JAEGER}/search?service=${encodeURIComponent(incident.culprit)}`} target="_blank" rel="noreferrer">
+            Traces in Jaeger ↗
           </a>
         )}
       </div>
-
-      <div className={styles.top}>
-        <div>
-          <div className="figure">{String(total).padStart(2, "0")}</div>
-          <div className="label">items in the bundle, redacted</div>
-        </div>
-        <div className={styles.facts}>
-          <span><b>{incident?.pattern ? words(incident.pattern) : "–"}</b> pattern</span>
-          <span><b>{incident?.llmCalls ?? 0}</b> model {incident?.llmCalls === 1 ? "call" : "calls"}</span>
-          {(incident?.quarantined ?? 0) > 0 && <span className="bad"><b>{incident?.quarantined}</b> lines quarantined</span>}
-        </div>
-      </div>
-
-      <div className={styles.columns} role="img" aria-label={KINDS.map((k) => `${bundle[k] ?? 0} ${k}`).join(", ")}>
+      <p className={s.note}>
+        {plural(total, "item")}, redacted · {incident.pattern ? words(incident.pattern) : "no"} pattern · {plural(incident.llmCalls, "model call")}
+        {incident.quarantined > 0 && <span className="bad"> · {plural(incident.quarantined, "line")} quarantined</span>}
+      </p>
+      <div className={s.bars}>
         {KINDS.map((kind) => {
           const n = bundle[kind] ?? 0;
           return (
-            <div key={kind} className={styles.col}>
-              <div className={styles.stack}>
-                {Array.from({ length: MAX_DOTS }, (_, i) => (
-                  <span key={i} className={i < Math.min(n, MAX_DOTS) ? styles.on : styles.off} />
-                ))}
-              </div>
-              <span className={styles.n}>{n}</span>
-              <span className="label">{kind}</span>
+            <div key={kind} className={s.barRow}>
+              <span className={s.barLabel}>{kind}</span>
+              <span className={s.track} aria-hidden="true"><span className={s.fill} style={{ width: `${(n / max) * 100}%` }} /></span>
+              <span className={s.barN}>{n}</span>
             </div>
           );
         })}
       </div>
-
-      {incident?.tools.length ? (
-        <p className={styles.tools}>Rule proposes <span className="mono">{incident.tools.join(", ")}</span></p>
-      ) : null}
-    </article>
+      {incident.tools.length > 0 && (
+        <p className={`${s.note} ${s.noteTop}`}>Rule proposes <span className="mono">{incident.tools.join(", ")}</span></p>
+      )}
+    </section>
   );
 }

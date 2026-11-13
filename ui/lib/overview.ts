@@ -1,0 +1,102 @@
+// pure helpers for the Overview page and incident status; config text comes from lib/config.ts
+
+import type { ServiceHealth } from "./chaos-api.ts";
+import type { Incident, LiveState } from "./live.ts";
+
+export interface Policy {
+  errThreshold: number | null;
+  latencyMultiplier: number | null;
+  latencyFloorMs: number | null;
+  maxAgeS: number | null;
+}
+
+export interface ServiceInfo { kind: string; critical: boolean; actable: boolean }
+
+const num = (text: string, key: string): number | null => {
+  const m = text.match(new RegExp(`^\\s*${key}:\\s*([0-9.]+)`, "m"));
+  return m ? Number(m[1]) : null;
+};
+
+// shortcut: reads four flat numeric keys from config/policy.yaml by regex, no YAML parser; upgrade if the keys nest
+export function parsePolicy(text: string): Policy {
+  return {
+    errThreshold: num(text, "error_ratio_threshold"),
+    latencyMultiplier: num(text, "latency_multiplier"),
+    latencyFloorMs: num(text, "latency_floor_ms"),
+    maxAgeS: num(text, "incident_max_age_seconds"),
+  };
+}
+
+// shortcut: config/services.yaml rows are one-line flow maps (`name: {kind: x, critical: y, actable: z}`)
+export function parseServices(text: string): Record<string, ServiceInfo> {
+  const out: Record<string, ServiceInfo> = {};
+  const row = /^ {2}([\w-]+):\s*\{([^}]*)\}/gm;
+  for (const m of text.matchAll(row)) {
+    const field = (k: string) => m[2].match(new RegExp(`${k}:\\s*([\\w-]+)`))?.[1];
+    out[m[1]] = { kind: field("kind") ?? "unknown", critical: field("critical") === "true", actable: field("actable") === "true" };
+  }
+  return out;
+}
+
+export type ServiceStatus = "unhealthy" | "breaching" | "ok" | "nodata";
+
+export function serviceStatus(s: ServiceHealth | undefined): ServiceStatus {
+  if (!s) return "nodata";
+  if (s.unhealthy) return "unhealthy";
+  if (s.breaching) return "breaching";
+  if (s.err_ratio == null && s.p95_ms == null) return "nodata";
+  return "ok";
+}
+
+// the observer's latency rule: p95 above multiplier × baseline AND at least floor ms above it
+export function latencyLimit(base: number | null, p: Policy): number | null {
+  if (base == null || p.latencyMultiplier == null) return null;
+  return Math.max(p.latencyMultiplier * base, base + (p.latencyFloorMs ?? 0));
+}
+
+// one line per service card, worst news first
+export function serviceSentence(s: ServiceHealth | undefined, p: Policy): string {
+  const st = serviceStatus(s);
+  if (!s || st === "nodata") return "No traffic in the last window.";
+  const parts: string[] = [];
+  if (p.errThreshold != null && s.err_ratio != null && s.err_ratio > p.errThreshold) {
+    parts.push(`errors ${(s.err_ratio * 100).toFixed(1)}%, over the ${(p.errThreshold * 100).toFixed(0)}% line`);
+  }
+  const limit = latencyLimit(s.baseline_p95_ms, p);
+  if (limit != null && s.p95_ms != null && s.p95_ms > limit) parts.push(`p95 ${Math.round(s.p95_ms)} ms, limit ${Math.round(limit)} ms`);
+  if (s.bad_pods > 0) parts.push(`${s.bad_pods} pod${s.bad_pods === 1 ? "" : "s"} not ready`);
+  if (parts.length) return `${parts.join("; ")}.`.replace(/^./, (c) => c.toUpperCase());
+  return "Inside its error and latency baselines.";
+}
+
+export type IncidentStatus = "open" | "resolved" | "escalated" | "handed_off" | "lost";
+
+// an incident with no terminal event past the observer's max age was closed without one reaching the bus
+export function incidentStatus(inc: Incident, now: number, maxAgeS: number | null): IncidentStatus {
+  if (inc.outcome) return inc.outcome;
+  return maxAgeS != null && now - inc.openedAt > maxAgeS ? "lost" : "open";
+}
+
+export interface IncidentStats {
+  total: number; open: number; resolved: number; escalated: number; handedOff: number; lost: number;
+  medianFixS: number | null;
+}
+
+export function incidentStats(state: LiveState, now: number, maxAgeS: number | null): IncidentStats {
+  const out: IncidentStats = { total: 0, open: 0, resolved: 0, escalated: 0, handedOff: 0, lost: 0, medianFixS: null };
+  const fix: number[] = [];
+  for (const id of state.order) {
+    const inc = state.incidents[id];
+    out.total += 1;
+    const st = incidentStatus(inc, now, maxAgeS);
+    if (st === "handed_off") out.handedOff += 1;
+    else out[st] += 1;
+    if (st === "resolved" && inc.closedAt != null) fix.push(inc.closedAt - inc.openedAt);
+  }
+  if (fix.length) {
+    fix.sort((a, b) => a - b);
+    const mid = Math.floor(fix.length / 2);
+    out.medianFixS = fix.length % 2 ? fix[mid] : (fix[mid - 1] + fix[mid]) / 2;
+  }
+  return out;
+}
