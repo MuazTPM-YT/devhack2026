@@ -308,14 +308,17 @@ async def test_fix_with_no_safe_undo_that_never_recovers_is_kept_and_pages(tmp_p
     assert ledger(w) == [("real", 0, 1)]  # an unproven fix counts against trust, kept or not
 
 
-# the watchdog undoes a silent verifier's fix; a receipt with no safe undo must not crash it (KeyError)
+# the watchdog undoes a silent verifier's fix; a receipt with no safe undo must not crash it (KeyError).
+# It used to end watchdog_failed and block every later action; now it keeps the fix and frees the slot (Muaz chose)
 async def test_watchdog_on_a_fix_with_no_safe_undo_fails_closed(tmp_path):
+    from gateway import policy
     from test_phase3 import executed_and_parked
     w, d = await executed_and_parked(tmp_path)
     w.conn.execute("UPDATE receipts SET inverse_json=?", (json.dumps({"op": "none", "why": "would scale to 0"}),))
     w.now[0] += 200
     assert await w.gw.watchdog() == 1
-    assert w.conn.execute("SELECT outcome FROM receipts").fetchone()[0] == "watchdog_failed"
+    assert w.conn.execute("SELECT outcome FROM receipts").fetchone()[0] == "handed_off"
+    assert policy.usage(w.conn, "inc-1", w.now[0])["in_flight"] == 0
     assert w.apps.dep["spec"]["template"]["spec"]["containers"][0]["image"] == GOOD  # fix left in place
 
 
@@ -402,3 +405,37 @@ async def test_origin_survives_the_mcp_call(tmp_path):
         assert (d.decision, d.failed_step) == ("awaiting_approval", "trust_gate")
         stored = json.loads(w.conn.execute("SELECT action_json FROM approvals").fetchone()[0])
         assert stored["origin"] == "model"
+
+
+def blind(h):
+    return {**h, "prometheus_ok": False}
+
+
+# metrics stopped (observer keeps the last reading, prometheus_ok false): the gateway acted on that stale
+# picture, live in e2e. Now: never act on stale health; ask, and an approved run while still stale stops
+async def test_stale_health_never_executes(tmp_path):
+    w = World(tmp_path)
+    w.gw.http = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda r: httpx.Response(200, json=blind(sick())) if r.url.path == "/health/now" else w.obs(r)))
+    d = await w.gw.submit(action())
+    assert d.decision == "awaiting_approval" and "stale" in d.reason
+    d = await w.gw.decide(d.approval_id, "approved", "u1")
+    assert d.decision == "escalated" and "stale" in d.reason
+    assert not [p for p in w.apps.patches if p["dry_run"] is None]
+
+
+# metrics stop while checking a fix: stale ticks are no data; still stale at the window end -> keep the fix,
+# page a human, no undo and no trust failure (Muaz chose: never undo on blindness)
+async def test_stale_health_to_window_end_keeps_fix_and_pages(tmp_path):
+    w, d, outcome = await executed(tmp_path, [blind(sick())])
+    assert outcome == "handed_off"
+    assert "action_undone" not in w.types() and w.types()[-1] == "escalated"
+    assert w.apps.dep["spec"]["template"]["spec"]["containers"][0]["image"] == GOOD
+    assert "could not check" in w.events[-1]["payload"]["briefing"]
+    assert ledger(w) == []
+
+
+# a stale tick in the middle is skipped, not read as "still sick"; fresh data then proves the fix
+async def test_stale_ticks_then_fresh_recovery_is_success(tmp_path):
+    w, d, outcome = await executed(tmp_path, [blind(sick())] * 3 + [healthy()])
+    assert outcome == "success"

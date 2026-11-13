@@ -1,6 +1,7 @@
 # observer process, port 7001 (IMPLEMENTATION.md §6.2): detector loop, kube watch, /health/now, /journal.
 # Run: uv run --env-file .env uvicorn observer.main:app --host 127.0.0.1 --port 7001
 import asyncio
+import json
 import logging
 import os
 import sqlite3
@@ -50,6 +51,23 @@ class Observer:
             self.baselines = baselines.load(conn)
         self.health: dict | None = None
         self.undelivered: set[str] = set()
+        self.detector.incident = self.open_incident(clock())
+
+    # a restart forgot the open incident and opened a second one for the same fault (e2e: two approval pages).
+    # Take back the newest unfinished one younger than the max age; the event replay from seq 0 still closes it.
+    # ponytail: unhealthy = culprit + victims we watch (the DB keeps no list); empty before the brain answered
+    def open_incident(self, now: float) -> dict | None:
+        with self.tracker.lock:
+            r = self.conn.execute("SELECT * FROM incidents WHERE state NOT IN ('resolved', 'escalated', 'handed_off')"
+                                  " AND opened_at >= ? ORDER BY opened_at DESC LIMIT 1",
+                                  (now - self.max_age_s,)).fetchone()
+        if r is None:
+            return None
+        named = [r["culprit"], *json.loads(r["victims_json"] or "[]")]
+        log.info("taking back open incident %s after a restart", r["id"])
+        return {"id": r["id"], "opened_at": r["opened_at"], "onset_at": r["onset_at"],
+                "unhealthy": sorted({s for s in named if s in self.services}), "culprit": None, "victims": [],
+                "major": bool(r["major"]), "severity": float(r["severity_at_open"] or 0)}
 
     async def readings(self) -> dict:
         return await fetch_readings(self.http, self.prom_url, self.queries, self.services)
@@ -124,9 +142,13 @@ class Observer:
         except httpx.HTTPError as e:
             log.error("incident %s: escalation publish failed: %s", inc["id"], type(e).__name__)
 
+    # one bad poll (locked DB, odd API object) must not end detection for good
     async def run(self) -> None:
         while True:
-            await self.step()
+            try:
+                await self.step()
+            except Exception as e:
+                log.error("detector poll failed: %r; next poll in %s s", e, self.poll_s)
             await asyncio.sleep(self.poll_s)
 
     # close our open incident when the gateway reports it finished
@@ -142,7 +164,7 @@ class Observer:
                     if event["type"] in TERMINAL and inc and event.get("incident_id") == inc["id"]:
                         self.detector.close_incident()
                 down_since = None
-            except (httpx.HTTPError, KeyError, ValueError) as e:
+            except Exception as e:  # any error, else incidents stop closing for good
                 if down_since is None:  # once per outage, not every 2 s
                     log.warning("event stream failed: %s; retrying every 2 s", type(e).__name__)
                     down_since = self.clock()
@@ -204,7 +226,8 @@ def create_app(observer: Observer | None = None) -> FastAPI:
         await obs.http.aclose()
 
     app = FastAPI(title="oncall observer", lifespan=lifespan)
-    app.add_middleware(auth.TokenGuard)  # baselines refresh mid-incident would skew latency checks
+    # writes: a baselines refresh mid-incident would skew latency checks; /journal shows env values
+    app.add_middleware(auth.TokenGuard, private_reads=frozenset({"/journal"}))
 
     @app.get("/health/now")
     def health_now() -> dict:

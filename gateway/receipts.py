@@ -151,7 +151,11 @@ REASONS = [
     (r"another action is still being verified", "The agent is still checking an earlier fix, "
                                                 "so it will not start another one yet."),
     (r"problem no longer present", "The problem went away before the agent acted."),
-    (r"no health readings", "Health data stopped arriving, so the agent cannot tell if the problem is still "
+    (r"health data is stale", "Health data stopped arriving, so the agent will not act on old numbers. "
+                              "A person must check."),
+    (r"could not check the fix", "Health data stopped arriving while the agent checked its fix. It kept the "
+                                 "fix and did not undo it. A person must check."),
+    (r"no health readings","Health data stopped arriving, so the agent cannot tell if the problem is still "
                             "there. A person must check."),
     (r"no safe undo", "The fix has not proven itself yet, but undoing it would break things again, so the agent "
                       "kept it. A person must check."),
@@ -177,6 +181,10 @@ REASONS = [
     (r"harm check failed", "After the fix, another service got worse, so the agent undid it."),
     (r"UNDO FAILED", "The agent could not undo its own change. The system may be half changed."),
     (r"watchdog", "The agent lost track of its fix while checking it, so it undid it to be safe."),
+    (r"write outcome unknown", "Kubernetes stopped answering during the change, so it may or may not have "
+                               "happened. The agent will not guess or undo. A person must check the cluster."),
+    (r"Kubernetes API unreachable|API error \d+", "Kubernetes did not answer, so the agent changed nothing. "
+                                                  "A person must check."),
     (rf"^({OBJ}) changed by ({WHO})$", "A person ({1}) changed {0} during the incident, so the agent stepped back."),
 ]
 

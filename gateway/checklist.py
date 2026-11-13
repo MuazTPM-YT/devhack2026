@@ -24,6 +24,7 @@ from gateway.executor import (WriteRefused, list_json, patch_configmap, patch_de
 from gateway.receipts import ReceiptStore, build_incident_card
 from observer import journal
 from observer.kube_watch import service_of
+from schemas import auth
 from schemas.models import ActionRequest, Card, GatewayDecision, Incident, Receipt
 
 log = logging.getLogger("gateway")
@@ -63,6 +64,7 @@ class Gateway:
         self.services, self.policy, self.publish, self.receipts = services, policy_cfg, publish, receipts
         self.approvers, self.clock = approvers, clock
         self.lock = threading.Lock()
+        self.run_lock = asyncio.Lock()
         self.verify_every = 5.0
         self.tasks: set[asyncio.Task] = set()
         self.graph = graph  # brain.graph.DependencyGraph; None = blast radius unknown
@@ -113,7 +115,7 @@ class Gateway:
                             "payload": {"name": name, "passed": passed, "reason": reason}})
 
     async def get_json(self, path: str, **params: Any) -> Any:
-        r = await self.http.get(f"{self.observer_url}{path}", params=params, timeout=10)
+        r = await self.http.get(f"{self.observer_url}{path}", params=params, timeout=10, headers=auth.headers())
         r.raise_for_status()
         return r.json()
 
@@ -132,6 +134,15 @@ class Gateway:
             await self.publish({"type": "blocked", "incident_id": incident_id,
                                 "payload": {"step": name, "tool": getattr(action, "tool", None), "reason": reason}})
         decision = GatewayDecision(decision=outcome, failed_step=name, reason=reason)  # type: ignore[arg-type]
+        if row is not None and name == "approval" and row.get("state") == "resolved":
+            # a follow-up (raise_limit after a restart) on a fixed incident: stay resolved, ticket the day
+            # team instead of waking on-call (Muaz chose); the notifier tickets a MITIGATED card
+            card = self.card(row, target, decision=decision, mitigated=True, reason=reason,
+                             proposal=action if isinstance(action, ActionRequest) else None)
+            await self.publish({"type": "incident_resolved", "incident_id": incident_id,
+                                "payload": {"card": card.model_dump(mode="json"),
+                                            "briefing": f"follow-up not done: {reason}"}})
+            return decision
         if row is not None:
             gone = name == "freshness" and outcome == "refused"
             event = "incident_resolved" if gone else ("handed_off" if outcome == "handed_off" else "escalated")
@@ -184,8 +195,15 @@ class Gateway:
                               approved_by=decided_by)
 
     # ---- steps 2 to 8 --------------------------------------------------------------------------
+    # one checklist at a time: step 3 counts in-flight actions, then awaits the API; a second run checking
+    # in that gap passed too and both executed. ponytail: global lock, fine at one incident at a time
     async def run(self, action: ActionRequest, steps: list[dict], approved: bool,
                   approved_by: str | None = None) -> GatewayDecision:
+        async with self.run_lock:
+            return await self._run(action, steps, approved, approved_by)
+
+    async def _run(self, action: ActionRequest, steps: list[dict], approved: bool,
+                   approved_by: str | None = None) -> GatewayDecision:
         row = self.incident(action.incident_id)
         if row is None:
             return await self.stop(action, None, steps, "schema", "refused", "unknown incident")
@@ -246,8 +264,15 @@ class Gateway:
             plan = await asyncio.to_thread(self.prepare, action, entry)
         except WriteRefused as e:
             return await self.stop(action, row, steps, "dry_run", e.outcome, e.reason)
+        # major incident: no scale up, except putting back exactly the count a non-agent change took away
+        # (kafka scaled to 0); that restore always waits for a human (Muaz chose)
+        restore = False
         if row.get("major") and action.tool == "scale" and action.params["replicas"] > plan["replicas"]:
-            return await self.stop(action, row, steps, "dry_run", "refused", "major incident: no scale up")
+            restore = (entry is not None and entry["kind"] == "replicas" and not entry["by_agent"]
+                       and entry["object"] == f"deployment/{action.target}"
+                       and action.params["replicas"] == entry["diff"]["replicas"]["old"])
+            if not restore:
+                return await self.stop(action, row, steps, "dry_run", "refused", "major incident: no scale up")
         await self.step(action.incident_id, steps, "dry_run", True, f"{len(plan['diff'])} spec paths change")
 
         # 5 blast radius + net benefit
@@ -286,6 +311,11 @@ class Gateway:
             if not approved:
                 return await self.ask(action, row, steps, plan, missing, step_name="freshness")
             return await self.stop(action, row, steps, "freshness", "escalated", missing)
+        if health.get("prometheus_ok") is False:  # observer kept its last reading: not a live picture
+            stale = "health data is stale (Prometheus not answering); acting on it is a guess"
+            if not approved:
+                return await self.ask(action, row, steps, plan, stale, step_name="freshness")
+            return await self.stop(action, row, steps, "freshness", "escalated", stale)
         victims = json.loads(row.get("victims_json") or "[]")
         outcome, reason = freshness.check(health, action.target, (action.pattern, action.journal_entry), rule_now,
                                           entry, plan["live"], victims)
@@ -305,6 +335,9 @@ class Gateway:
         if not approved and needs_human:
             return await self.ask(action, row, steps, plan, f"runbook {', '.join(needs_human)} requires a human "
                                                             "to approve this action", gate)
+        if not approved and restore:
+            return await self.ask(action, row, steps, plan, "major incident: scaling back to the count before "
+                                                            "the outage needs a human", gate)
         if not approved and protected:
             return await self.ask(action, row, steps, plan, f"{action.target} is a protected data store; "
                                                             "a human must approve", gate)
@@ -456,7 +489,12 @@ class Gateway:
             try:
                 health = await self.get_json("/health/now")
                 human = [r for r in await self.get_json("/journal", since=v.t0) if not r["by_agent"]]
-                result = v.step(self.clock(), health, bool(human))
+                if health.get("prometheus_ok") is False:
+                    # stale reading = no data: decide nothing on it, let the window run (Muaz chose)
+                    out_of_time = self.clock() - v.t0 >= v.window_s
+                    result = "handed_off" if human else ("stale" if out_of_time else None)
+                else:
+                    result = v.step(self.clock(), health, bool(human))
             except (httpx.HTTPError, ValueError, KeyError) as e:  # observer blip: keep the clock running
                 log.warning("verify tick failed: %s", type(e).__name__)
                 if self.clock() - v.t0 >= v.window_s:
@@ -465,6 +503,10 @@ class Gateway:
             await self.publish({"type": "verify_tick", "incident_id": action.incident_id, "payload": {
                 "receipt_id": receipt_id, "severity": health.get("severity"), "recovered": v.recovered}})
 
+        if result == "stale":  # blind to the end: keep the fix, never undo on blindness, no trust either way
+            return await self.keep_and_page(receipt_id, action, row, receipt,
+                                            "could not check the fix: health data stale to the end of the window",
+                                            failure=False)
         if result == "handed_off":
             return await self.close(receipt_id, action, row, receipt, v, "handed_off", None,
                                     f"{human[-1]['object']} changed by {human[-1]['field_manager']}", plan=plan)
@@ -517,23 +559,26 @@ class Gateway:
                             "payload": {"receipt_id": receipt_id, "reason": reason}})
         return await self.close(receipt_id, action, row, receipt, v, "undone", harm, reason, hash_after, plan=plan)
 
-    # fix did not prove itself but undoing it is unsafe: leave it in place, hand the incident to a person
+    # fix did not prove itself but undoing it is unsafe (or we could not see): leave it, hand it to a person.
+    # failure=False: blind to the end, which says nothing about the fix
     async def keep_and_page(self, receipt_id: int, action: ActionRequest, row: dict, receipt: Receipt,
-                            reason: str) -> str:
+                            reason: str, failure: bool = True) -> str:
         with self.lock:
             self.conn.execute("UPDATE receipts SET outcome='handed_off' WHERE id=?", (receipt_id,))
             # unproven is a failure for trust, same as close() books an undo; the bench credits rehearsals
-            if receipt.trust.get("approved_by") != approvals.REHEARSAL_APPROVER:
+            if failure and receipt.trust.get("approved_by") != approvals.REHEARSAL_APPROVER:
                 trust.record(self.conn, action.pattern, action.tool, action.target, "real", False, self.clock())
             self.conn.commit()
         kept = receipt.model_copy(update={"outcome": "handed_off"})
         self.receipts.update(receipt_id, kept)
         self.heartbeats.pop(receipt_id, None)
         self.verifying.pop(receipt_id, None)
-        card = self.card(row, action.target, receipt=kept, receipt_id=receipt_id, reason="no safe undo")
+        card = self.card(row, action.target, receipt=kept, receipt_id=receipt_id,
+                         reason="no safe undo" if failure else reason)
+        briefing = f"no safe undo ({receipt.inverse.get('why')}); fix kept after: {reason}" if failure \
+            else f"{reason}; fix kept, a person must check"
         await self.publish({"type": "escalated", "incident_id": action.incident_id, "payload": {
-            "card": card.model_dump(mode="json"),
-            "briefing": f"no safe undo ({receipt.inverse.get('why')}); fix kept after: {reason}"}})
+            "card": card.model_dump(mode="json"), "briefing": briefing}})
         self.set_state(action.incident_id, "escalated")
         return "handed_off"
 
@@ -686,6 +731,19 @@ class Gateway:
             inverse, gate = json.loads(r["inverse_json"]), json.loads(r["trust_json"] or "{}")
             row = self.incident(r["incident_id"]) or {"id": r["incident_id"]}
             reason = f"watchdog: verifier silent for receipt #{r['id']}"
+            if inverse.get("op") == "none":
+                # nothing safe to undo (a store scaled back from 0): keep the fix, page, don't block (Muaz chose);
+                # losing track says nothing about the fix, so no trust failure
+                view = self.receipts.get(r["id"])
+                lost = ActionRequest(incident_id=r["incident_id"], tool=r["tool"], target=r["target"],
+                                     pattern=gate.get("pattern") or "unknown",
+                                     evidence_ids=view.evidence_ids if view else [])
+                await self.keep_and_page(r["id"], lost, row, view or Receipt(
+                    incident_id=r["incident_id"], tool=r["tool"], target=r["target"], diff={}, inverse=inverse,
+                    evidence_ids=[]), f"{reason}; no safe undo, fix kept", failure=False)
+                self.set_state(r["incident_id"], "escalated")
+                done += 1
+                continue
             try:
                 await asyncio.to_thread(self.undo, r["target"], inverse, inverse["op"] == "restore_template")
                 outcome = "undone"

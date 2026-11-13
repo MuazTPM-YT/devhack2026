@@ -1,6 +1,7 @@
 # major-incident analysis (IMPLEMENTATION.md §6.3.3): many services down together usually share one cause.
 # ponytail: no "shared node" signal; the k3d cluster has one node, so every pod shares it and it tells us nothing.
 from brain.graph import downstream
+from brain.rules import flag_targets
 
 
 # >= min_services or >= min_fraction of all services first breached within within_seconds of each other
@@ -19,13 +20,22 @@ def shared_change(journal: list[dict], onset: float, window_s: float) -> dict | 
     return max(hits, key=lambda j: (j["ts"], j["id"]), default=None)
 
 
+# the service a change is on; a flag entry sits on configmap/flagd-config, so use the flag's service
+# (config/services.yaml `flags:`), a sick one first. None: no service to act on
+def change_target(change: dict, unhealthy: list[str], flag_map: dict) -> str | None:
+    if change["kind"] != "flag":
+        return change["object"].split("/", 1)[1]
+    hits = sorted(flag_targets(change, flag_map))
+    return next((s for s in hits if s in unhealthy), hits[0] if hits else None)
+
+
 # ranked candidates: shared change, then shared dependencies (earliest to fail first)
 def analyse(unhealthy: list[str], edges: list[tuple[str, str, float]], first_breach: dict[str, float],
-            journal: list[dict], onset: float, window_s: float) -> list[dict]:
+            journal: list[dict], onset: float, window_s: float, flag_map: dict | None = None) -> list[dict]:
     ranked = []
     change = shared_change(journal, onset, window_s)
-    if change:
-        ranked.append({"kind": "shared_change", "target": change["object"].split("/", 1)[1],
+    if change and (target := change_target(change, unhealthy, flag_map or {})):
+        ranked.append({"kind": "shared_change", "target": target,
                        "evidence_ids": [f"journal:{change['id']}"], "journal_entry": change["id"]})
     if unhealthy and edges:
         common = set.intersection(*({s, *downstream(edges, s)} for s in unhealthy))

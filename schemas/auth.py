@@ -32,13 +32,17 @@ def headers(env: str = ENV, header: str = HEADER) -> dict[str, str]:
 
 
 # every write (POST, DELETE, ...) needs the token; reads stay open so the browser UI can poll and stream.
-# guard_reads: reads need it too (chaos: its GETs return the answers to a blind challenge)
+# guard_reads: reads need it too (chaos: its GETs return the answers to a blind challenge);
+# private_reads: only these GET paths need it (observer /journal: env var values)
 class TokenGuard:
-    def __init__(self, app: ASGIApp, env: str = ENV, header: str = HEADER, guard_reads: bool = False):
+    def __init__(self, app: ASGIApp, env: str = ENV, header: str = HEADER, guard_reads: bool = False,
+                 private_reads: frozenset[str] = frozenset()):
         self.app, self.env, self.header, self.guard_reads = app, env, header, guard_reads
+        self.private_reads = private_reads
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http" and (self.guard_reads or scope["method"] not in READS):
+        if scope["type"] == "http" and (self.guard_reads or scope["method"] not in READS
+                                        or scope["path"] in self.private_reads):
             supplied = dict(scope["headers"]).get(self.header.lower().encode(), b"")
             if not hmac.compare_digest(supplied, token(self.env).encode()):
                 await JSONResponse({"detail": f"missing or wrong {self.header}"}, status_code=401)(scope, receive, send)

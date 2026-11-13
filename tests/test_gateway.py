@@ -421,3 +421,143 @@ def test_trust_receipts_and_audit_routes(tmp_path):
         path = tmp_path / "audit.jsonl"
         path.write_text(path.read_text().replace('"x"', '"y"'))  # someone edits the log while we run
         assert client.get("/audit/verify").json() == {"ok": False, "error": "Audit chain broken at seq 1"}
+
+
+# live-shaped: the API server blips while an approved action re-runs its checks; before, decide raised
+# (HTTP 500), nobody was paged and the incident sat "awaiting_approval" until the observer's max age
+async def test_api_error_on_approved_rerun_escalates(tmp_path):
+    w = World(tmp_path)
+    d = await w.gw.submit(action())
+
+    def down(*a, **k):
+        raise ApiException(status=503, reason="Service Unavailable")
+
+    w.apps.read_namespaced_deployment = down
+    d = await w.gw.decide(d.approval_id, "approved", "u1")
+    assert d.decision == "escalated" and d.failed_step == "dry_run" and "503" in d.reason
+    assert w.types()[-1] == "escalated"
+    assert w.conn.execute("SELECT state FROM incidents").fetchone()[0] == "escalated"
+
+
+# the connection drops during the real write: it may or may not have landed. Page a human, never guess
+async def test_network_error_on_real_write_pages_check_by_hand(tmp_path):
+    import urllib3
+    w = World(tmp_path)
+    d = await w.gw.submit(action())
+    w.apps.fail_real = urllib3.exceptions.ProtocolError("Connection aborted.")
+    d = await w.gw.decide(d.approval_id, "approved", "u1")
+    assert d.decision == "escalated" and d.failed_step == "execute"
+    assert "check the cluster by hand" in d.reason
+    assert w.conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0] == 0
+    card = next(e for e in w.events if e["type"] == "escalated")["payload"]["card"]
+    assert "may or may not" in json.dumps(card)
+
+
+class TwoApps:
+    def __init__(self):
+        self.by = {"payment": FakeApps(), "checkout": FakeApps()}
+        self.by["checkout"].dep["metadata"]["name"] = "checkout"
+
+    def read_namespaced_deployment(self, name, ns, **kw):
+        return self.by[name].read_namespaced_deployment(name, ns, **kw)
+
+    def patch_namespaced_deployment(self, name, ns, patch, **kw):
+        return self.by[name].patch_namespaced_deployment(name, ns, patch, **kw)
+
+    def list_namespaced_deployment(self, ns, **kw):
+        return Resp({"items": [a.dep for a in self.by.values()]})
+
+    def list_namespaced_replica_set(self, ns, **kw):
+        return Resp({"items": []})
+
+
+# step 3 counted in-flight actions, then the checklist awaited the API; a second run checked in that gap
+# and both executed (2 in flight, max 1)
+async def test_concurrent_runs_never_put_two_actions_in_flight(tmp_path):
+    import asyncio
+    import time
+    conn = connect(":memory:", shared=True)
+    for inc, svc in (("inc-1", "payment"), ("inc-2", "checkout")):
+        conn.execute("INSERT INTO incidents (id, opened_at, onset_at, culprit, victims_json, state, severity_at_open)"
+                     " VALUES (?, 990, 960, ?, '[]', 'open', 4)", (inc, svc))
+        conn.execute("INSERT INTO ledger VALUES ('resource', 'restart_service', ?, 'rehearsal', 30, 0, NULL)", (svc,))
+
+    def obs(request):
+        if request.url.path == "/journal":
+            return httpx.Response(200, json=[])
+        return httpx.Response(200, json={"ts": 1000.0, "severity": 8, "services": {
+            "payment": {"unhealthy": True, "err_ratio": 0.4}, "checkout": {"unhealthy": True, "err_ratio": 0.4}}})
+
+    async def publish(e):
+        Event.model_validate(e)
+
+    gw = Gateway(conn, TwoApps(), FakeCore(), httpx.AsyncClient(transport=httpx.MockTransport(obs)), "http://obs",
+                 SERVICES, POLICY, publish, ReceiptStore(tmp_path / "r.db"), {"u1"}, clock=lambda: 1000.0)
+    real = gw.prepare
+
+    def slow(a, e):  # a real API server answer takes time: that is the gap
+        plan = real(a, e)
+        time.sleep(0.2)
+        return plan
+
+    gw.prepare = slow
+    acts = [{"incident_id": i, "tool": "restart_service", "target": s, "pattern": "resource", "evidence_ids": ["q:1"],
+             "prediction": {"metric": "err_ratio", "target": s, "below": 0.05, "within_s": 90}}
+            for i, s in (("inc-1", "payment"), ("inc-2", "checkout"))]
+    decisions = await asyncio.gather(gw.submit(acts[0]), gw.submit(acts[1]))
+    for t in gw.tasks:
+        t.cancel()
+    assert sorted(d.decision for d in decisions) == ["executed", "refused"]
+    assert conn.execute("SELECT COUNT(*) FROM receipts WHERE outcome='pending'").fetchone()[0] == 1
+
+
+# a follow-up (raise_limit after a restart) expiring after the incident resolved flipped it back to
+# escalated and woke on-call; now it stays resolved and goes to the day-team ticket queue (Muaz chose)
+async def test_followup_expiry_keeps_resolved_and_files_ticket(tmp_path):
+    from gateway import approvals
+    from notifier.consumer import NotificationConsumer
+    w = World(tmp_path)
+    approvals.create(w.conn, "inc-1", action(tool="raise_limit", params={"memory": "400Mi"}, journal_entry=None,
+                                             pattern="resource"), 900.0, 50)
+    w.conn.execute("UPDATE incidents SET state='resolved', resolved_at=990 WHERE id='inc-1'")
+    await w.gw.expire_approvals()
+    assert w.conn.execute("SELECT state FROM incidents").fetchone()[0] == "resolved"
+    assert "escalated" not in w.types()
+    done = next(e for e in w.events if e["type"] == "incident_resolved")
+    assert done["payload"]["card"]["status"] == "MITIGATED, NOT FIXED"
+
+    sent = []
+
+    class Fake:
+        async def ticket(self, card, details=None):
+            sent.append("ticket")
+
+        async def wake(self, *a, **k):
+            sent.append("wake")
+
+        async def fyi(self, *a, **k):
+            sent.append("fyi")
+
+    from notifier.state import NotifierState
+    c = NotificationConsumer(None, "http://gw", Fake(), NotifierState(tmp_path / "n.db"))  # type: ignore[arg-type]
+    await c.handle({"seq": 1, "event": done})
+    assert sent == ["ticket"]
+
+
+# kafka scaled to 0 in a major incident: "no scale up" also blocked putting back the journaled replica count,
+# the one right fix. Restoring exactly the old value is allowed, with a human's yes; anything else stays out
+async def test_major_incident_allows_approved_restore_of_journaled_replicas(tmp_path):
+    w = World(tmp_path)
+    w.apps.dep["spec"]["replicas"] = 0
+    w.conn.execute("UPDATE incidents SET major=1")
+    w.obs.journal.append({"id": 42, "object": "deployment/payment", "kind": "replicas", "ts": 955.0,
+                          "field_manager": "chaos-panel", "by_agent": False,
+                          "diff": {"replicas": {"old": 2, "new": 0}}, "inverse": [{"op": "scale", "replicas": 2}]})
+    up = await w.gw.submit(action(tool="scale", params={"replicas": 3}, journal_entry=42, evidence_ids=["journal:42"]))
+    assert up.decision == "refused" and up.reason == "major incident: no scale up"
+    d = await w.gw.submit(action(tool="scale", params={"replicas": 2}, journal_entry=42, evidence_ids=["journal:42"]))
+    assert d.decision == "awaiting_approval" and "needs a human" in d.reason  # restore rule, not the trust gate
+    d = await w.gw.decide(d.approval_id, "approved", "u1")
+    assert d.decision == "executed" and w.apps.dep["spec"]["replicas"] == 2
+    for t in w.gw.tasks:
+        t.cancel()

@@ -24,6 +24,7 @@ def classify(status: int, body: str) -> WriteRefused:
 
 
 def _call(fn: Any, name: str, body: Any, dry_run: bool, content_type: str) -> dict:
+    import urllib3
     from kubernetes.client.rest import ApiException
 
     try:
@@ -31,6 +32,12 @@ def _call(fn: Any, name: str, body: Any, dry_run: bool, content_type: str) -> di
                   _content_type=content_type, _preload_content=False)
     except ApiException as e:
         raise classify(e.status, str(e.body or e.reason)) from None
+    except (urllib3.exceptions.HTTPError, OSError) as e:
+        if dry_run:
+            raise WriteRefused("escalated", f"Kubernetes API unreachable ({type(e).__name__})") from None
+        # no answer to a real write: it may have landed. No receipt, no auto-undo: a human checks (Muaz chose)
+        raise WriteRefused("escalated", f"write outcome unknown ({type(e).__name__}): the change may or may not "
+                                        f"be live; check the cluster by hand") from None
     return json.loads(resp.data)
 
 
@@ -48,13 +55,26 @@ def patch_configmap(core: Any, name: str, body: dict, dry_run: bool) -> dict:
     return _call(core.patch_namespaced_config_map, name, body, dry_run, MERGE)
 
 
+# reads fail as WriteRefused too, so every checklist caller ends the incident instead of crashing (HTTP 500)
+def _read(fn: Any, *args: Any) -> Any:
+    import urllib3
+    from kubernetes.client.rest import ApiException
+
+    try:
+        return json.loads(fn(*args, NAMESPACE, _preload_content=False).data)
+    except ApiException as e:
+        raise classify(e.status, str(e.body or e.reason)) from None
+    except (urllib3.exceptions.HTTPError, OSError) as e:
+        raise WriteRefused("escalated", f"Kubernetes API unreachable ({type(e).__name__})") from None
+
+
 def read_configmap(core: Any, name: str) -> dict:
-    return json.loads(core.read_namespaced_config_map(name, NAMESPACE, _preload_content=False).data)
+    return _read(core.read_namespaced_config_map, name)
 
 
 def read_deployment(apps: Any, name: str) -> dict:
-    return json.loads(apps.read_namespaced_deployment(name, NAMESPACE, _preload_content=False).data)
+    return _read(apps.read_namespaced_deployment, name)
 
 
 def list_json(fn: Any) -> list[dict]:
-    return json.loads(fn(NAMESPACE, _preload_content=False).data)["items"]
+    return _read(fn)["items"]
