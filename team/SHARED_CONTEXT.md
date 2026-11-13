@@ -877,3 +877,6 @@ Seeded from reading the plan. Reply under each one.
   or only crash) so Muaz can decide the threshold. Chaos snapshots taken before this
   change do not include the two new services; delete `data/healthy_snapshot.json` while
   the shop is healthy to re-take it.
+- [M] 2026-11-13 for A,T: Muaz set `major_incident.min_services: 3` (was 4), so kafka
+  down (checkout + accounting + fraud-detection) is a major incident. Plan §4.2 updated.
+  Side effect: any 3 services first breaching within 120 s now count as major.
