@@ -11,8 +11,8 @@ BUILT: dict[str, dict[str, str]] = {
     "restart_service": {"does": "rolling restart; a mitigation, it does not remove a cause",
                         "needs": "evidence of a stuck or OOMKilled process"},
     "scale": {"does": "set replicas back to a count it had", "needs": "params.replicas between min and max"},
-    "raise_limit": {"does": "raise the memory limit; relief for a real limit problem, not a fix for a leak",
-                    "needs": "params.memory above the current limit"},
+    "raise_limit": {"does": "raise memory or restore a lowered limit; a leak still needs a real fix",
+                    "needs": "params.memory above the current limit; params.container names the affected container"},
 }
 
 
@@ -31,5 +31,11 @@ def available(policy: dict[str, Any], services: dict[str, Any]) -> list[dict[str
             entry["limits"] = {"max_memory": rules["max_memory"]}
         if rules.get("auto_eligible") is False:
             entry["approval"] = "always asks a human"
+        if tool == "raise_limit" and policy.get("autonomy", {}).get("memory_restores"):
+            entry["autonomous_restore"] = {
+                "targets": policy["autonomy"]["memory_restores"],
+                "approval": "exception: exact latest journal inverse may run without human approval",
+                "needs": "journal_entry and journal:<id> evidence; params.memory must equal the previous limit",
+            }
         out.append(entry)
     return out

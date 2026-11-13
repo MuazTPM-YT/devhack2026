@@ -15,7 +15,8 @@ def autonomous_world(tmp_path, kind):
 
     w = World(tmp_path)
     w.gw.policy = copy.deepcopy(w.gw.policy)
-    w.gw.policy["autonomy"] = {"journal_reverts": ["ad", "email", "recommendation"]}
+    w.gw.policy["autonomy"] = {"journal_reverts": ["ad", "email", "recommendation"],
+                               "memory_restores": ["ad", "email", "recommendation"]}
     w.apps.dep["metadata"]["name"] = "ad"
     c = w.apps.dep["spec"]["template"]["spec"]["containers"][0]
     c["name"], c["image"] = "ad", "ghcr.io/open-telemetry/demo:3.1.0-ad"
@@ -27,6 +28,11 @@ def autonomous_world(tmp_path, kind):
     else:
         if kind == "env":
             c["env"] = [{"name": "MODE", "value": "broken"}]
+        elif kind == "memory":
+            resources = {"requests": {"memory": "16Mi"}, "limits": {"memory": "256Mi", "cpu": "1"}}
+            old["spec"]["template"]["spec"]["containers"][0]["resources"] = copy.deepcopy(resources)
+            c["resources"] = copy.deepcopy(resources)
+            c["resources"]["limits"]["memory"] = "32Mi"
         else:
             w.apps.dep["spec"]["replicas"] = 1
         e = journal.entry("deployment", old, w.apps.dep, 950.0, "flagd-config")
@@ -48,10 +54,14 @@ def autonomous_world(tmp_path, kind):
     a = action(tool="scale" if kind == "replicas" else "revert_config", target="ad", journal_entry=42,
                evidence_ids=["journal:42"], params={"replicas": 2} if kind == "replicas" else {},
                prediction={"metric": "err_ratio", "target": "ad", "below": 0.05, "within_s": 90})
+    if kind == "memory":
+        from brain import runbooks
+        w.gw.books = runbooks.load()
+        a.update(tool="raise_limit", params={"memory": "256Mi", "container": "ad"})
     return w, a, status
 
 
-@pytest.mark.parametrize("kind", ["flag", "env", "replicas"])
+@pytest.mark.parametrize("kind", ["flag", "env", "replicas", "memory"])
 @pytest.mark.parametrize("origin", ["rule", "model"])
 async def test_autonomous_journal_revert_verifies_and_reports_without_approval(tmp_path, kind, origin):
     from notifier.consumer import NotificationConsumer
@@ -147,6 +157,23 @@ async def test_autonomous_model_failure_undoes_and_suspends_next_attempt(tmp_pat
     assert w.types()[-1] == "escalated"
     w.conn.execute("UPDATE incidents SET state='open'")
     assert (await w.gw.submit(a)).decision == "awaiting_approval"
+
+
+@pytest.mark.parametrize("blocker", ["general_increase", "critical", "mixed_resources", "disabled", "runbook"])
+async def test_memory_restore_exception_never_authorizes_general_capacity_changes(tmp_path, blocker):
+    w, a, _ = autonomous_world(tmp_path, "memory")
+    if blocker == "general_increase":
+        a["params"]["memory"] = "384Mi"
+    elif blocker == "critical":
+        w.gw.services = {**w.gw.services, "ad": {**w.gw.services["ad"], "critical": True}}
+    elif blocker == "mixed_resources":
+        w.obs.journal[0]["diff"]["containers[ad].resources"]["old"]["limits"]["cpu"] = "2"
+    elif blocker == "disabled":
+        w.gw.policy["autonomy"].pop("memory_restores")
+    elif blocker == "runbook":
+        w.gw.books.append({"id": "ASK", "require_approval": True, "steps": ["Ask"], "match": {}})
+    assert (await w.gw.submit(a)).decision == "awaiting_approval"
+    assert w.conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0] == 0
 
 
 async def run_tool(tmp_path, **over):

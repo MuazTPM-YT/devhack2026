@@ -90,3 +90,25 @@ def test_resolve_refuses_what_the_registry_does_not_offer(target, capability, ch
 def test_resolve_returns_the_injected_value():
     c, value = resolve(registry.build(cluster()), "payment", "flag:paymentFailure", "50%")
     assert c["primitive"] == "flag_variant" and value == "50%" and c["meaning"]["50%"] == 0.5
+
+
+def test_memory_limit_choices_respect_live_request_and_limit():
+    fake = cluster()
+    c = fake.deployments["recommendation"]["spec"]["template"]["spec"]["containers"][0]
+    c["resources"] = {"requests": {"memory": "32Mi"}, "limits": {"memory": "200Mi"}}
+    offered = cap(registry.build(fake), "recommendation", "memory_limit")
+    assert offered["available"] and offered["choices"] == ["32Mi", "64Mi", "128Mi"]
+    assert offered["field"] == {"kind": "memory", "name": "recommendation", "key": None}
+    c["resources"]["requests"]["memory"] = "200Mi"
+    blocked = cap(registry.build(fake), "recommendation", "memory_limit")
+    assert not blocked["available"] and "request" in blocked["reason"]
+
+
+def test_replica_reduction_keeps_one_replica_and_never_widens_reviewed_targets():
+    fake = cluster()
+    fake.deployments["ad"]["spec"]["replicas"] = 3
+    offered = cap(registry.build(fake), "ad", "replica_reduction")
+    assert offered["available"] and offered["values"] == {"1": 1, "2": 2}
+    fake.deployments["ad"]["spec"]["replicas"] = 1
+    assert not cap(registry.build(fake), "ad", "replica_reduction")["available"]
+    assert not any(c["id"] == "replica_reduction" for c in registry.build(fake)["targets"]["kafka"]["capabilities"])

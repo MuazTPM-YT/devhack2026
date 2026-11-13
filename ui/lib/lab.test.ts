@@ -47,6 +47,8 @@ test("choices keep their real meaning and units", () => {
   assert.equal(choiceLabel(cap({ meaning: { on: true } }), "on"), "on");
   assert.equal(choiceLabel(cap({ primitive: "broken_env", values: { wrong_port: "payment:9999" } }), "wrong_port"), "wrong port: payment:9999");
   assert.equal(choiceLabel(cap({ primitive: "scale_zero" }), "0"), "0 replicas");
+  assert.equal(choiceLabel(cap({ primitive: "replica_reduction" }), "1"), "1 replica");
+  assert.equal(choiceLabel(cap({ primitive: "memory_limit" }), "32Mi"), "32Mi memory limit");
 });
 
 test("unavailable capabilities stay listed, after the usable ones", () => {

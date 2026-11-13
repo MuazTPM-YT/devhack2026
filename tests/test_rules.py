@@ -1,4 +1,7 @@
+import copy
 import unittest
+
+import pytest
 
 from brain.rules import candidates, match, to_bytes
 
@@ -136,3 +139,23 @@ def test_capabilities_list_only_tools_the_gateway_can_build():
     assert "accounting" not in by["scale"]["targets"]
     assert by["raise_limit"]["approval"] == "always asks a human" and "approval" not in by["revert_config"]
     assert by["scale"]["limits"] == {"min": 1, "max": 3}
+
+
+def test_lowered_memory_limit_proposes_exact_restore_instead_of_whole_rollback():
+    old = {"requests": {"memory": "16Mi"}, "limits": {"memory": "200Mi", "cpu": "1"}}
+    new = copy.deepcopy(old)
+    new["limits"]["memory"] = "32Mi"
+    entry = change(41, "resources", obj="deployment/recommendation",
+                   diff={"containers[recommendation].resources": {"old": old, "new": new}})
+    pattern, found = candidates(incident("recommendation"), [entry], [], SERVICES, POLICY)
+    assert pattern == "recent_change"
+    assert found[0]["action"]["tool"] == "raise_limit"
+    assert found[0]["action"]["params"] == {"memory": "200Mi", "container": "recommendation"}
+    assert found[0]["action"]["journal_entry"] == 41
+
+
+@pytest.mark.parametrize("old,new", [("2Gi", "32Mi"), ("32Mi", "200Mi"), ("bad", "32Mi")])
+def test_other_resource_changes_keep_rollback(old, new):
+    entry = change(41, "resources", diff={"containers[payment].resources": {
+        "old": {"limits": {"memory": old}}, "new": {"limits": {"memory": new}}}})
+    assert match(incident("payment"), [entry], [], SERVICES, POLICY)[1][0]["tool"] == "rollback_deploy"

@@ -82,6 +82,8 @@ def read_field(kind: str, name: str, key: str | None, run: Kubectl = kubectl) ->
     if kind == "replicas":
         return deployment["spec"].get("replicas", 1)
     container = _container(deployment)
+    if kind == "memory":
+        return ((container.get("resources") or {}).get("limits") or {}).get("memory")
     if kind == "image":
         return container["image"]
     return next((e.get("value") for e in container.get("env", []) if e["name"] == key), None)
@@ -98,6 +100,13 @@ def write_field(kind: str, name: str, key: str | None, value: Any, run: Kubectl 
         return
     if kind == "replicas":
         run("patch", "deployment", name, "--type=merge", "-p", json.dumps({"spec": {"replicas": value}}), *extra)
+        return
+    if kind == "memory":
+        deployment = read_deployment(name, run)
+        containers = deployment["spec"]["template"]["spec"]["containers"]
+        index = containers.index(_container(deployment))
+        memory_patch = [{"op": "add", "path": f"/spec/template/spec/containers/{index}/resources/limits/memory", "value": value}]
+        run("patch", "deployment", name, "--type=json", "-p", json.dumps(memory_patch), *extra)
         return
     container = _container(read_deployment(name, run))["name"]
     if kind == "image":

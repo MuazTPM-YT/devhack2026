@@ -1342,3 +1342,17 @@ Seeded from reading the plan. Reply under each one.
   Brain prompt `agent-4`; restart gateway + brain to load. 23 new tests; isolated full suite 922 pass, Ruff and
   mypy pass (99 files). Workspace has 2 pre-existing override failures (coordinated mode, 30/hour), preserved
   outside commit. Real cluster/model/Discord not run; fixtures exercise execute -> verify/undo -> notifier.
+
+- [M] 2026-11-14 for A,T: same branch adds real Lab parameters: `memory_limit` (field.kind `memory`) on
+  recommendation/ad/email; `replica_reduction` (field.kind `replicas`) on those plus payment/checkout.
+  Registry choices stay below live caps/counts, respect requests and gateway restore bounds, and use the
+  existing preview/start/cleanup routes. UI Capability.primitive union and choice labels updated. Brain now
+  proposes `raise_limit {memory: <journal old value>, container: <name>}` for a memory-only cap reduction;
+  other resource changes retain rollback. `autonomy.memory_restores` scopes auto eligibility; RB-11 still
+  requires approval for resource/unknown/protected increases, recent exact restores follow gateway checks.
+  Receipt policy id `journal_revert:memory`; no new event/tool names or dependency. Prompt `agent-5`.
+  937 Python tests pass with tracked defaults; compiled UI 84 pass; Ruff, mypy and UI typecheck pass. Live
+  judge + agent API dry runs accepted recommendation 200Mi/32Mi/200Mi, ad 450Mi/128Mi/450Mi and checkout
+  2/1/2 replicas; no cluster changes stored. No real live fault/model/notifier drill. Restart chaos, brain,
+  gateway; rebuild production UI. Current ad/email/recommendation baseline is 1 replica, so their capacity
+  reduction controls correctly stay unavailable until 2+; payment/checkout currently offer reduction to 1.

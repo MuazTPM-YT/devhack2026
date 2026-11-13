@@ -28,6 +28,8 @@ autonomy:
   # Exact journal inverses only: flag/env reverts or restoring a reduced replica count.
   # No incident-time approval on these non-critical services; all other checks still run.
   journal_reverts: [ad, email, recommendation]
+  # Restore a lowered memory cap exactly; general memory increases still need approval.
+  memory_restores: [ad, email, recommendation]
 net_benefit:
   max_added_harm_seconds: 30       # per healthy critical service
   min_benefit_ratio: 2.0           # harm removed must be at least 2x harm added

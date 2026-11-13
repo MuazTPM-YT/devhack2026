@@ -3,7 +3,7 @@ import math
 import sqlite3
 import time
 
-from brain.rules import to_bytes
+from brain.rules import memory_restore, to_bytes
 from observer import journal
 
 
@@ -13,9 +13,10 @@ def journal_revert(action: dict, services: dict, cfg: dict, entry: dict | None, 
     target, tool = action["target"], action["tool"]
     svc = services.get(target, {})
     tool_cfg = cfg["tools"][tool]
-    if (target not in cfg.get("autonomy", {}).get("journal_reverts", [])
+    scope = "memory_restores" if tool == "raise_limit" else "journal_reverts"
+    if (target not in cfg.get("autonomy", {}).get(scope, [])
             or not svc.get("actable") or svc.get("critical") is not False or svc.get("protected")
-            or svc.get("kind") != "stateless" or tool_cfg.get("auto_eligible") is not True
+            or svc.get("kind") != "stateless" or (tool_cfg.get("auto_eligible") is not True and tool != "raise_limit")
             or tool_cfg.get("reversible") is not True or gate["failures"]
             or action["pattern"] != "recent_change" or not action.get("prediction")
             or action["prediction"]["target"] != target):
@@ -33,6 +34,11 @@ def journal_revert(action: dict, services: dict, cfg: dict, entry: dict | None, 
     if not expected:
         return None
     kind = entry["kind"]
+    if (tool == "raise_limit" and entry["object"] == f"deployment/{target}"
+            and action["params"] == memory_restore(entry, cfg)):
+        moved = journal.entry("deployment", plan["live"], plan["after"], now, "flagd-config")
+        if moved and moved["diff"] == expected:
+            return "journal_revert:memory"
     if tool == "revert_config" and not action["params"]:
         if kind == "flag" and entry["object"] == "configmap/flagd-config":
             if (plan["diff"] == expected and all(p.startswith("flags[") and p.endswith("].defaultVariant")

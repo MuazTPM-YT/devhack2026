@@ -4,6 +4,7 @@ import json
 import re
 from typing import Any
 
+from brain.rules import to_bytes
 from chaos.faults import Kubectl, _container, kubectl, read_flags
 from schemas import config
 
@@ -57,6 +58,7 @@ def build(run: Kubectl = kubectl, policy: dict[str, Any] | None = None,
     policy = policy or config.load("chaos")
     services_cfg = services_cfg or config.load("services")
     services: dict[str, Any] = services_cfg["services"]
+    repair_limits = config.load("policy")["tools"]
     flag_map: dict[str, str] = services_cfg.get("flags", {})
     live_flags: dict[str, Any] = json.loads(read_flags(run)).get("flags", {})
     deployments = {d["metadata"]["name"]: d for d in json.loads(run("get", "deployments", "-o", "json"))["items"]}
@@ -132,6 +134,32 @@ def build(run: Kubectl = kubectl, policy: dict[str, Any] | None = None,
             add(target, _cap("scale_zero", "scale_zero", "dependency_failure", "scale to 0 replicas",
                              {"kind": "replicas", "name": target, "key": None}, {"0": 0}, current, reason,
                              tested=target in ("valkey-cart", "kafka")))
+        if target in policy.get("replica_reduction", []):
+            current = deployment["spec"].get("replicas", 1) if deployment else None
+            max_replicas = repair_limits["scale"]["max"]
+            values = {str(n): n for n in range(1, current)} if current is not None and 1 < current <= max_replicas else {}
+            reason = "deployment not found" if deployment is None else (
+                f"need 2 to {max_replicas} replicas before reducing capacity" if not values else None)
+            add(target, _cap("replica_reduction", "replica_reduction", "resource_exhaustion", "reduce replicas",
+                             {"kind": "replicas", "name": target, "key": None}, values, current, reason,
+                             unit="replicas", what="Less capacity; an incident needs sustained errors or latency."))
+        if target in policy.get("memory_limits", {}):
+            resources = (_container(deployment).get("resources") or {}) if deployment else {}
+            current = (resources.get("limits") or {}).get("memory")
+            request = (resources.get("requests") or {}).get("memory") or "0"
+            values = {}
+            reason = None
+            try:
+                if to_bytes(str(current)) <= to_bytes(repair_limits["raise_limit"]["max_memory"]):
+                    values = {n: n for n in policy["memory_limits"][target]
+                              if 0 < to_bytes(str(n)) < to_bytes(str(current)) and to_bytes(str(n)) >= to_bytes(request)}
+                if not values:
+                    reason = "no reviewed limit below the current limit and at least the memory request"
+            except (ValueError, OverflowError):
+                reason = "deployment has no readable memory limit or request"
+            add(target, _cap("memory_limit", "memory_limit", "resource_exhaustion", "lower memory limit",
+                             {"kind": "memory", "name": target, "key": None}, values, current, reason,
+                             unit="bytes", what="A low cap can cause OOMKilled; restore the previous cap to recover."))
 
     return {"version": policy["version"], "limits": policy["limits"], "decoy": policy.get("decoy", {}),
             "targets": targets,

@@ -7,7 +7,7 @@ import type { Incident } from "./live.ts";
 
 export interface Capability {
   id: string;
-  primitive: "flag_variant" | "bad_image" | "broken_env" | "scale_zero";
+  primitive: "flag_variant" | "bad_image" | "broken_env" | "scale_zero" | "replica_reduction" | "memory_limit";
   family: string;
   label: string;
   field: { kind: string; name: string; key: string | null };
@@ -124,6 +124,8 @@ export function choiceLabel(cap: Capability, choice: string): string {
   }
   if (cap.primitive === "broken_env") return `${choice.replace("_", " ")}: ${show(cap.values[choice])}`;
   if (cap.primitive === "scale_zero") return "0 replicas";
+  if (cap.primitive === "replica_reduction") return `${choice} replica${choice === "1" ? "" : "s"}`;
+  if (cap.primitive === "memory_limit") return `${choice} memory limit`;
   return choice;
 }
 

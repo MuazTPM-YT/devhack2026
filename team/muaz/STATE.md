@@ -5,10 +5,28 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-14
-**Current phase:** retries + Discord origin on `muaz/agent-polish` (not pushed); live run pending
-**Branches:** all merged up to PR #38. Now `muaz/agent-polish` (not pushed)
+**Current phase:** safe journal autonomy + Chaos Lab restore parameters; full live drill pending
+**Branches:** `codex/safe-journal-autonomy` (local, not pushed)
 
 ## Done (with proof)
+
+- Chaos Lab now has actual memory/capacity fault parameters feeding new repair proposals (2026-11-14).
+  `memory_limit` offers reviewed caps below live limit and at least live request on recommendation/ad/email;
+  `replica_reduction` leaves 1+ replicas, on those services plus payment/checkout. Missing baseline capacity
+  stays unavailable with a reason. `brain.rules.memory_restore` turns a memory-only limit reduction into
+  `raise_limit` with exact old memory/container/journal evidence instead of rolling back the whole template.
+  `autonomy.memory_restores` permits those exact inverses on the same three non-critical services; generic
+  increases, critical services, mixed resource changes and all existing safety failures still ask/refuse.
+  Existing runbook guidance extended (18 entries retained); model capabilities expose the exception; prompt
+  `agent-5`. UI types/choice labels added; engine injection/cleanup handles memory as one field.
+  Proof: isolated suite with tracked defaults 937 pass (19.21 s), 15 new cases; compiled UI tests 84 pass;
+  Ruff/mypy clean (99 files), UI typecheck clean, graph updated. Node 22 lacks TypeScript support: `npm test`
+  cannot run TS directly here; compiled with existing tsc into /tmp, then ran node:test.
+  Live API dry runs: recommendation 200Mi -> 32Mi -> 200Mi, ad 450Mi -> 128Mi -> 450Mi, checkout replicas
+  2 -> 1 -> 2; judge injection and oncall-agent repair accepted, deployment specs unchanged. Current
+  non-critical services have 1 replica, so nonzero reduction is unavailable until baseline has 2 or 3.
+  No actual live injection/model/Discord drill. Restart chaos + brain + gateway to load new handlers/policy;
+  production UI needs rebuild for new choice labels. Existing local overrides remain outside commit.
 
 - Safe autonomous journal reverts, `codex/safe-journal-autonomy` (2026-11-14). User approved a quick subset:
   `config/policy.yaml` `autonomy.journal_reverts: [ad, email, recommendation]` allows exact flag/env inverses
