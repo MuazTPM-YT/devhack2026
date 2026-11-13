@@ -15,10 +15,12 @@ from pydantic import ValidationError
 from brain.major import shared_change
 from brain.rules import latest_change_before_onset
 from gateway import approvals, blast, freshness, policy, trust
-from gateway.dryrun import build_patch, namespace_hash, outside_allowed, rollback_patch, spec_diff, spec_hashes
+from gateway.dryrun import build_flag_patch, build_patch, namespace_hash, outside_allowed, rollback_patch, spec_diff, spec_hashes
 from gateway.verifier import Verification, harm_check, ledger_effect
-from gateway.executor import WriteRefused, list_json, patch_deployment, patch_scale, read_deployment
+from gateway.executor import (WriteRefused, list_json, patch_configmap, patch_deployment, patch_scale,
+                              read_configmap, read_deployment)
 from gateway.receipts import ReceiptStore, build_incident_card
+from observer import journal
 from observer.kube_watch import service_of
 from schemas.models import ActionRequest, GatewayDecision, Incident, Receipt
 
@@ -36,7 +38,7 @@ class Gateway:
     def __init__(self, conn: sqlite3.Connection, apps: Any, core: Any, http: httpx.AsyncClient, observer_url: str,
                  services: dict, policy_cfg: dict, publish: Callable[[dict], Awaitable[Any]],
                  receipts: ReceiptStore, approvers: set[str], clock: Callable[[], float] = time.time,
-                 graph: Any = None):
+                 graph: Any = None, flag_map: dict | None = None):
         self.conn, self.apps, self.core, self.http, self.observer_url = conn, apps, core, http, observer_url
         self.services, self.policy, self.publish, self.receipts = services, policy_cfg, publish, receipts
         self.approvers, self.clock = approvers, clock
@@ -44,6 +46,7 @@ class Gateway:
         self.verify_every = 5.0
         self.tasks: set[asyncio.Task] = set()
         self.graph = graph  # brain.graph.DependencyGraph; None = blast radius unknown
+        self.flag_map = flag_map or {}  # config/services.yaml `flags:` (flag -> service)
         self.heartbeats: dict[int, float] = {}
         self.verifying: dict[int, asyncio.Task] = {}
 
@@ -186,7 +189,8 @@ class Gateway:
             except (httpx.HTTPError, KeyError, ValueError) as e:
                 log.warning("dependency graph failed: %s", type(e).__name__)
         radius = blast.blast_radius(action.target, edges, health)
-        forecast_s = blast.forecast_added_seconds(action.tool, plan["replicas"], plan["surge"], plan["startup_s"])
+        forecast_s = 0.0 if plan["patch"]["kind"] == "configmap" else blast.forecast_added_seconds(
+            action.tool, plan["replicas"], plan["surge"], plan["startup_s"])  # a flag flip restarts nothing
         ok, nb = blast.net_benefit(float(health.get("severity", 0)), radius, forecast_s, self.services, self.policy)
         if not known and forecast_s > 0:
             ok, nb["reason"] = False, "blast radius unknown and the action costs capacity"
@@ -198,7 +202,8 @@ class Gateway:
                         f"forecast {forecast_s:.0f} s" + ("" if ok else "; accepted by approver"))
 
         # 6 freshness
-        latest = latest_change_before_onset(journal_rows, action.target, row["onset_at"] or 0, window_s)
+        latest = latest_change_before_onset(journal_rows, action.target, row["onset_at"] or 0, window_s,
+                                            self.flag_map)
         # only "recent change" points at a journal entry; other patterns must not trip on unrelated edits
         rule_now: tuple[str, int | None]
         if action.pattern == "recent_change":
@@ -255,12 +260,16 @@ class Gateway:
         return decision
 
     def write(self, target: str, patch: dict, dry_run: bool) -> dict:
+        if patch["kind"] == "configmap":
+            return patch_configmap(self.core, patch["name"], patch["body"], dry_run)
         if patch["kind"] == "scale":
             return patch_scale(self.apps, target, patch["body"], dry_run)
         return patch_deployment(self.apps, target, patch["body"], dry_run, patch["content_type"])
 
     # blocking reads + dry run with the agent identity; runs in a thread
     def prepare(self, action: ActionRequest, entry: dict | None) -> dict:
+        if action.tool == "revert_config" and entry is not None and entry["kind"] == "flag":
+            return self.prepare_flag(action, entry)
         target = action.target
         live = read_deployment(self.apps, target)
         rss = list_json(self.apps.list_namespaced_replica_set) if action.tool == "rollback_deploy" else []
@@ -283,7 +292,26 @@ class Gateway:
         pods = [p["metadata"]["name"] for p in pod_objs]
         return {"live": live, "patch": patch, "diff": diff, "summary": patch["summary"], "hashes": hashes,
                 "pods": pods, "replicas": live["spec"].get("replicas", 1), "inverse": inverse,
-                "surge": blast.surge_ok(live), "startup_s": blast.startup_seconds(pod_objs)}
+                "surge": blast.surge_ok(live), "startup_s": blast.startup_seconds(pod_objs),
+                "declared": f"deployment/{target}"}
+
+    # flag revert: patch only flagd-config, check the dry run moved exactly the recorded flags
+    def prepare_flag(self, action: ActionRequest, entry: dict) -> dict:
+        name = entry["object"].split("/", 1)[1]
+        live = read_configmap(self.core, name)
+        patch = build_flag_patch(live, entry)
+        dry = self.write(action.target, patch, dry_run=True)
+        moved = journal.entry("configmap", live, dry, self.clock(), name)
+        diff = moved["diff"] if moved else {}
+        if not diff:
+            raise WriteRefused("refused", "revert_config would change nothing (flag already back?)")
+        if set(diff) != patch["expected"]:
+            raise WriteRefused("escalated", f"dry run moved other flags too: {sorted(set(diff) - patch['expected'])}")
+        hashes = spec_hashes(list_json(self.apps.list_namespaced_deployment), list_json(self.core.list_namespaced_config_map))
+        pods = [p["metadata"]["name"] for p in list_json(self.core.list_namespaced_pod) if service_of(p) == action.target]
+        return {"live": live, "patch": patch, "diff": diff, "summary": patch["summary"], "hashes": hashes,
+                "pods": pods, "replicas": 1, "surge": True, "startup_s": 0.0, "declared": f"configmap/{name}",
+                "inverse": {"op": "restore_configmap", "target": action.target, "name": name, "data": live["data"]}}
 
     async def execute(self, action: ActionRequest, row: dict, steps: list[dict], plan: dict,
                       gate: dict) -> GatewayDecision:
@@ -326,7 +354,8 @@ class Gateway:
         cfg = self.policy["verify"]
         v = Verification(self.clock(), plan["health"], action.target, victims,
                          action.prediction.model_dump() if action.prediction else None,
-                         cfg["window_seconds"], cfg["early_abort"])
+                         cfg["window_seconds"] + (cfg["flag_extra_seconds"] if plan["patch"]["kind"] == "configmap" else 0),
+                         cfg["early_abort"])  # flagd needs ~60 s to reload the ConfigMap
         health, human, result = plan["health"], [], None
         while result is None:
             await asyncio.sleep(self.verify_every)
@@ -353,7 +382,7 @@ class Gateway:
                                              reason="severity rose after the action")
         after = await asyncio.to_thread(lambda: spec_hashes(list_json(self.apps.list_namespaced_deployment),
                                                             list_json(self.core.list_namespaced_config_map)))
-        harm = harm_check(plan["hashes"], after, f"deployment/{action.target}", {r["object"] for r in human},
+        harm = harm_check(plan["hashes"], after, plan["declared"], {r["object"] for r in human},
                           plan["health"], health, {action.target, *victims})
         await self.publish({"type": "harm_check", "incident_id": action.incident_id,
                             "payload": {"receipt_id": receipt_id, **harm}})
@@ -384,6 +413,11 @@ class Gateway:
         def rv() -> str:
             return read_deployment(self.apps, target)["metadata"]["resourceVersion"]
 
+        if inverse["op"] == "restore_configmap":
+            cm = read_configmap(self.core, inverse["name"])
+            patch_configmap(self.core, inverse["name"], {"metadata": {"resourceVersion": cm["metadata"]["resourceVersion"]},
+                                                         "data": inverse["data"]}, False)
+            return
         if inverse["op"] == "scale":
             patch_scale(self.apps, target, {"metadata": {"resourceVersion": rv()},
                                             "spec": {"replicas": inverse["replicas"]}}, False)

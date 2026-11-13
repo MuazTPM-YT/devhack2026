@@ -26,6 +26,7 @@ trust:
   reset_on_failure: true
 verify:
   window_seconds: 120
+  flag_extra_seconds: 90          # flagd reloads a ConfigMap edit after ~60 s (A, live)
   early_abort: true
 major_incident:
   min_services: 4
