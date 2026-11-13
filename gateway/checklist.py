@@ -26,6 +26,8 @@ from observer.kube_watch import service_of
 from schemas.models import ActionRequest, Card, GatewayDecision, Incident, Receipt
 
 log = logging.getLogger("gateway")
+# chaos/faults.py FIELD_MANAGER: a fault injection is the incident's cause, not a human taking over (§6.4.2 step 2)
+CHAOS_MANAGER = "chaos-panel"
 
 
 def forecast_text(plan: dict) -> str:
@@ -175,8 +177,10 @@ class Gateway:
         if (why := why_text(entry, row["onset_at"])) is not None:
             self.why[action.incident_id] = why
 
-        # 2 hands-off: a human changed something after we opened the incident
-        human = [r for r in journal_rows if not r["by_agent"] and r["ts"] >= (row["opened_at"] or 0)]
+        # 2 hands-off: a human changed something after we opened the incident (chaos injections excluded:
+        # live, a flag flip landing while another incident was open handed that incident off)
+        human = [r for r in journal_rows if not r["by_agent"] and r["ts"] >= (row["opened_at"] or 0)
+                 and r.get("field_manager") != CHAOS_MANAGER]
         if human:
             return await self.stop(action, row, steps, "hands_off", "handed_off",
                                    f"{human[-1]['object']} changed by {human[-1]['field_manager']}")
@@ -393,7 +397,7 @@ class Gateway:
         v = Verification(self.clock(), plan["health"], action.target, victims,
                          action.prediction.model_dump() if action.prediction else None,
                          cfg["window_seconds"] + extra, cfg["early_abort"],
-                         grace_s=cfg["early_abort_grace_seconds"] + extra)
+                         grace_s=cfg["early_abort_grace_seconds"] + extra, prediction_delay_s=extra)
         health, human, result = plan["health"], [], None
         while result is None:
             await asyncio.sleep(self.verify_every)
@@ -546,6 +550,24 @@ class Gateway:
                               (json.dumps({**gate, "credited": True}), receipt_id))
             self.conn.commit()
         return {"credited": True, "success": success}
+
+    # a failed watchdog undo blocks every action until a human has looked at the cluster; this is how
+    # they say so (approver only, rehearsal identity excluded). Recorded on the audit log.
+    async def clear_receipt(self, receipt_id: int, decided_by: str) -> dict:
+        if decided_by not in self.approvers or decided_by == approvals.REHEARSAL_APPROVER:
+            return {"cleared": False, "reason": "not an approver"}
+        with self.lock:
+            r = self.conn.execute("SELECT incident_id, outcome FROM receipts WHERE id=?", (receipt_id,)).fetchone()
+            if r is None:
+                return {"cleared": False, "reason": "unknown receipt"}
+            if r["outcome"] != "watchdog_failed":
+                return {"cleared": False, "reason": f"receipt is {r['outcome']}, nothing to clear"}
+            self.conn.execute("UPDATE receipts SET outcome='undo_failed' WHERE id=?", (receipt_id,))
+            self.conn.commit()
+        await self.publish({"type": "checklist_step", "incident_id": r["incident_id"], "payload": {
+            "name": "human_clear", "passed": True,
+            "reason": f"receipt #{receipt_id} cleared by {decided_by} after a failed undo"}})
+        return {"cleared": True}
 
     # ---- background upkeep (§6.4.8 expiry, §6.4.10 watchdog) ------------------------------------
     async def expire_approvals(self) -> int:

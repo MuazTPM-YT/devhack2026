@@ -16,8 +16,10 @@ kubectl config use-context k3d-oncall
 helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts >/dev/null 2>&1 || true
 helm repo update open-telemetry
 
+# helm 4 applies server-side; chaos-panel and the agent own fields they patched (flagd-config data),
+# so a re-install would stop on a conflict. A (re)install makes the chart the source of truth again.
 helm upgrade --install "$RELEASE" open-telemetry/opentelemetry-demo \
-  --version "$CHART_VERSION" -n "$NS" -f k8s/values.yaml --wait --timeout 15m
+  --version "$CHART_VERSION" -n "$NS" -f k8s/values.yaml --wait --timeout 15m --force-conflicts
 
 # chart has no strategy key; zero-downtime rollouts on actable services
 for d in "${ACTABLE[@]}"; do

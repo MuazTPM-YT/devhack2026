@@ -62,7 +62,7 @@ def test_resource_rule_actions_keep_different_approval_eligibility(tmp_path):
     pattern, proposals = rules.match(
         {"id": "i", "onset_at": 100, "culprit": "recommendation"}, [],
         [{"id": "event:oom", "summary": "OOMKilled"}],
-        {"recommendation": {"kind": "stateless"}},
+        {"recommendation": {"kind": "stateless", "actable": True}},  # as in config/services.yaml
         {"change_window_minutes": 10, "tools": {"raise_limit": {"max_memory": "1Gi"}}},
         memory_limit="128Mi",
     )

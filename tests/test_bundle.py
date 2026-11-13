@@ -56,6 +56,26 @@ def test_logs_keep_error_lines_capped():
     assert log_evidence("p", "INFO fine", 1.0) is None
 
 
+# live: ~1 KB JSON error lines, repeated, made a 43k-token prompt; the message sits at the end of the line
+def test_logs_compact_json_dedupe_and_stay_small():
+    import json
+    line = json.dumps({"level": "error", "time": 1, "pid": 1, "hostname": "payment-x", "trace_id": "a" * 32,
+                       "span_id": "b" * 16, "service.name": "payment", "pad": "x" * 700,
+                       "msg": "Charge failed", "err": {"message": "Payment gateway timeout"}})
+    e = log_evidence("payment-x", "\n".join([line] * 400 + ["ERROR " + "y" * 900]), 1.0)
+    first, second = e.summary.splitlines()
+    assert first == "error Charge failed Payment gateway timeout (x400)"
+    assert second == "ERROR " + "y" * 234  # cut to 240 chars
+    assert len(e.summary) < 600
+
+
+def test_k8s_events_newest_ten_only():
+    events = [{"metadata": {"uid": f"u{i:02d}"}, "involvedObject": {"name": "recommendation-6b-x"},
+               "reason": "BackOff", "message": "x", "lastTimestamp": f"2026-11-13T00:00:{i:02d}Z"} for i in range(30)]
+    ids = [e.id for e in k8s_evidence([pod()], events, 1.0) if not e.id.endswith(":last")]
+    assert ids == [f"event:u{i:02d}" for i in range(20, 30)]
+
+
 def test_memory_ratio():
     assert memory_ratio([pod()], {"recommendation-6b-x": {"app": "243Mi"}}) == (243 / 256, "256Mi")
     assert memory_ratio([pod()], {}) == (None, None)

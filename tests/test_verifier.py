@@ -53,6 +53,20 @@ class VerifierTest(unittest.TestCase):
         self.assertEqual(v.outcome(harm_clean=True), "right_by_accident")
         self.assertIsNone(ledger_effect("right_by_accident"))
 
+    # live flag revert: predicted "within 60 s", flagd reloads ~60 s later, recovered at ~110 s
+    def test_flag_propagation_delay_extends_the_prediction_deadline(self):
+        late = {"severity": 0, "services": FIXED["services"]}
+        plain = verification()
+        flag = Verification(0, START, "payment", ["checkout"], PRED, window_s=210, early_abort=True,
+                            prediction_delay_s=90)
+        for v in (plain, flag):
+            v.step(100, START, False)
+            v.step(110, late, False)
+        self.assertFalse(plain.prediction_held)
+        self.assertTrue(flag.prediction_held)
+        flag.step(200, START, False)  # past within_s + delay: a late dip doesn't count, but held stays held
+        self.assertTrue(flag.prediction_held)
+
     def test_never_recovers_is_undo(self):
         v = verification()
         for t in range(5, 125, 5):

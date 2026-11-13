@@ -5,10 +5,16 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** 4 done on branch `anirudh/phase4` (not pushed).
-Phases 0-3 and the live-run reports merged.
+**Current phase:** spec audit fixes on `anirudh/spec-fixes` (not pushed).
+Phases 0-4 merged.
 
 ## Done (with proof)
+
+- Spec audit (IMPLEMENTATION.md vs code) and fixes, 2026-11-13, branch
+  `anirudh/spec-fixes`: details and open items in `team/SHARED_CONTEXT.md`
+  (last [A] entry). Live: smoke `FIXED in 1m 32s` with prediction held,
+  broken-config FIXED, flag-flip resolved, hands-off, stale, expiry all
+  as plan section 7. Suite 366 passed, ruff/mypy clean, UI 13 pass, build OK.
 
 - Phase 4: `POST /chaos/shared-outage` (kafka -> 0, ground truth
   `shared_dependency`; live inject + reset OK) and its button on `/chaos`.

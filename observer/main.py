@@ -18,7 +18,10 @@ from observer.detector import Detector, fetch_readings
 from observer.kube_watch import Tracker, run_watch
 from schemas import config
 from schemas.db import DEFAULT_PATH, connect
-from schemas.models import Incident
+from schemas.models import Card, Incident
+from schemas import logs
+
+logs.setup()
 
 log = logging.getLogger("observer")
 TERMINAL = {"incident_resolved", "escalated", "handed_off"}
@@ -39,6 +42,7 @@ class Observer:
         self.detector = Detector(d["error_ratio_threshold"], d["latency_multiplier"], d["sustain_seconds"],
                                  policy["major_incident"]["within_seconds"], d["latency_floor_ms"])
         self.poll_s = d["poll_seconds"]
+        self.max_age_s = d["incident_max_age_seconds"]
         self.conn, self.tracker, self.http, self.clock = conn, tracker, http, clock
         self.prom_url, self.brain_url, self.gateway_url = prom_url, brain_url, gateway_url
         self.queries, self.services = queries, services
@@ -59,6 +63,7 @@ class Observer:
             log.warning("prometheus query failed: %s", type(e).__name__)
             self.health = {**(self.health or {"severity": 0, "services": {}}), "ts": now, "prometheus_ok": False}
             return None
+        await self.expire_stuck_incident(now)
         health, event = self.detector.tick(now, readings, self.baselines, self.tracker.bad_pods(now))
         self.health = {**health, "prometheus_ok": True}
         if event:
@@ -90,6 +95,29 @@ class Observer:
                 if not retry:
                     log.warning("POST %s failed: %s; will retry each poll", url, type(e).__name__)
         self.undelivered = failed
+
+    # last safety net: an incident with no terminal event blocks every later incident, so after
+    # incident_max_age_seconds close it here and wake a human
+    async def expire_stuck_incident(self, now: float) -> None:
+        inc = self.detector.incident
+        if inc is None or now - inc["opened_at"] < self.max_age_s:
+            return
+        reason = f"no outcome {now - inc['opened_at']:.0f} s after opening; the agent lost track, look by hand"
+        log.error("incident %s: %s", inc["id"], reason)
+        self.detector.close_incident()
+        self.undelivered = set()
+        with self.tracker.lock:
+            self.conn.execute("UPDATE incidents SET state='escalated' WHERE id=? AND state NOT IN "
+                              "('resolved', 'escalated', 'handed_off')", (inc["id"],))
+            self.conn.commit()
+        card = Card(incident_id=inc["id"], status="WOKE YOU BECAUSE",
+                    text=f"WOKE YOU BECAUSE: {', '.join(inc['unhealthy'])}\nWhy: {reason}", evidence_ids=[])
+        try:
+            (await self.http.post(f"{self.gateway_url}/events/publish", timeout=5, json={
+                "type": "escalated", "incident_id": inc["id"],
+                "payload": {"card": card.model_dump(mode="json"), "briefing": reason}})).raise_for_status()
+        except httpx.HTTPError as e:
+            log.error("incident %s: escalation publish failed: %s", inc["id"], type(e).__name__)
 
     async def run(self) -> None:
         while True:

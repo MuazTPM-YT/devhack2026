@@ -12,7 +12,7 @@ class DependencyGraph:
         self.edges: list[tuple[str, str, float]] = []
         self.fetched_at: float | None = None
 
-    # VERIFY on A's cluster: internal Jaeger UI API, links are {parent, child, callCount}
+    # internal Jaeger UI API (checked live: HTTP 200), links are {parent, child, callCount}
     async def get(self, lookback_s: float = 3600) -> list[tuple[str, str, float]]:
         now = self.clock()
         if self.fetched_at is not None and now - self.fetched_at < self.ttl_s:
