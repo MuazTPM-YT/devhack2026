@@ -5,10 +5,24 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-14
-**Current phase:** safe journal autonomy + Chaos Lab restore parameters; full live drill pending
-**Branches:** `codex/safe-journal-autonomy` (local, not pushed)
+**Current phase:** memory/env autonomy verified live; remaining drills stopped at user deadline
+**Branches:** `codex/safe-journal-autonomy` (push/PR/merge authorized)
 
 ## Done (with proof)
+
+- Live autonomy drills (2026-11-14), real model, Kubernetes and Discord:
+  memory `exp-980170a108` / `inc-ed16da4ac2a3` / receipt #30: recommendation 200Mi -> 32Mi -> 200Mi,
+  success in 37 s from onset, prediction held, harm clean, `journal_revert:memory`, no approvals.
+  Env `exp-8aa003c2b1` / `inc-6fe7da54591a` / receipt #31: wrong PRODUCT_CATALOG_ADDR port restored,
+  errors 66.7% -> 0%, success in 152 s from onset, `journal_revert:env`, no approvals. Both selected
+  rule c1 with real model acceptance. Read Discord FYI messages: FIXED, no action needed, no buttons.
+  MCP write dialog returned cancel; renewed user consent allowed same bounded Chaos API drills, MCP
+  tracked results. Ad flag `exp-a9dc856857` inconclusive: manual cleanup preceded delayed incident
+  `inc-8564aea2deee`; model output invalid, rule fallback refused already-restored flag. No repair credit.
+  Follow-up recommendation flag `exp-6ae6689360` stopped and field restored at user's deadline.
+  Replica live drill NOT RUN; no baseline scale changed. Flag/replica paths retain automated test proof only.
+  User authorized stopping remaining drills, pushing verified code, opening PR and merging. No code changed
+  after 949-pass full suite, Ruff/mypy clean; local overrides and teammate edits remain uncommitted.
 
 - Fixed single-replica surge forecast blocking safe memory restores (2026-11-14).
   Live incident `inc-5198ce6253f6` selected recommendation 32Mi -> 200Mi, but net-benefit asked with a
