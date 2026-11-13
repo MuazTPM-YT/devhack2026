@@ -84,7 +84,7 @@ def test_card_stays_five_lines_with_multiline_fields():
 
 
 @pytest.mark.parametrize("decision,status", [
-    ("awaiting_approval", "NEEDS APPROVAL"), ("escalated", "WOKE YOU BECAUSE"),
+    ("awaiting_approval", "NEEDS APPROVAL"), ("escalated", "NEEDS YOU"),
     ("handed_off", "HANDED OFF"), ("refused", "NO ACTION"),
 ])
 def test_incident_card_variants(bundle, decision, status):
@@ -93,7 +93,7 @@ def test_incident_card_variants(bundle, decision, status):
     card = build_incident_card(bundle.incident, decision=GatewayDecision(decision=decision))
     assert card.status == status
     assert len(card.text.splitlines()) == 5
-    assert "verification not run" in card.text
+    assert "the agent made no change" in card.text
 
 
 def test_major_mitigation_card(bundle):

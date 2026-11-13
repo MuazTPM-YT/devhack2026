@@ -1022,3 +1022,84 @@ Seeded from reading the plan. Reply under each one.
   293Mi). `scripts/install_shop.sh` now passes `--force-conflicts`: helm 4
   applies server-side and a re-install after any flag fault stopped on a
   flagd-config conflict with chaos-panel. Suite 385 passed.
+- [T] 2026-11-13 for M,A: **Discord cards are embeds now** (branch
+  `twaha/card-embeds`). Live pages read "action budget used up", "no safe
+  action (unknown)" and `[query:p95_ms:service=...]`; on-call could not tell
+  a safety limit from a crash. What changed:
+  - `schemas/models.py` `Card` gets optional `headline`, `title`, `summary`,
+    `fields` (`CardField` label/body/inline; not
+    name/value, because `redact_value` blanks any {name, value} dict as an env var), `footer`, `level`
+    (page/ask/ok/info). Defaults keep old events valid; UI ignores them.
+  - `gateway/receipts.py`: `explain()` maps every stop reason to a plain
+    sentence (`REASONS` table; new reason strings should get a row, else
+    they show as "The agent stopped: <reason>."). `symptom()` writes the
+    first line from live health with units and the normal value ("36% of
+    payment requests are failing", "95% of requests finish within 15 ms,
+    normal is 5 ms"). Evidence IDs leave the text; footer counts them.
+    Model sentence: own field "AI reading (not checked)", epoch times,
+    IDs and markdown stripped.
+  - Status names: `WOKE YOU BECAUSE` -> `NEEDS YOU`; `RECOVERED; PREDICTION
+    FAILED` / `RECOVERED; NO PREDICTION` -> `RECOVERED, FIX NOT PROVEN`;
+    `VERIFICATION PENDING` -> `CHECKING FIX`. Card text is still 5 lines
+    (plan §6.7.1) and uses the same words as the embed.
+  - Gateway keeps the last health read per incident (`Gateway.health`) and
+    passes the proposed action to stop/ask cards ("Suggested fix (not run)"
+    with the kubectl command). Brain escalations pass health too.
+  - Notifier: ping + one-sentence headline as text (embeds never push or
+    ping), details in the embed, colour by level. Cards without fields
+    (old events) still go out as text.
+  - Live smoke #11 with embeds: FIXED end to end. Notifier fix in the same
+    branch: a saved wake that no longer validates as `Card` used to crash
+    the repage task and with it the whole consumer TaskGroup (no pages, dead
+    buttons); it now re-pages its plain text.
+  - Cards show a paste-ready kubectl command only when the agent stopped on
+    its own limits (`RERUNNABLE` in `gateway/receipts.py`: budget, action
+    in flight, approval expired, observer/gateway down). Refused fixes show
+    as "Blocked proposal (not run)" with no command; approval cards carry
+    none (doing it by hand skips verification).
+- [T] 2026-11-13 for M,A: **Live scenario runs found 5 bugs; fixed on
+  `twaha/card-embeds`** (Twaha OK'd edits to M's and A's files). Each fix
+  has a test that failed first. Suite 444 passed (1 fail = T's local
+  `max_actions_per_hour: 30`, not committed).
+  M's files:
+  - `observer/main.py`: Prometheus answering with **no span metrics for
+    any service** now takes the Prometheus-down path (keep last health,
+    `prometheus_ok: false`, detector not fed). Live: the collector's OTLP
+    pushes got HTTP 400 "too old" for hours, every service read None =
+    "fine", sustain timers reset, and smoke closed "problem no longer
+    present" with payment:v2-bad still live (false PASS). A collector
+    restart (`kubectl rollout restart ds/otel-collector-agent`) cured it;
+    root cause not found.
+  - `gateway/freshness.py`: nothing measured for culprit or victims ->
+    `awaiting_approval` "no health readings", not "problem gone".
+    `tests/test_freshness.py:24` now expects that (T approved the change).
+  - `gateway/checklist.py`: a scale whose undo falls outside policy
+    `scale.min/max` (0 -> 1 on a data store) records inverse
+    `{"op": "none"}`: no early abort, full verify window; unproven -> fix
+    kept, receipt `handed_off`, page "no safe undo", ledger failure.
+    `undo()` refuses unknown ops, so the watchdog fails closed. Live:
+    valkey-cart came back, callers kept failing (sev 7 -> 17), early abort
+    tried to scale it to 0, admission policy refused (422), page said
+    "UNDO FAILED, half changed".
+  - Not done, your call: early abort compares global severity; a fault
+    still spreading looks like harm from the fix. The verifier also reads
+    `unhealthy: False` as recovered even when the reason is no data.
+  A's files:
+  - `k8s/values.yaml`: frontend 400Mi, astronomy-db 200Mi (both OOMKilled
+    in runs). Installed live with helm **3** (v3.19.5 here):
+    `install_shop.sh`'s `--force-conflicts` is helm-4-only and fails with
+    "unknown flag" on helm 3; ran the same steps without it.
+  - Cluster RBAC re-applied from `k8s/rbac-agent.yaml` (open item 1):
+    agent can now scale valkey-cart and kafka.
+  Mine: `smoke.sh` fails when an incident resolves with no
+  `action_executed`, and both `smoke.sh` and `scripts/demo.sh up` fail
+  loudly on a blind observer. LLM `max_tokens` 4096 -> 8192 (datastore
+  answer came back truncated). New `scripts/demo.sh`
+  (`up | shop | backend <bundle> | down | status | logs`) starts the whole
+  stack; `shop`/`backend` split it across 2 machines over Cloudflare
+  quick tunnels (only agent + reader tokens leave the shop machine).
+  Results, 1 run each, all 4 PS failure types: bad deploy FIXED 191 s,
+  broken config FIXED 204 s, memory leak FIXED 343 s, datastore down
+  escalated (the bug above). Trust ledger was empty, so every fix asked
+  approval; 30+30 rehearsal trust runs started 16:05 (gateway in
+  `ONCALL_REHEARSAL=1`; turn it off before the demo).

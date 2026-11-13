@@ -1,11 +1,41 @@
 # Twaha [T]: state
 
 **Last updated:** 2026-11-13
-**Current phase:** Live end-to-end smoke passes on local k3d; next is LLM latency, then trust runs
-**Branch:** `twaha/live-fixes-2` (from `origin/main` `89ca81e`), not pushed
+**Current phase:** all 4 PS failure types run live, 5 bugs fixed; 30+30 rehearsal trust runs going
+**Branch:** `twaha/card-embeds`, rebased on `origin/main` `3a01e96` (PR #38), not pushed
 **Implementation:** PRs #8, #12, #15 merged
 
 ## Done (with proof)
+
+- 2026-11-13 live runs, all 4 PS failure types, 1 run each: bad deploy FIXED
+  191 s, broken config FIXED 204 s (prediction held, harm clean), memory leak
+  FIXED 343 s, datastore down escalated "UNDO FAILED" (bug, fixed below).
+  Every fix asked approval: trust ledger empty. Results in
+  `data/demo/scenarios.jsonl` and `data/demo/smoke-run.txt`.
+- Fixes, each with a test that failed first: freshness no readings -> ask
+  (`694e8c2`), smoke false PASS (`62df3f6`), no-safe-undo keeps the fix
+  (`684af4d`, `eada3c1`), observer no span metrics = blind (`d8fe5a3`),
+  blind-observer preflight in smoke/demo (`f3a70e5`), max_tokens 8192
+  (`2d7557b`), frontend 400Mi / astronomy-db 200Mi (`9a0d3ec`, installed
+  with helm 3, see SHARED_CONTEXT). Suite 444 passed, 1 fail = local budget.
+- `scripts/demo.sh` (`b3b47f4`, `b538f53`): one command for the whole stack;
+  `shop`/`backend` modes over Cloudflare quick tunnels, tested on one host.
+- Cluster: RBAC re-applied (agent scales valkey-cart/kafka), otel collector
+  restarted (OTLP pushes were rejected "too old"; root cause unknown).
+
+- Card embeds (`twaha/card-embeds`): plain-word reasons, symptom line with units
+  and normal value, suggested fix with command, AI sentence in its own field,
+  evidence IDs moved to footer, colour by level. 407 passed on committed
+  config; Ruff and mypy clean. New tests in `tests/test_card.py` (scenario per
+  card, every known reason, embed limits, old-card fallback) and the gateway
+  budget page in `tests/test_gateway.py`. PR #36 and #37 merged.
+- Live check of the embeds, smoke #11: FIXED, `inc-1794551830062`, detect
+  48.9 s, diagnose 96.6 s, recover 206.4 s; approval and fixed cards read in
+  Discord; audit verified 394 records. Smokes #9 and #10 found 2 bugs, both
+  fixed with tests that failed first: the audit redactor blanked
+  `{name, value}` card fields (keys now `label`/`body`), and one unreadable
+  saved wake crashed the notifier's whole TaskGroup (now re-pages as text).
+  Smoke #10's LLM hit the 90 s deadline (no prediction, no AI field).
 
 - Local k3d cluster `oncall` (context `k3d-oncall`) on Twaha's host, built from
   A's scripts; shop re-installed with A's new `k8s/values.yaml` (28 pods Running).
@@ -113,8 +143,13 @@
 
 ## In progress
 
-- Services 7001-7005 and port-forwards 9090/8080 run detached from the repo root
-  (scratchpad `start_services.sh`); they stop on reboot.
+- Trust runs since 16:05: `bench.harness --rehearsal`, 30 x bad-deploy then
+  30 x broken-config, output `data/demo/trust-runs.jsonl`, log
+  `data/demo/trust-runs.log`. Stack started with `ONCALL_REHEARSAL=1
+  scripts/demo.sh up`; notifier stopped so Discord is not flooded. One
+  non-clean run puts that pair's trust back to 0.
+- Before the demo: `scripts/demo.sh down && scripts/demo.sh up` (rehearsal
+  off, notifier back), and set `max_actions_per_hour` back to 3.
 
 ## Blocked / waiting on
 
@@ -125,7 +160,7 @@
 - Local only: `config/policy.yaml` `max_actions_per_hour: 30` (do not commit;
   `test_policy` budget boundary fails while it is set).
 - M: `/approvals/{id}/decide` trusts `decided_by` from the body (auth gap).
-- Push/PR of `twaha/live-fixes-2` waits on Twaha's OK.
+- Push/PR of `twaha/card-embeds` waits on Twaha's OK.
 - `agent.kubeconfig`/`reader.kubeconfig` tokens last 72 h; rerun
   `make_kubeconfigs.sh` after that.
 - Human-only: approver button click on a real approval, manual baseline (3 runs

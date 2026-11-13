@@ -52,6 +52,18 @@ components:
       limits:
         memory: 450Mi
 
+  # chart gives 250Mi: OOMKilled (exit 137) during the 2026-11-13 scenario runs
+  frontend:
+    resources:
+      limits:
+        memory: 400Mi
+
+  # chart gives 100Mi: OOMKilled twice on 2026-11-13, once while the agent verified a fix
+  astronomy-db:
+    resources:
+      limits:
+        memory: 200Mi
+
   payment:
     replicas: 2
   checkout:

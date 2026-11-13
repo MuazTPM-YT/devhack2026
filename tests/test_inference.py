@@ -184,7 +184,8 @@ async def test_cut_off_answer_reports_truncated_and_budget_fits_reasoning():
         with pytest.raises(ProviderError) as error:
             await OpenCodeGoAdapter(client, "fake-key", "m").generate(InferenceRequest("i", [], {}))
     assert str(error.value) == "truncated"
-    assert sent["max_tokens"] >= 4000
+    # live inc-1794564403607 (datastore down): 4096 still came back "truncated"
+    assert sent["max_tokens"] >= 8000
 
 
 # live smoke 6: the model diagnosed well but never predicted, so no fix could ever count as proven

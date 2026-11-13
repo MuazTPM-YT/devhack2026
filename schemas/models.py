@@ -111,11 +111,25 @@ class Receipt(Model):
     hash_after: str | None = None
 
 
+# not name/value: the redactor blanks any {name, value} dict as a k8s env var
+class CardField(Model):
+    label: str
+    body: str
+    inline: bool = False
+
+
 class Card(Model):
     incident_id: str
     status: str
     text: str
     evidence_ids: list[str]
+    # discord embed parts; text stays the 5-line card for the UI; old events carry none of these
+    headline: str = ""  # push line under the ping: the whole story in one sentence
+    title: str = ""
+    summary: str = ""
+    fields: list[CardField] = Field(default_factory=list)
+    footer: str = ""
+    level: Literal["page", "ask", "ok", "info"] = "info"
 
 
 class Payload(BaseModel):

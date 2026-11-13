@@ -1,5 +1,7 @@
 import asyncio
+import re
 import time
+from collections.abc import Sequence
 
 import discord
 import httpx
@@ -9,6 +11,28 @@ from notifier.state import NotifierState
 from pydantic import ValidationError
 
 from schemas.models import Card, GatewayDecision
+
+COLOUR = {"page": 0xD83C3E, "ask": 0xE8A317, "ok": 0x2EA043, "info": 0x808890}
+# re-page notes the notifier writes itself; gateway briefings are already explained inside the card
+NOTES = {"Approval pending": "Still waiting for Approve or Reject on the first message.",
+         "Approval expired; no action taken": "Nobody approved in time. The agent changed nothing."}
+
+
+# card parts -> one embed; extra fields go last; cut to discord's limits (title 256, field 1024, total 6000)
+def embed_of(card: Card, extra: Sequence[tuple[str, str]] = (), url: str | None = None) -> discord.Embed:
+    embed = discord.Embed(title=redact(card.title)[:256], description=redact(card.summary)[:1000],
+                          colour=COLOUR.get(card.level, COLOUR["info"]),
+                          url=url if url and url.startswith("http") else None)
+    if card.footer:
+        embed.set_footer(text=redact(card.footer)[:500])
+    for name, value, inline in [*((f.label, f.body, f.inline) for f in card.fields), *((n, v, False) for n, v in extra)]:
+        # approvers are discord user ids: show the name (a mention inside an embed never pings)
+        value = re.sub(r"approved by (\d{15,21})\b", r"approved by <@\1>", value)
+        name, value = redact(name)[:256], redact(value)[:1024] or "-"
+        if len(embed.fields) == 20 or len(embed) + len(name) + len(value) > 5900:
+            break  # a whole-embed overflow makes discord reject the page
+        embed.add_field(name=name, value=value, inline=inline)
+    return embed
 
 
 class ApprovalController:
@@ -121,34 +145,56 @@ class DiscordNotifier(discord.Client):
             if row.get("message_id") and not self.controller.state.get(f"ack:{incident_id}"):
                 self.add_view(AckView(incident_id, self.controller), message_id=row["message_id"])
 
-    async def send_text(self, channel_id: int, text: str, *, wake: bool = False, view=None):
+    async def send_text(self, channel_id: int, text: str, *, wake: bool = False, view=None,
+                        embed: discord.Embed | None = None):
         channel = self.get_channel(channel_id) or await self.fetch_channel(channel_id)
         if not isinstance(channel, (discord.TextChannel, discord.Thread, discord.DMChannel)):
             raise ValueError("Discord channel cannot receive messages")
         mentions = discord.AllowedMentions(everyone=False, users=False,
                                           roles=[discord.Object(id=self.role_id)] if wake else False)
         prefix = f"<@&{self.role_id}> " if wake else ""
+        if embed is not None:
+            return await channel.send(prefix + redact(text)[:1900], allowed_mentions=mentions, view=view,
+                                      embed=embed)
         return await channel.send(prefix + redact(text)[:1900], allowed_mentions=mentions, view=view)
 
+    # cards from before embeds (old events, re-pages) have no fields: send their text as before
     async def fyi(self, card: Card, receipt_url: str) -> None:
-        await self.send_text(self.fyi_channel, f"{card.text}\n{receipt_url}")
+        if not card.fields:
+            await self.send_text(self.fyi_channel, f"{card.text}\n{receipt_url}")
+            return
+        await self.send_text(self.fyi_channel, card.headline, embed=embed_of(card, url=receipt_url))
 
     async def wake(self, card: Card, briefing: str) -> int | None:
-        message = await self.send_text(self.wake_channel, f"{card.text}\n{briefing}", wake=True,
-                                       view=AckView(card.incident_id, self.controller))
+        view = AckView(card.incident_id, self.controller)
+        if not card.fields:
+            message = await self.send_text(self.wake_channel, f"{card.text}\n{briefing}", wake=True, view=view)
+        else:
+            note = [("Update", NOTES[briefing])] if briefing in NOTES else []
+            message = await self.send_text(self.wake_channel, card.headline, wake=True, view=view,
+                                           embed=embed_of(card, note))
         return message.id
 
     async def ticket(self, card: Card) -> None:
-        await self.send_text(self.tickets_channel, card.text)
+        if not card.fields:
+            await self.send_text(self.tickets_channel, card.text)
+            return
+        await self.send_text(self.tickets_channel, card.headline, embed=embed_of(card))
 
     async def request_approval(self, approval_id: str, card: Card, diff: str,
                                forecast: str, expires_at: float) -> None:
         if self.controller.state.get(f"approval:{approval_id}"):
             return
         view = ApprovalView(approval_id, self.controller)
-        message = await self.send_text(self.wake_channel,
-                                       f"{card.text}\nDiff: {diff[:500]}\nForecast: {forecast}\n"
-                                       f"Expires: <t:{int(expires_at)}:R>", wake=True, view=view)
+        if not card.fields:
+            message = await self.send_text(self.wake_channel,
+                                           f"{card.text}\nDiff: {diff[:500]}\nForecast: {forecast}\n"
+                                           f"Expires: <t:{int(expires_at)}:R>", wake=True, view=view)
+        else:
+            extra = [("Side effects", forecast), ("Exact change", f"```{diff.replace('`', '')[:900]}```"),
+                     ("Expires", f"<t:{int(expires_at)}:R>")]
+            message = await self.send_text(self.wake_channel, card.headline, wake=True, view=view,
+                                           embed=embed_of(card, extra))
         self.controller.state.set(f"approval:{approval_id}", {
             "message_id": message.id, "channel_id": message.channel.id, "expires_at": expires_at,
         })
