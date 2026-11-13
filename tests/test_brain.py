@@ -203,7 +203,8 @@ async def test_resource_case_sends_restart_then_raise_limit(tmp_path):
                                      summary="container app last ended OOMKilled, exit 137")],
                  "logs": [], "memory_ratio": 0.5, "memory_limit": "256Mi"}
     inc = INC.model_copy(update={"unhealthy": ["recommendation"]})
-    brain = make(world, [diagnosis_json(causes=[], prediction=None)], tmp_path)
+    brain = make(world, [diagnosis_json(causes=[], prediction={"metric": "err_ratio", "target": "recommendation",
+                                                               "below": 0.05, "within_s": 120})], tmp_path)
     record = await brain.handle(inc)
     assert record["pattern"] == "resource"
     assert [(a.tool, a.params) for a in brain.submitted] == [("restart_service", {}),
@@ -223,7 +224,7 @@ async def test_datastore_scaled_to_zero_moves_culprit_to_protected_dependency(tm
 
     world = StoreWorld(jaeger_up=False)  # no traces, no graph edge to the datastore
     inc = INC.model_copy(update={"unhealthy": ["cart"]})
-    brain = make(world, [diagnosis_json(causes=[], prediction=None)], tmp_path)
+    brain = make(world, [diagnosis_json(causes=[], prediction={"metric": "err_ratio", "target": "cart", "below": 0.05, "within_s": 120})], tmp_path)
     record = await brain.handle(inc)
     assert record["incident"]["culprit"] == "valkey-cart" and record["incident"]["victims"] == ["cart"]
     assert record["pattern"] == "protected"

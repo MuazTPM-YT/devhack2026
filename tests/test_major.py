@@ -101,7 +101,7 @@ async def test_brain_kafka_outage_is_major_and_protected(tmp_path):
             return super().__call__(request)
 
     world = KafkaWorld()
-    brain = make(world, [diagnosis_json(causes=[], prediction=None)], tmp_path)
+    brain = make(world, [diagnosis_json(causes=[], prediction={"metric": "err_ratio", "target": "checkout", "below": 0.05, "within_s": 120})], tmp_path)
     inc = Incident(id="inc-1", opened_at=990, onset_at=960,
                    unhealthy=["checkout", "accounting", "fraud-detection", "frontend"], severity=12)
     record = await brain.handle(inc)

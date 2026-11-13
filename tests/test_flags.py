@@ -154,7 +154,7 @@ async def test_brain_flag_flip_proposes_flag_revert(tmp_path):
             return super().__call__(request)
 
     world = FlagFlipWorld()
-    brain = make(world, [diagnosis_json(causes=[], prediction=None)], tmp_path)
+    brain = make(world, [diagnosis_json(causes=[])], tmp_path)
     brain.flag_map = FLAG_MAP
     record = await brain.handle(INC)
     assert record["incident"]["culprit"] == "payment" and record["pattern"] == "recent_change"

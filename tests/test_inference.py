@@ -7,7 +7,7 @@ import pytest
 from brain.llm import DiagnosisService
 from brain.providers.base import InferenceResponse, ProviderError
 from brain.providers.opencode_go import ENDPOINT, OpenCodeGoAdapter
-from schemas.models import Diagnosis, Evidence
+from schemas.models import Diagnosis, Evidence, Prediction
 
 
 class FakeProvider:
@@ -25,8 +25,9 @@ class FakeProvider:
         return InferenceResponse(value, self.name, self.model, {"prompt_tokens": 10})
 
 
-def diagnosis(action=None):
-    return Diagnosis(causes=[], proposed=action, confidence=0.7).model_dump_json()
+def diagnosis(action=None, predict=False):
+    prediction = Prediction(metric="err_ratio", target="payment", below=0.05, within_s=120) if predict else None
+    return Diagnosis(causes=[], proposed=action, confidence=0.7, prediction=prediction).model_dump_json()
 
 
 async def test_adapter_headers_and_wire_shape():
@@ -65,7 +66,7 @@ async def test_provider_errors_are_sanitized(status, retryable):
 
 
 async def test_invalid_json_retries_and_preserves_rule(bundle, action, tmp_path):
-    provider = FakeProvider(["invalid", diagnosis()])
+    provider = FakeProvider(["invalid", diagnosis(predict=True)])
     result = await DiagnosisService(provider, tmp_path).diagnose(bundle, "recent_change", action)
     assert provider.calls == 2
     assert result.action == action
@@ -118,7 +119,7 @@ async def test_scale_bounds(bundle, action, tmp_path):
 async def test_cache_disk_failure_does_not_discard_diagnosis(bundle, action, tmp_path):
     blocked_path = tmp_path / "not-a-directory"
     blocked_path.write_text("occupied")
-    result = await DiagnosisService(FakeProvider([diagnosis()]), blocked_path).diagnose(
+    result = await DiagnosisService(FakeProvider([diagnosis(predict=True)]), blocked_path).diagnose(
         bundle, "recent_change", action)
     assert result.diagnosis is not None
     assert result.action == action
@@ -126,7 +127,7 @@ async def test_cache_disk_failure_does_not_discard_diagnosis(bundle, action, tmp
 
 
 async def test_unknown_proposal_cannot_claim_trusted_pattern(bundle, action, tmp_path):
-    result = await DiagnosisService(FakeProvider([diagnosis(action)]), tmp_path).diagnose(bundle, "unknown")
+    result = await DiagnosisService(FakeProvider([diagnosis(action, predict=True)]), tmp_path).diagnose(bundle, "unknown")
     assert result.action.pattern == "unknown"
 
 
@@ -169,3 +170,27 @@ async def test_cut_off_answer_reports_truncated_and_budget_fits_reasoning():
             await OpenCodeGoAdapter(client, "fake-key", "m").generate(InferenceRequest("i", [], {}))
     assert str(error.value) == "truncated"
     assert sent["max_tokens"] >= 4000
+
+
+# live smoke 6: the model diagnosed well but never predicted, so no fix could ever count as proven
+async def test_action_without_prediction_is_retried_until_it_predicts(bundle, action, tmp_path):
+    from schemas.models import Prediction
+    predicted = Diagnosis(causes=[], confidence=0.7, prediction=Prediction(
+        metric="err_ratio", target="payment", below=0.05, within_s=120)).model_dump_json()
+    provider = FakeProvider([diagnosis(), predicted])
+    result = await DiagnosisService(provider, tmp_path).diagnose(bundle, "recent_change", action)
+    assert provider.calls == 2
+    assert result.diagnosis.prediction.target == "payment"
+
+
+async def test_prompt_asks_for_a_prediction(bundle, action, tmp_path):
+    provider = FakeProvider([diagnosis()])
+    seen = []
+    original = provider.generate
+
+    async def capture(request):
+        seen.append(request.messages[0]["content"])
+        return await original(request)
+    provider.generate = capture
+    await DiagnosisService(provider, tmp_path).diagnose(bundle, "unknown")
+    assert "prediction" in seen[0] and "within_s" in seen[0]
