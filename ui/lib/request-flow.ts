@@ -11,7 +11,7 @@ export const NODES: Record<NodeId, { title: string; sub: string }> = {
   shop: { title: "Shop telemetry", sub: "Prometheus · Jaeger" },
   observer: { title: "Observer", sub: ":7001 · detect" },
   brain: { title: "Brain", sub: ":7002 · diagnose" },
-  specialist: { title: "Specialist", sub: "read-only · on demand" },
+  specialist: { title: "Specialist", sub: "read-only · gated" },
   llm: { title: "Model", sub: "OpenCode Go" },
   gateway: { title: "Gateway", sub: ":7003 · checklist" },
   notifier: { title: "Notifier", sub: "Discord · humans" },
