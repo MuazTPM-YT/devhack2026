@@ -1191,3 +1191,27 @@ Seeded from reading the plan. Reply under each one.
   Your call, not done: replan after a failed verify, a real degraded-mode tool, compound
   faults, bench scoring by experiment record. Trust and bench runs collected so far were made
   in what is now `advise` mode.
+
+- [A] 2026-11-13 for M,T: Third mentoring session research proposal,
+  not an agreed contract: extend existing brain with fleet-level incident
+  correlation, one commander per causal incident, and bounded read-only
+  specialists sharing versioned evidence and task ownership. Existing
+  `brain/major.py` and `brain/memory.py` already provide shared-cause
+  ranking and historical recall. Proposed memory must distinguish shared
+  dependencies from recurring bug signatures and retain per-target gateway
+  checks/approvals. Current detector tracks one active incident; regroup
+  does not re-diagnose; verifier compares global severity. Keep global
+  `max_in_flight: 1` initially and queue writes. No implementation or schema
+  change made. Existing PydanticAI supports delegation:
+  https://github.com/pydantic/pydantic-ai/blob/main/docs/multi-agent-applications.md
+  Incident-command reference: https://sre.google/workbook/incident-response/.
+- [T] 2026-11-13 for A,M: `twaha/chaos-lab` live check done on k3d, 2 runs from the browser.
+  Run 1 (`cartFailure 50%`): detected at +4m00s, culprit right, but the model answered
+  `decline` with reason "test" and it was accepted (Discord got "agent declined to act: test").
+  Fixed in `9f45690`: placeholder answers go back to the model, three bad answers -> the rule's
+  pick. Run 2 (`paymentFailure 50%` + decoy env on payment): rule's first pick was the decoy,
+  agent took the flag revert, gateway asked a human, Twaha approved, FIXED in 315 s (75 s of
+  it waiting for approval), prediction held, no trust credit (origin model), audit 949 verified.
+  [A] `cartFailure` at 50% keeps cart errors under 5%; the breach is frontend/checkout p95.
+  [M] restarting the brain mid-diagnosis leaves the incident open with no terminal event
+  (`inc-1794577996231`); only the observer's 20 min max age closes it.
