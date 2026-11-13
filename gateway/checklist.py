@@ -69,6 +69,7 @@ class Gateway:
         self.verifying: dict[int, asyncio.Task] = {}
         self.rehearsal = rehearsal  # ONCALL_REHEARSAL=1: bench trust runs, per-hour budget lifted
         self.why: dict[str, str] = {}  # incident id -> card "Why" line; ponytail: never pruned, tiny per incident
+        self.health: dict[str, dict] = {}  # incident id -> last health read, for the card's numbers; same ponytail
 
     # ---- helpers -------------------------------------------------------------------------------
     def incident(self, incident_id: str) -> dict | None:
@@ -85,7 +86,8 @@ class Gateway:
 
     def card(self, row: dict, target: str | None, **kw: Any) -> Card:
         return build_incident_card(self.card_incident(row, target), why=self.why.get(row["id"]),
-                                   pattern=row.get("pattern"), model_says=row.get("llm_why"), **kw)
+                                   pattern=row.get("pattern"), model_says=row.get("llm_why"),
+                                   health=self.health.get(row["id"]), **kw)
 
     async def step(self, incident_id: str, steps: list[dict], name: str, passed: bool, reason: str | None = None):
         steps.append({"name": name, "passed": passed, "reason": reason})
@@ -115,7 +117,8 @@ class Gateway:
         if row is not None:
             gone = name == "freshness" and outcome == "refused"
             event = "incident_resolved" if gone else ("handed_off" if outcome == "handed_off" else "escalated")
-            card = self.card(row, target, decision=decision)
+            card = self.card(row, target, decision=decision,
+                             proposal=action if isinstance(action, ActionRequest) else None)
             self.set_state(incident_id, {"incident_resolved": "resolved"}.get(event, event))
             await self.publish({"type": event, "incident_id": incident_id,
                                 "payload": {"card": card.model_dump(mode="json"), "briefing": reason or ""}})
@@ -172,6 +175,7 @@ class Gateway:
             health = await self.get_json("/health/now")
         except (httpx.HTTPError, ValueError) as e:
             return await self.stop(action, row, steps, "hands_off", "escalated", f"observer unreachable: {e}")
+        self.health[action.incident_id] = health
 
         entry = next((r for r in journal_rows if r["id"] == action.journal_entry), None)
         if (why := why_text(entry, row["onset_at"])) is not None:
@@ -289,8 +293,7 @@ class Gateway:
                                     self.policy["approval"]["expiry_seconds"])
         decision = GatewayDecision(decision="awaiting_approval", failed_step=step_name, reason=reason,
                                    approval_id=appr["id"])
-        card = self.card(row, action.target, decision=decision,
-                         did=f"wants to {action.tool} {action.target}: {plan['summary']}")
+        card = self.card(row, action.target, decision=decision, proposal=action, did=plan["summary"])
         changed = ", ".join(sorted(plan["diff"]))[:500]
         await self.publish({"type": "approval_requested", "incident_id": action.incident_id, "payload": {
             "card": card.model_dump(mode="json"), "approval_id": appr["id"], "expires_at": appr["expires_at"],
@@ -447,11 +450,13 @@ class Gateway:
             with self.lock:
                 self.conn.execute("UPDATE receipts SET outcome='undo_failed' WHERE id=?", (receipt_id,))
                 self.conn.commit()
-            self.receipts.update(receipt_id, receipt.model_copy(update={"outcome": "undo_failed"}))
+            failed = receipt.model_copy(update={"outcome": "undo_failed"})
+            self.receipts.update(receipt_id, failed)
             self.heartbeats.pop(receipt_id, None)
             self.verifying.pop(receipt_id, None)
+            card = self.card(row, action.target, receipt=failed, receipt_id=receipt_id, reason="UNDO FAILED")
             await self.publish({"type": "escalated", "incident_id": action.incident_id, "payload": {
-                "card": self.card(row, action.target).model_dump(mode="json"),
+                "card": card.model_dump(mode="json"),
                 "briefing": f"UNDO FAILED ({e.reason}); receipt #{receipt_id} needs a human now"}})
             self.set_state(action.incident_id, "escalated")
             return "undo_failed"
@@ -520,6 +525,7 @@ class Gateway:
         mitigated = action.tool == "restart_service" and outcome in ("success", "right_by_accident")
         victims = json.loads(row.get("victims_json") or "[]")
         card = self.card(row, action.target, receipt=final, receipt_id=receipt_id, mitigated=mitigated,
+                         reason=reason,
                          took_s=self.clock() - (row.get("opened_at") or v.t0), did=(plan or {}).get("summary"),
                          metric=error_change((plan or {}).get("health") or {}, v.last_health,
                                              [action.target, *victims]))
@@ -613,14 +619,14 @@ class Gateway:
                     trust.record(self.conn, gate.get("pattern"), r["tool"], r["target"], "real", False, now)
                 self.conn.commit()
             if (view := self.receipts.get(r["id"])) is not None:  # the /receipts page reads the view
-                self.receipts.update(r["id"], view.model_copy(
-                    update={"outcome": "undone" if outcome == "undone" else "undo_failed"}))
+                view = view.model_copy(update={"outcome": "undone" if outcome == "undone" else "undo_failed"})
+                self.receipts.update(r["id"], view)
             self.heartbeats.pop(r["id"], None)
             if outcome == "undone":
                 await self.publish({"type": "action_undone", "incident_id": r["incident_id"],
                                     "payload": {"receipt_id": r["id"], "reason": "watchdog"}})
             self.set_state(r["incident_id"], "escalated")
-            card = self.card(row, r["target"])
+            card = self.card(row, r["target"], receipt=view, receipt_id=r["id"] if view else None, reason=reason)
             await self.publish({"type": "escalated", "incident_id": r["incident_id"],
                                 "payload": {"card": card.model_dump(mode="json"), "briefing": reason}})
             done += 1

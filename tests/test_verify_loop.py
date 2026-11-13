@@ -176,10 +176,10 @@ async def test_success_card_and_terminal_payload(tmp_path):
     w, d, outcome = await executed(tmp_path, [healthy()])
     payload = w.events[-1]["payload"]
     lines = payload["card"]["text"].splitlines()
-    assert len(lines) == 5 and lines[0].startswith("FIXED in ") and "payment errors 40.0% -> 1.0%" in lines[0]
-    assert "payment:v2-bad" in lines[1] and "[journal:41]" in lines[1]
+    assert len(lines) == 5 and lines[0].startswith("FIXED in ") and "payment errors 40.0% → 1.0%" in lines[0]
+    assert "payment:v2-bad" in lines[1] and "journal:41" in payload["card"]["evidence_ids"]
     assert "back to revision 1" in lines[2] and "approved by u1" in lines[2]
-    assert "prediction held; nothing else got worse; added disruption 0 s" in lines[3]
+    assert "recovery matched the agent's prediction; nothing else got worse; extra disruption 0 s" in lines[3]
     assert lines[4] == "Undo: kubectl rollout undo deploy/payment -n shop"
     assert (payload["tier"], payload["prediction_held"], payload["harm_clean"]) == ("ask", True, True)
     assert payload["receipt_id"] == d.receipt_id and payload["actual_added_s"] == 0
@@ -217,7 +217,7 @@ async def test_no_prediction_is_none_not_missed(tmp_path):
     assert await asyncio.wait_for(next(iter(w.gw.tasks)), 5) == "right_by_accident"
     assert w.gw.receipts.get(d.receipt_id).prediction_held is None
     assert "no prediction to check" in w.events[-1]["payload"]["card"]["text"]
-    assert w.events[-1]["payload"]["card"]["status"] == "RECOVERED; NO PREDICTION"
+    assert w.events[-1]["payload"]["card"]["status"] == "RECOVERED, FIX NOT PROVEN"
 
 
 # harm check spares the blast radius (§6.4.9): an upstream caller that dips is expected, not harm

@@ -1,12 +1,23 @@
-import httpx
+import json
 
-from gateway.receipts import build_incident_card
+import discord
+import httpx
+import pytest
+
+from gateway.receipts import REASONS, build_incident_card, explain
 from notifier.consumer import NotificationConsumer
+from notifier.discord_bot import COLOUR, DiscordNotifier, embed_of
 from notifier.state import NotifierState
-from schemas.models import Cause, Diagnosis, GatewayDecision, Incident, Receipt
+from schemas.models import ActionRequest, Card, Cause, Diagnosis, GatewayDecision, Incident, Prediction, Receipt
 
 INC = Incident(id="i", opened_at=0, onset_at=0, unhealthy=["payment"], culprit="payment",
                victims=["checkout"], severity=7)
+REC = Incident(id="r", opened_at=0, onset_at=0, unhealthy=["recommendation"], culprit="recommendation", severity=3)
+HEALTH = {"ts": 0, "services": {"payment": {"err_ratio": 0.361, "p95_ms": 2400, "baseline_p95_ms": 300},
+                                "recommendation": {"err_ratio": 0.0, "p95_ms": 15, "baseline_p95_ms": 5}}}
+ROLLBACK = ActionRequest(incident_id="i", tool="rollback_deploy", target="payment", pattern="recent_change",
+                         evidence_ids=["journal:7"],
+                         prediction=Prediction(metric="err_ratio", target="payment", below=0.05, within_s=120))
 
 
 def receipt(**changes):
@@ -16,29 +27,38 @@ def receipt(**changes):
     return Receipt(**{**base, **changes})
 
 
+def everything(card: Card) -> str:
+    return json.dumps(card.model_dump())
+
+
+def field(card: Card, name: str) -> str:
+    return next(f.body for f in card.fields if f.label == name)
+
+
 # live discord: "Why: unknown" on every gateway card; with no journal fact the pattern still says something
 def test_why_without_journal_fact_uses_pattern_not_unknown():
     text = build_incident_card(INC, receipt=receipt(outcome="right_by_accident", prediction_held=False),
                                receipt_id=2, pattern="recent_change").text
-    assert text.splitlines()[1] == "Why: a change to payment landed just before it started failing [journal:7]"
+    assert text.splitlines()[1] == "Why: A change to payment landed just before it started failing"
     assert "unknown" not in text
 
 
-# the model read untrusted evidence: its sentence comes after our fact, labelled, on one line
+# the model read untrusted evidence: its sentence comes after our fact, labelled
 def test_llm_explanation_is_labelled_after_the_fixed_sentence():
     cause = Cause(cause_class="recent_change", culprit="payment", evidence_ids=["journal:7"],
                   explanation="image changed to v2-bad\n30 s before errors")
-    text = build_incident_card(INC, Diagnosis(causes=[cause], confidence=0.8),
-                               decision=GatewayDecision(decision="escalated")).text
-    assert ("Why: a change to payment landed just before it started failing. "
-            "Model says: image changed to v2-bad 30 s before errors [journal:7]") in text
-    assert len(text.splitlines()) == 5
+    card = build_incident_card(INC, Diagnosis(causes=[cause], confidence=0.8),
+                               decision=GatewayDecision(decision="escalated"))
+    assert card.text.splitlines()[1] == ("Why: A change to payment landed just before it started failing. "
+                                         "AI reading (not checked): image changed to v2-bad 30 s before errors")
+    assert len(card.text.splitlines()) == 5
+    assert [f.label for f in card.fields][-1] == "AI reading (not checked)"
 
 
 def test_journal_fact_stays_first_when_the_model_also_speaks():
     line = build_incident_card(INC, receipt=receipt(), receipt_id=2, why="payment image changed to v2-bad",
                                model_says="bad image broke payment").text.splitlines()[1]
-    assert line == "Why: payment image changed to v2-bad. Model says: bad image broke payment [journal:7]"
+    assert line == "Why: payment image changed to v2-bad. AI reading (not checked): bad image broke payment"
 
 
 # discord showed "/receipts/2": a relative link nobody can click
@@ -68,8 +88,8 @@ def test_did_and_undo_name_the_action_target_not_the_culprit():
 
 
 def test_odd_target_name_never_becomes_a_command():
-    lines = build_incident_card(INC, receipt=receipt(target="pay;rm -rf"), receipt_id=5).text.splitlines()
-    assert "kubectl" not in lines[4]
+    card = build_incident_card(INC, receipt=receipt(target="pay;rm -rf"), receipt_id=5)
+    assert "kubectl" not in card.text.splitlines()[4] and "kubectl" not in field(card, "To undo")
 
 
 # gateway reads the LLM's sentence from the incident row the brain wrote
@@ -78,6 +98,160 @@ def test_llm_why_reaches_gateway_cards_labelled(tmp_path):
     w = World(tmp_path)
     w.conn.execute("UPDATE incidents SET pattern='recent_change', llm_why='payment image went bad, errors 40 s later.'")
     row = dict(w.conn.execute("SELECT * FROM incidents").fetchone())
-    line = w.gw.card(row, "payment", receipt=receipt(), receipt_id=2).text.splitlines()[1]
-    assert line == ("Why: a change to payment landed just before it started failing. "
-                    "Model says: payment image went bad, errors 40 s later. [journal:7]")
+    card = w.gw.card(row, "payment", receipt=receipt(), receipt_id=2)
+    assert card.text.splitlines()[1] == ("Why: A change to payment landed just before it started failing. "
+                                         "AI reading (not checked): payment image went bad, errors 40 s later.")
+    assert field(card, "AI reading (not checked)") == "payment image went bad, errors 40 s later."
+
+
+# live: "action budget used up" read as if the agent had crashed
+def test_budget_card_says_safety_limit_and_what_it_would_have_done():
+    card = build_incident_card(INC, decision=GatewayDecision(decision="escalated", reason="action budget used up"),
+                               health=HEALTH, proposal=ROLLBACK, why="payment image changed to v2-bad")
+    assert card.headline == "36% of payment requests are failing. The agent changed nothing."
+    assert field(card, "Why the agent stopped").startswith("Safety limit:")
+    assert "nothing in the agent is broken" in field(card, "Why the agent stopped")
+    assert field(card, "Suggested fix (not run)").endswith("`kubectl rollout undo deploy/payment -n shop`")
+    assert field(card, "Changes by the agent") == "None yet. Nothing to undo."
+    assert "budget used up" not in everything(card)
+    assert card.level == "page" and card.title == "NEEDS YOU · payment"
+
+
+# live: "[query:p95_ms:service=recommendation]" and "no safe action (unknown)" told the human nothing
+def test_no_cause_card_has_numbers_with_units_and_no_codes():
+    cause = Cause(cause_class="unknown", culprit="recommendation",
+                  evidence_ids=["query:p95_ms:service=recommendation", "query:err_ratio:service=recommendation"],
+                  explanation="Recommendation p95_ms is 15 versus 5. No cause [query:p95_ms:service=recommendation]")
+    card = build_incident_card(REC, Diagnosis(causes=[cause], confidence=0.2), health=HEALTH,
+                               decision=GatewayDecision(decision="escalated", failed_step="rules",
+                                                        reason="no safe action (unknown)"))
+    assert card.headline == ("recommendation is slow: 95% of requests finish within 15 ms, normal is 5 ms; "
+                             "no requests are failing. The agent changed nothing.")
+    assert field(card, "Why the agent stopped") == "No cause found. The agent acts only when it can name a cause."
+    assert "Likely cause" not in [f.label for f in card.fields]  # "no cause" is already said once
+    text = everything(card.model_copy(update={"evidence_ids": []}))
+    for code in ("[query:", "p95_ms", "err_ratio", "no safe action", "(unknown)"):
+        assert code not in text, code
+    assert card.footer == "Incident r · Evidence: 2 metrics"
+
+
+def test_approval_card_leads_with_the_action_and_its_promise():
+    card = build_incident_card(INC, decision=GatewayDecision(decision="awaiting_approval",
+                                                             reason="trust bound 0.4 < 0.9"),
+                               health=HEALTH, proposal=ROLLBACK, did="back to revision 3")
+    assert card.headline == ("36% of payment requests are failing. "
+                             "The agent wants your OK to roll payment back to its previous version.")
+    assert [f.label for f in card.fields][:3] == ["The agent wants to", "If you approve", "Why it asks you"]
+    assert field(card, "If you approve") == ("payment errors must fall below 5% within 120 s, "
+                                             "or the agent undoes the fix.")
+    assert "trust bound" not in everything(card) and card.level == "ask"
+
+
+def test_undone_card_says_what_happened_not_mid_fix_numbers():
+    card = build_incident_card(INC, receipt=receipt(outcome="undone", harm_clean=False), receipt_id=4,
+                               health=HEALTH, reason="harm check failed", metric="payment errors 36.1% -> 31.0%")
+    assert card.headline == ("36% of payment requests are failing. "
+                             "After the fix, another service got worse, so the agent undid it.")
+    assert "During the fix: payment errors 36.1% → 31.0%." in field(card, "What happened")
+    assert field(card, "The agent did").startswith("Rolled payment back")
+    assert card.title == "NEEDS YOU · payment" and card.level == "page"
+
+
+def test_fixed_card_is_green_with_took_and_paste_ready_undo():
+    card = build_incident_card(INC, receipt=receipt(trust={"approved_by": "u1"}), receipt_id=5, took_s=75,
+                               metric="payment errors 22.5% -> 0.4%")
+    assert card.title == "FIXED in 1m 15s · payment" and card.level == "ok"
+    assert card.headline == "payment fixed in 1m 15s: payment errors 22.5% → 0.4%."
+    assert field(card, "To undo") == "`kubectl rollout undo deploy/payment -n shop`"
+    assert field(card, "Checks") == "Recovery matched the agent's prediction\nNothing else got worse"
+
+
+# model prose: epoch times, evidence ids and markdown links are noise or a spoof risk on discord
+def test_model_text_loses_epochs_ids_and_markdown():
+    card = build_incident_card(INC, model_says="image changed at 1794545702.5, see [journal:7] "
+                                                "[click](http://evil) `kubectl delete ns shop`")
+    said = field(card, "AI reading (not checked)")
+    assert "1794545702" not in said and "journal:7" not in said
+    assert not any(c in said for c in "[]`")
+
+
+# every stop reason the gateway or brain can give reads as a sentence, never as the raw code
+@pytest.mark.parametrize("reason", [
+    "action budget used up", "no safe action (unknown)", "no safe action (resource)",
+    "valkey-cart is protected; a human must act", "valkey-cart is a protected data store; a human must approve",
+    "another action is still being verified", "problem no longer present",
+    "rule result changed: ('recent_change', 3) -> ('recent_change', 4)",
+    "journal entry 41 no longer matches the live object", "journal entry 41 not found",
+    "observer unreachable: ConnectError", "action refused: target not allowed", "tool scale not allowed",
+    "trust bound 0.4 < 0.9", "major incident: a human approves every action except reverting the shared change",
+    "major incident: one restart per incident", "blast radius unknown and the action costs capacity",
+    "net benefit too low: {}", "API server refused: forbidden", "approval expired", "approval rejected",
+    "severity rose after the action", "did not recover", "harm check failed", "UNDO FAILED",
+    "watchdog: verifier silent for receipt #3", "deployment/payment changed by kubectl-edit",
+])
+def test_every_known_reason_has_a_plain_sentence(reason):
+    said = explain(reason)
+    assert not said.startswith("The agent stopped:") and reason not in said
+
+
+def test_unknown_reason_still_shown_labelled():
+    assert explain("brand new thing") == "The agent stopped: brand new thing."
+    assert explain("ConnectError", "gateway").startswith("The agent's safety checker")
+    assert len(REASONS) >= 20
+
+
+# live: the audit redactor blanked every field: {name, value} dicts look like k8s env vars
+def test_card_fields_survive_event_redaction():
+    from brain.redact import redact_value
+    card = build_incident_card(INC, decision=GatewayDecision(decision="escalated", reason="action budget used up"),
+                               health=HEALTH, proposal=ROLLBACK)
+    assert Card.model_validate(redact_value(card.model_dump(mode="json"))) == card
+
+
+# discord limits: title 256, field 1024, whole embed 6000; colour follows the level
+def test_embed_fits_discord_limits_and_colour():
+    long = "x " * 3000
+    card = build_incident_card(INC, decision=GatewayDecision(decision="escalated", reason=long),
+                               health=HEALTH, proposal=ROLLBACK, model_says=long, why=long)
+    embed = embed_of(card, [("Exact change", long)])
+    assert len(embed) <= 6000 and all(len(f.value or "") <= 1024 for f in embed.fields)
+    assert embed.colour == discord.Colour(COLOUR["page"])
+
+
+# live fixed card said "approved by 875250916951986196": a number nobody recognises
+def test_embed_names_the_approver():
+    card = build_incident_card(INC, receipt=receipt(trust={"approved_by": "875250916951986196"}), receipt_id=6)
+    did = next(f.value for f in embed_of(card).fields if f.name == "The agent did")
+    assert "approved by <@875250916951986196>" in did
+
+
+class Sent(DiscordNotifier):
+    def __init__(self):  # no discord login: record what would go out
+        self.sent, self.role_id, self.controller = [], 9, None
+        self.wake_channel = self.fyi_channel = self.tickets_channel = 1
+
+    async def send_text(self, channel_id, text, *, wake=False, view=None, embed=None):
+        self.sent.append((text, embed, wake))
+
+        class Message:
+            id = 1
+        return Message()
+
+
+async def test_wake_sends_headline_as_text_and_details_as_embed():
+    card = build_incident_card(INC, decision=GatewayDecision(decision="escalated", reason="action budget used up"),
+                               health=HEALTH, proposal=ROLLBACK)
+    bot = Sent()
+    await bot.wake(card, "action budget used up")
+    text, embed, wake = bot.sent[0]
+    assert wake and text == "36% of payment requests are failing. The agent changed nothing."
+    assert embed.title == "NEEDS YOU · payment" and "budget used up" not in json.dumps(embed.to_dict())
+    await bot.wake(card, "Approval expired; no action taken")
+    assert bot.sent[1][1].fields[-1].value == "Nobody approved in time. The agent changed nothing."
+
+
+# events from before embeds (and re-pages of them) carry no fields: plain text as before
+async def test_old_card_without_fields_still_sends_text():
+    bot = Sent()
+    await bot.wake(Card(incident_id="i", status="WOKE YOU BECAUSE", text="old card", evidence_ids=[]), "b")
+    assert bot.sent == [("old card\nb", None, True)]
