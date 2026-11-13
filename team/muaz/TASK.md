@@ -34,15 +34,15 @@ Exit status: NOT MET yet. Live smoke 2026-11-13 (A): detect 42.7 s, diagnose 72.
 
 ## Phase 2: the other failures and the checks
 
-- [ ] P0 Flag tracking in the journal (§6.2.5) — unblocked: flagd now reads ConfigMap `flagd-config` (A, live), so the ConfigMap watch journals flag changes; A added the flag -> service map. Linking flag changes to services in the rules is next.
-- [ ] P0 Executor: `revert_config`, `restart_service`, `scale`, `raise_limit`, `enable_degraded_mode` (§6.4.7) — partial: `revert_config` (env), `restart_service`, `scale`, `raise_limit` done (`tests/test_tools.py`, merged in PR #19); flag revert and `enable_degraded_mode` wait on the flag plan.
+- [x] P0 Flag tracking in the journal (§6.2.5) — proof: flagd reads ConfigMap `flagd-config` (A, live ~60 s reload); journal names the flipped flag (`flags[paymentFailure].defaultVariant: off -> 50%`) with a per-flag inverse; rules link it to the service via `flags:` in `config/services.yaml`. `tests/test_flags.py` (9 pass), branch `muaz/flag-revert`.
+- [ ] P0 Executor: `revert_config`, `restart_service`, `scale`, `raise_limit`, `enable_degraded_mode` (§6.4.7) — partial: all but `enable_degraded_mode` done (`tests/test_tools.py`, `tests/test_flags.py`; flag revert on branch `muaz/flag-revert`). `enable_degraded_mode` stays refused: the shop has no feature-off flags (Muaz chose A).
 - [x] P0 Rules: 3 special cases (resource, protected, unknown) (§6.3.6) — proof: `tests/test_rules.py` resource, protected and unknown cases (pass).
 - [ ] P0 Claude call: forced tool, Pydantic check, one retry, 30 s timeout, token log, demo cache (§6.3.7) — now OpenCode Go via T's `DiagnosisService`: Pydantic check, retry, 30 s, token log, cache done (T's tests). Live run: both calls hit `deadline_exceeded` at 30 s (deepseek-v4.1-flash); rules still gave the right action. Timeout/model is T's call. Forced tool not done.
 - [x] P0 Harm check (spec/data hashes), early abort with rollout pause (§6.4.9) — proof: `tests/test_verify_loop.py::test_early_abort_pauses_undoes_resumes`, `harm_check` in the success path (pass). Fake API server only.
 
 Exit: scenarios 1 to 6 in §7 behave as specified.
 
-Exit status: NOT MET. Needs live runs; scenario 3 also needs the flag map + flag tools. Scenario 5 (datastore down -> protected) fixed in code: `tests/test_brain.py::test_datastore_scaled_to_zero_moves_culprit_to_protected_dependency`.
+Exit status: NOT MET. Needs live runs. Scenario 3 (flag flipped) now built: `tests/test_flags.py::test_brain_flag_flip_proposes_flag_revert` + gateway flag revert tests. Scenario 5 (datastore down -> protected) fixed in code: `tests/test_brain.py::test_datastore_scaled_to_zero_moves_culprit_to_protected_dependency`.
 
 ## Phase 3: trust, humans, proof
 
