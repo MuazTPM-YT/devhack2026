@@ -89,14 +89,15 @@ class Workspace:
     # ---- incidents, memberships, links
 
     # incidents row (what the gateway reads) + workspace + memberships + outbox, all or nothing
-    def open_incident(self, c: sqlite3.Connection, incident: dict[str, Any], memberships: list[Membership]) -> None:
+    def open_incident(self, c: sqlite3.Connection, incident: dict[str, Any], memberships: list[Membership],
+                      cause_key: str | None = None) -> None:
         p = self.policy
         c.execute("INSERT INTO incidents (id, opened_at, onset_at, culprit, victims_json, state, severity_at_open) "
                   "VALUES (?, ?, ?, NULL, '[]', 'open', ?)",
                   (incident["id"], incident["opened_at"], incident["onset_at"], incident["severity"]))
-        c.execute("INSERT INTO orchestration_workspaces (incident_id, phase, created_at, requests_limit, "
-                  "tool_calls_limit, specialists_limit) VALUES (?, 'queued', ?, ?, ?, ?)",
-                  (incident["id"], self.clock(), p.max_model_requests, p.max_tool_calls,
+        c.execute("INSERT INTO orchestration_workspaces (incident_id, phase, cause_key, created_at, requests_limit, "
+                  "tool_calls_limit, specialists_limit) VALUES (?, 'queued', ?, ?, ?, ?, ?)",
+                  (incident["id"], cause_key, self.clock(), p.max_model_requests, p.max_tool_calls,
                    p.max_specialists_per_incident))
         for m in memberships:
             self.add_membership(c, m)
@@ -117,6 +118,10 @@ class Workspace:
     def owner_of(self, episode_id: str) -> str | None:
         r = self.row("SELECT incident_id FROM incident_memberships WHERE episode_id=? AND closed=0", (episode_id,))
         return r[0] if r else None
+
+    # an episode that already belonged to a closed incident never opens another one
+    def was_owned(self, episode_id: str) -> bool:
+        return self.row("SELECT 1 FROM incident_memberships WHERE episode_id=? LIMIT 1", (episode_id,)) is not None
 
     def close_memberships(self, c: sqlite3.Connection, incident_id: str) -> list[str]:
         ids = [r[0] for r in c.execute("SELECT episode_id FROM incident_memberships WHERE incident_id=? AND closed=0",
@@ -352,10 +357,11 @@ class Workspace:
         r = self.row("SELECT COUNT(*) FROM event_outbox WHERE destination=? AND delivered_at IS NULL", (destination,))
         return int(r[0]) if r else 0
 
-    def mark_delivered(self, event_id: str) -> None:
+    # error set = the receiver refused it for good; kept for the record, no longer blocks the queue
+    def mark_delivered(self, event_id: str, error: str | None = None) -> None:
         with self.tx() as c:
-            c.execute("UPDATE event_outbox SET delivered_at=?, last_error=NULL WHERE event_id=?",
-                      (self.clock(), event_id))
+            c.execute("UPDATE event_outbox SET delivered_at=?, last_error=? WHERE event_id=?",
+                      (self.clock(), error, event_id))
 
     def mark_failed(self, event_id: str, error: str, max_backoff_s: float = 30) -> None:
         with self.tx() as c:

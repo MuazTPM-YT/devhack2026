@@ -155,7 +155,7 @@ class AgentDiagnosisService:
     # candidates, capabilities: brain/rules.py candidates() and brain/capabilities.py; only read when choose
     async def diagnose(self, box: ToolBox, pattern: Pattern, rule_action: ActionRequest | None,
                        guide: dict[str, Any] | None = None, candidates: list[dict] | None = None,
-                       capabilities: list[dict] | None = None) -> DiagnosisResult:
+                       capabilities: list[dict] | None = None, timeout_s: float | None = None) -> DiagnosisResult:
         incident = box.incident
         box.choose, box.candidates = self.choose, (candidates or []) if self.choose else []
         box.tools_ok = {c["tool"] for c in capabilities or []}
@@ -180,7 +180,7 @@ class AgentDiagnosisService:
             "x-opencode-session": hashlib.sha256(incident.id.encode()).hexdigest()})
         events: list[dict[str, Any]] = []
         try:
-            async with asyncio.timeout(self.timeout_s):
+            async with asyncio.timeout(self.timeout_s if timeout_s is None else min(self.timeout_s, timeout_s)):
                 run = await self.agent.run(json.dumps(brief, sort_keys=True), deps=box, model_settings=settings,
                                            usage_limits=UsageLimits(request_limit=self.max_rounds + 3))
             usage = run.usage
