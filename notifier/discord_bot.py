@@ -241,5 +241,11 @@ class DiscordNotifier(discord.Client):
 
     async def close_approval(self, approval_id: str, row: dict, decision: str):
         message = await (await self.channel(row["channel_id"])).fetch_message(row["message_id"])
-        embed = embeds.decided(first_embed(message), decision, row.get("decided_by"))
+        embed = embeds.decided(first_embed(message), decision, row.get("decided_by"), via=row.get("via"))
         await message.edit(content=f"Approval {approval_id}: {decision}", view=None, embed=embed)
+
+    # an ack from outside Discord (Akira MCP): take the button off the newest wake message, say who acked
+    async def close_page(self, message_id: int, by: str, via: str | None = None) -> None:
+        message = await (await self.channel(self.wake_channel)).fetch_message(message_id)
+        embed = embeds.decided(first_embed(message), "acknowledged", by, via=via)
+        await message.edit(view=None, embed=embed)

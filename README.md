@@ -242,6 +242,55 @@ uv run --env-file .env python -m chaos.cli reset                      # undo eve
 to kubectl as plain words. Read-only verbs (`get`, `describe`, `logs`, ...)
 are not logged. Every other verb is logged as ground truth.
 
+## Akira MCP (Claude Code and Claude Desktop)
+
+`akira_mcp/` is a local MCP server over stdio. It gives Claude Akira's own
+records, not the shop's raw metrics: no PromQL, traces or pod logs (log text
+is an injection path, and raw data plus chaos control would let Claude solve
+incidents itself). For raw shop data use a separate read-only connector.
+
+| Group | On when | Tools |
+|---|---|---|
+| `read` | always | `get_akira_status`, `get_service_health`, `list_incidents`, `get_incident`, `get_incident_report`, `list_receipts`, `get_receipt`, `get_trust_table`, `verify_audit_log`, `list_pending_approvals`, `list_pages`, `watch_events`, `get_runbooks`, `get_recent_changes` (needs `ONCALL_API_TOKEN`) |
+| `chaos` | `AKIRA_MCP_TOOLSETS` has `chaos`; needs `CHAOS_JUDGE_TOKEN` | `list_chaos_options`, `preview_chaos`, `create_chaos`, `draw_random_chaos`, `get_chaos_experiments`, `stop_chaos`, `reset_shop` |
+| `approvals` | `AKIRA_MCP_TOOLSETS` has `approvals`; needs `ONCALL_API_TOKEN` and `AKIRA_OPERATOR_ID` | `decide_approval`, `acknowledge_page`, `clear_receipt` |
+
+- A group without its secret stops the server at start with the variable's
+  name. Without `chaos` the process drops `CHAOS_JUDGE_TOKEN`.
+- Approvals and acks act as `AKIRA_OPERATOR_ID`, a Discord id that must be in
+  `ONCALL_APPROVER_IDS`; Claude cannot choose the identity. Before every
+  write the server shows a confirm dialog when the client supports MCP
+  elicitation, and refuses on decline. Clients without it fall back to their
+  own per-call permission prompt, so **never allowlist the write tools**.
+  Discord shows "by <user> via Akira MCP" on the closed card.
+- Chaos runs go through the panel (ground truth logged) and are marked
+  `origin: akira-mcp`. The admin `kubectl` box, ground truth and reveal are
+  not exposed.
+- Turning on `chaos` and `approvals` together lets one Claude session break
+  the shop and approve its own fix. Bench runs that should be independent
+  must leave those runs out (`origin`).
+
+Claude Code: the repo's `.mcp.json` starts it; run `claude` from the repo
+root and approve the `akira` server once (`/mcp` shows its state). Claude
+Desktop: add to `claude_desktop_config.json`, with absolute paths:
+
+```json
+{"mcpServers": {"akira": {"command": "/absolute/path/to/uv",
+  "args": ["run", "--directory", "/absolute/path/to/devhack2026", "--locked",
+           "--env-file", "/absolute/path/to/devhack2026/.env", "python", "-m", "akira_mcp"]}}}
+```
+
+Live feed without an MCP client (one line per event, reconnects on its own;
+works with Claude Code's Monitor tool):
+
+```sh
+uv run --locked --env-file .env python -m akira_mcp watch [--incident inc-...] [--after SEQ]
+```
+
+The server reads only HTTP: gateway `GET /incidents`, `/incidents/{id}`,
+`/approvals`, `/events/log`; observer `/health/now`, `/journal`; notifier
+`GET /pages`, `POST /pages/{id}/ack`; chaos panel routes; brain `GET /health`.
+
 ## Benchmarks and adversarial checks
 
 The harness resets before every trial, waits for 60 seconds of zero severity,

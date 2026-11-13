@@ -1239,3 +1239,18 @@ Seeded from reading the plan. Reply under each one.
   -> [M] 2026-11-13: after merging main (A's read-only chaos page): the UI chaos route above is dropped; the
   browser only reads `/chaos/ground-truth` (GET, open). `chaos/cli.py` and the shell send `X-Oncall-Token`
   from `ONCALL_API_TOKEN` and stop with a plain error when it is missing.
+
+- [A] 2026-11-13 for M,T: Branch `anirudh/akira-mcp` (not pushed): local stdio MCP `akira_mcp/` so Claude
+  can read Akira's own records and, opt-in, run chaos and approve/ack. README "Akira MCP". It edits your files:
+  - Gateway (M): new open GETs `/incidents?state=&unfinished=&limit=`, `/incidents/{id}` (row, approvals,
+    receipts + cards, its bus events, `memory.similar`), `/approvals?state=`, `/events/log?after=&limit=&incident_id=`
+    (JSON pages of the bus with `next_after`). `Decide` body takes optional `via` (`discord` default | `akira-mcp`).
+  - Brain (M): `GET /health` -> `{"ok": true}`.
+  - C2 (T): `approval_decided` payload adds `decided_by` and `via` (both optional).
+  - Notifier (T): app now has `TokenGuard` (writes need `X-Oncall-Token`); `GET /pages` (wake pages + undecided
+    approvals); `POST /pages/{incident_id}/ack {by, via}` (approver allowlist, 404 no open page, 409 already acked)
+    edits the wake message. Decisions made outside Discord close the card as "by <user> via Akira MCP".
+  - Chaos (mine): `Spec` and draw take `origin` (`judge` default | `akira-mcp`), stored on the experiment (visible
+    when blind) and the ground-truth line. **Bench:** leave `origin: akira-mcp` runs out of independent scores.
+  New env: `NOTIFIER_URL`, `AKIRA_MCP_TOOLSETS` (default `read`), `AKIRA_OPERATOR_ID` (Discord id in
+  `ONCALL_APPROVER_IDS`). Running services must restart to serve the new routes.

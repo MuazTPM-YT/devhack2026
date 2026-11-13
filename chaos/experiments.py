@@ -9,7 +9,7 @@ import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,6 +25,9 @@ MAX_CLEANUP_TRIES = 5
 Health = Callable[[], dict[str, Any] | None]
 
 
+Origin = Literal["judge", "akira-mcp"]
+
+
 class Spec(BaseModel):
     model_config = ConfigDict(extra="forbid")
     target: str = Field(min_length=1, max_length=63)
@@ -35,6 +38,8 @@ class Spec(BaseModel):
     decoy: bool = False
     blind: bool = False
     skip_baseline: bool = False
+    # who asked: a judge (CLI, UI) or Claude through the Akira MCP; bench can tell the runs apart
+    origin: Origin = "judge"
 
 
 # where a field lives, in words a judge can check with kubectl
@@ -190,6 +195,7 @@ class Engine:
             now = self.clock()
             exp: dict[str, Any] = {
                 "id": f"exp-{uuid.uuid4().hex[:10]}", "status": "scheduled", "spec": spec.model_dump(),
+                "origin": spec.origin,
                 "legacy": legacy, "truth": truth, "seed": seed, "family": pre["family"],
                 "registry_version": pre["registry_version"], "baseline": pre["baseline"],
                 "created_at": now, "start_at": now + spec.delay_s, "applied_at": None, "expires_at": None,
@@ -209,7 +215,7 @@ class Engine:
 
     # a valid experiment picked by seed, for the blind challenge
     def draw(self, seed: int | None = None, blind: bool = True, decoy: bool = False,
-             tested_only: bool = True) -> dict[str, Any]:
+             tested_only: bool = True, origin: Origin = "judge") -> dict[str, Any]:
         with self.lock:
             seed = seed if seed is not None else random.SystemRandom().randrange(2**31)
             reg = registry.build(self.run, self.policy)
@@ -219,8 +225,8 @@ class Engine:
             if not options:
                 raise Refused("nothing available to draw from")
             target, capability, choice = random.Random(seed).choice(options)
-            return self.start(Spec(target=target, capability=capability, choice=choice, decoy=decoy, blind=blind),
-                              seed=seed)
+            return self.start(Spec(target=target, capability=capability, choice=choice, decoy=decoy, blind=blind,
+                                   origin=origin), seed=seed)
 
     def _write(self, exp: dict[str, Any], m: dict[str, Any]) -> None:
         m["before"] = read_field(m["kind"], m["name"], m["key"], self.run)
@@ -257,7 +263,8 @@ class Engine:
                                         experiment_id=exp["id"])
         else:
             entry = ground_truth.record(self.truth_path, exp["family"], spec["target"], capability=spec["capability"],
-                                        choice=spec["choice"], experiment_id=exp["id"])
+                                        choice=spec["choice"], experiment_id=exp["id"],
+                                        origin=spec.get("origin", "judge"))
         life = None if exp["legacy"] else (spec["duration_s"] or self._limits()["max_lifetime_s"])
         exp.update(status="active", applied_at=now, expires_at=None if life is None else now + life,
                    truth_entry=entry)

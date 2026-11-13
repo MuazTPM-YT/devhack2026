@@ -35,12 +35,15 @@ def runbook_text(rb: dict) -> str:
 
 
 # copy of a posted embed with the outcome added: who decided and when (plan §6.6 "edit the message")
-def decided(old: discord.Embed | None, outcome: str, by: str | None, now: float | None = None) -> discord.Embed | None:
+def decided(old: discord.Embed | None, outcome: str, by: str | None, now: float | None = None,
+            via: str | None = None) -> discord.Embed | None:
     if old is None:
         return None
     embed = discord.Embed.from_dict(old.to_dict())
     embed.colour = discord.Colour(DECISION_COLOURS.get(outcome, 0x808890))
     who = f" by <@{by}>" if by and by.isdigit() else (f" by {redact(by)[:100]}" if by else "")
+    if via == "akira-mcp":
+        who += " via Akira MCP"
     when = int(time.time() if now is None else now)
     embed.add_field(name="Outcome", value=f"**{outcome}**{who} <t:{when}:R>", inline=False)
     while len(embed) > MAX_TOTAL and len(embed.fields) > 1:

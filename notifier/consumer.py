@@ -71,6 +71,11 @@ class NotificationConsumer:
             row = self.state.get(f"approval:{approval_id}")
             if row:
                 row["decision"] = payload["decision"]
+                # decided outside Discord (Akira MCP): expire_once closes the message and names who and where
+                if payload.get("decided_by") and not row.get("decided_by"):
+                    row["decided_by"] = payload["decided_by"]
+                if payload.get("via"):
+                    row["via"] = payload["via"]
                 self.state.set(f"approval:{approval_id}", row)
             # human said yes: stop paging; reject/expiry is followed by gateway escalation
             wake = pending.get(incident_id)

@@ -5,10 +5,28 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** UI redesign + chaos CLI on `anirudh/ui-redesign`
-(cut from `anirudh/spec-fixes`; neither pushed). Phases 0-4 merged.
+**Current phase:** Akira MCP on `anirudh/akira-mcp` (off main 1893be7, not pushed).
+Phases 0-4 merged.
 
 ## Done (with proof)
+
+- Akira MCP, 2026-11-13, branch `anirudh/akira-mcp` (a51d963, c98bfc5, b44aab5,
+  113ab2b, 0ef7bd9). Decisions by Anirudh: one server with opt-in groups
+  (`read` always; `chaos`, `approvals` via `AKIRA_MCP_TOOLSETS`); approvals as
+  fixed `AKIRA_OPERATOR_ID` behind elicitation, fallback to client prompt;
+  notifier ack route + card sync, no Discord token in MCP; derived health only
+  (no PromQL/traces/logs); HTTP only (new gateway GETs); `watch_events` tool +
+  `python -m akira_mcp watch`; chaos lab + stop + reset, no kubectl/ground truth.
+  Checks: pytest 677 passed, ruff clean, mypy clean (82 files incl. akira_mcp).
+  Live: real stdio launch (`uv run --locked --env-file .env python -m akira_mcp`)
+  handshakes, lists 14 read tools; `get_akira_status`, `get_service_health`,
+  `verify_audit_log` (195 records) answered from the running stack.
+  `claude mcp list` shows `akira` pending approval from `.mcp.json`.
+  Live, all 24 tools via the Claude Desktop config (stdio): drill injected
+  paymentFailure 50% (`exp-c8c1060f96`), approved Akira's revert_config from
+  MCP (receipt #4), `FIXED in 1m 59s: payment errors 53.5% -> 0.0%`, acked an
+  old page, reset healthy in 30.4 s. Results in `akira_mcp/README.md` §9.
+  Gateway, brain, notifier, chaos restarted by me on branch code (detached).
 
 - UI revamp + emil-design-eng audit, 2026-11-13 (df70108). Skill pack
   `emilkowalski/skills` installed project-scoped in `.claude/skills/` +

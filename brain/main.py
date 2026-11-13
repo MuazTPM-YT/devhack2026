@@ -365,6 +365,10 @@ def create_app(brain: Brain | None = None) -> FastAPI:
         task.add_done_callback(_finished)
         return {"incident_id": incident.id, "status": "accepted"}
 
+    @app.get("/health")
+    def health() -> dict:
+        return {"ok": True}
+
     @app.get("/incidents/{incident_id}")
     def get_incident(incident_id: str) -> dict:
         record = app.state.brain.results.get(incident_id)

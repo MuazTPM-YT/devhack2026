@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from chaos import faults, ground_truth, registry
-from chaos.experiments import Engine, Health, Spec
+from chaos.experiments import Engine, Health, Origin, Spec
 from chaos.faults import KubectlError, Kubectl
 from chaos.registry import Refused
 from chaos.reset import ensure_snapshot, reset
@@ -128,6 +128,7 @@ class DrawBody(BaseModel):
     blind: bool = True
     decoy: bool = False
     tested_only: bool = True
+    origin: Origin = "judge"
 
 
 # chaos panel on :7004, admin kubeconfig; the agent must never get a path to this app.
@@ -253,7 +254,7 @@ def create_app(data_dir: Path = Path("data"), run: Kubectl = faults.kubectl,
     @app.post("/chaos/experiments/draw")
     def draw(body: DrawBody):
         try:
-            return started(engine.draw(body.seed, body.blind, body.decoy, body.tested_only))
+            return started(engine.draw(body.seed, body.blind, body.decoy, body.tested_only, body.origin))
         except Refused as error:
             raise HTTPException(409, str(error)) from None
         except KubectlError as error:
