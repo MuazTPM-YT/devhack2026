@@ -355,7 +355,8 @@ class Gateway:
         v = Verification(self.clock(), plan["health"], action.target, victims,
                          action.prediction.model_dump() if action.prediction else None,
                          cfg["window_seconds"] + (cfg["flag_extra_seconds"] if plan["patch"]["kind"] == "configmap" else 0),
-                         cfg["early_abort"])  # flagd needs ~60 s to reload the ConfigMap
+                         cfg["early_abort"],  # flagd needs ~60 s to reload the ConfigMap
+                         abort_after_s=self.policy["detection"]["sustain_seconds"])
         health, human, result = plan["health"], [], None
         while result is None:
             await asyncio.sleep(self.verify_every)

@@ -8,7 +8,8 @@ def service_score(s: dict) -> int:
 
 class Verification:
     def __init__(self, t0: float, health_at_action: dict, culprit: str, victims: list[str],
-                 prediction: dict | None, window_s: float, early_abort: bool, stable_s: float = 15):
+                 prediction: dict | None, window_s: float, early_abort: bool, stable_s: float = 15,
+                 abort_after_s: float = 30):
         self.t0 = t0
         self.sev_before = health_at_action["severity"]
         # only services the observer measures; a trace-only victim (frontend-proxy) would block recovery forever
@@ -17,6 +18,8 @@ class Verification:
         self.window_s = window_s
         self.early_abort = early_abort
         self.stable_s = stable_s
+        self.abort_after_s = abort_after_s
+        self.worse_since: float | None = None
         self.healthy_since: float | None = None
         self.prediction_held = False
         self.recovered = False
@@ -41,8 +44,13 @@ class Verification:
 
         if non_agent_change:
             return "handed_off"
+        # victims lag their sustain window, so one worse tick after a good fix is normal; abort if it holds
         if self.early_abort and health["severity"] > self.sev_before:
-            return "early_abort"
+            self.worse_since = now if self.worse_since is None else self.worse_since
+            if now - self.worse_since >= self.abort_after_s:
+                return "early_abort"
+        else:
+            self.worse_since = None
         healthy = all(services.get(s, {}).get("unhealthy") is False for s in self.watched)
         self.recovered = healthy
         if healthy:

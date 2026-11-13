@@ -32,7 +32,8 @@ class VerifierTest(unittest.TestCase):
         self.assertEqual(v.outcome(harm_clean=False), "undo")
 
     def test_early_abort_when_severity_rises(self):
-        self.assertEqual(verification().step(5, health(9, **START["services"]), False), "early_abort")
+        v = Verification(0, START, "payment", ["checkout"], PRED, window_s=120, early_abort=True, abort_after_s=0)
+        self.assertEqual(v.step(5, health(9, **START["services"]), False), "early_abort")
 
     def test_hands_off_on_non_agent_change(self):
         self.assertEqual(verification().step(5, START, True), "handed_off")
