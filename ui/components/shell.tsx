@@ -11,6 +11,7 @@ const NAV = [
   { href: "/chaos", label: "Chaos" },
   { href: "/trust", label: "Trust" },
   { href: "/receipts", label: "Receipts" },
+  { href: "/benchmark", label: "Benchmark" },
 ];
 
 // pulse line in a ring: the agent's mark
