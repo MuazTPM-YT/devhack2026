@@ -15,7 +15,10 @@ def test_no_config_file_means_disabled(tmp_path):
 def test_repo_config_loads_and_is_disabled():
     policy = load_policy()
     assert policy.mode == "disabled" and policy.delegation_enabled is False
-    assert policy == OrchestrationPolicy()  # the file restates the code defaults
+    # shipped off; token limits measured from recorded runs so delegation can be switched on deliberately
+    assert policy.max_input_tokens_per_request == 24000 and policy.max_total_tokens == 120000
+    assert policy.model_copy(update={"max_input_tokens_per_request": None, "max_total_tokens": None}) == \
+        OrchestrationPolicy()
 
 
 def test_config_typo_fails_loud(tmp_path):

@@ -15,5 +15,5 @@ investigation_deadline_seconds: 150
 specialist_deadline_seconds: 45
 task_lease_seconds: 30
 task_heartbeat_seconds: 10
-max_input_tokens_per_request: null  # set from measured prompts before enabling delegation
-max_total_tokens: null
+max_input_tokens_per_request: 24000  # ~4x measured mean request (5.4k), ~2x the largest late turn
+max_total_tokens: 120000             # ~2x worst recorded run (58k over 9 requests)
