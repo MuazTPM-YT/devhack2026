@@ -45,6 +45,35 @@ class ApprovalController:
             return decision
 
 
+    # plan §6.6: a wake page re-posts until acknowledged or resolved; an on-call person acks it here
+    async def acknowledge(self, incident_id: str, user_id: str) -> str:
+        if user_id not in self.approvers:
+            return "not authorised"
+        if self.state.get(f"ack:{incident_id}"):
+            return "already acknowledged"
+        self.state.set(f"ack:{incident_id}", {"by": user_id, "at": time.time()})
+        return f"acknowledged by {user_id}; paging stopped"
+
+
+class AckButton(discord.ui.Button):
+    def __init__(self, incident_id: str, controller: ApprovalController):
+        super().__init__(label="Acknowledge", custom_id=f"ack:{incident_id}")
+        self.incident_id, self.controller = incident_id, controller
+
+    async def callback(self, interaction: discord.Interaction):
+        result = await self.controller.acknowledge(self.incident_id, str(interaction.user.id))
+        await interaction.response.send_message(result, ephemeral=True)
+        if result.startswith("acknowledged") and interaction.message:
+            self.disabled = True
+            await interaction.message.edit(view=self.view)
+
+
+class AckView(discord.ui.View):
+    def __init__(self, incident_id: str, controller: ApprovalController):
+        super().__init__(timeout=None)
+        self.add_item(AckButton(incident_id, controller))
+
+
 class ApprovalButton(discord.ui.Button):
     def __init__(self, approval_id: str, decision: str, label: str,
                  controller: ApprovalController):
@@ -88,6 +117,9 @@ class DiscordNotifier(discord.Client):
         for approval_id, row in self.controller.state.approvals().items():
             if not row.get("decision") and row["expires_at"] > time.time():
                 self.add_view(ApprovalView(approval_id, self.controller), message_id=row["message_id"])
+        for incident_id, row in (self.controller.state.get("wakes") or {}).items():
+            if row.get("message_id") and not self.controller.state.get(f"ack:{incident_id}"):
+                self.add_view(AckView(incident_id, self.controller), message_id=row["message_id"])
 
     async def send_text(self, channel_id: int, text: str, *, wake: bool = False, view=None):
         channel = self.get_channel(channel_id) or await self.fetch_channel(channel_id)
@@ -101,8 +133,10 @@ class DiscordNotifier(discord.Client):
     async def fyi(self, card: Card, receipt_url: str) -> None:
         await self.send_text(self.fyi_channel, f"{card.text}\n{receipt_url}")
 
-    async def wake(self, card: Card, briefing: str) -> None:
-        await self.send_text(self.wake_channel, f"{card.text}\n{briefing}", wake=True)
+    async def wake(self, card: Card, briefing: str) -> int | None:
+        message = await self.send_text(self.wake_channel, f"{card.text}\n{briefing}", wake=True,
+                                       view=AckView(card.incident_id, self.controller))
+        return message.id
 
     async def ticket(self, card: Card) -> None:
         await self.send_text(self.tickets_channel, card.text)

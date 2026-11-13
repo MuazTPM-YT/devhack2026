@@ -159,3 +159,28 @@ async def test_expired_approval_repages_as_expired(tmp_path, monkeypatch):
         await consumer.expire_once()
         await consumer.repage_once()
     assert notifier.pages == ["Approval expired; no action taken"]
+
+
+# plan §6.6: wake pages re-post until acknowledged; before, nothing could ack, so they paged forever
+async def test_acknowledge_stops_repaging_and_needs_an_approver(tmp_path, monkeypatch):
+    from notifier.discord_bot import AckView
+    monkeypatch.setattr("notifier.consumer.time.time", lambda: 50)
+    state = NotifierState(tmp_path / "state.db")
+    notifier = PagerNotifier()
+    card = {"incident_id": "i", "status": "WOKE YOU BECAUSE", "text": "help", "evidence_ids": []}
+    async with httpx.AsyncClient() as client:
+        consumer = NotificationConsumer(client, "http://gateway", notifier, state, repage_s=10)
+        await consumer.handle({"seq": 1, "event": {"type": "escalated", "incident_id": "i",
+                                                   "payload": {"card": card, "briefing": "b"}}})
+        controller = ApprovalController(client, "http://gateway", {"approver"}, state)
+        assert await controller.acknowledge("i", "stranger") == "not authorised"
+        monkeypatch.setattr("notifier.consumer.time.time", lambda: 70)
+        await consumer.repage_once()
+        assert notifier.pages == ["b", "b"]
+        assert (await controller.acknowledge("i", "approver")).startswith("acknowledged by approver")
+        assert await controller.acknowledge("i", "approver") == "already acknowledged"
+        monkeypatch.setattr("notifier.consumer.time.time", lambda: 200)
+        await consumer.repage_once()
+    assert notifier.pages == ["b", "b"] and state.get("wakes") == {}
+    view = AckView("i", controller)
+    assert view.is_persistent() and [b.custom_id for b in view.children] == ["ack:i"]
