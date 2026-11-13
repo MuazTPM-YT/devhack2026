@@ -396,7 +396,7 @@ class Gateway:
         v = Verification(self.clock(), plan["health"], action.target, victims,
                          action.prediction.model_dump() if action.prediction else None,
                          cfg["window_seconds"] + extra, cfg["early_abort"],
-                         grace_s=cfg["early_abort_grace_seconds"] + extra)
+                         grace_s=cfg["early_abort_grace_seconds"] + extra, prediction_delay_s=extra)
         health, human, result = plan["health"], [], None
         while result is None:
             await asyncio.sleep(self.verify_every)

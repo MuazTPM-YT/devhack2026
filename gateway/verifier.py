@@ -9,7 +9,7 @@ def service_score(s: dict) -> int:
 class Verification:
     def __init__(self, t0: float, health_at_action: dict, culprit: str, victims: list[str],
                  prediction: dict | None, window_s: float, early_abort: bool, stable_s: float = 15,
-                 grace_s: float = 0):
+                 grace_s: float = 0, prediction_delay_s: float = 0):
         self.t0 = t0
         self.sev_before = health_at_action["severity"]
         # only services the observer measures; a trace-only victim (frontend-proxy) would block recovery forever
@@ -19,6 +19,9 @@ class Verification:
         self.early_abort = early_abort
         self.stable_s = stable_s
         self.grace_s = grace_s
+        # known propagation delay the model can't see (flagd reloads a ConfigMap ~60 s after the patch): live,
+        # a flag revert predicted "within 60 s" recovered at ~110 s and lost its trust credit
+        self.prediction_delay_s = prediction_delay_s
         self.healthy_since: float | None = None
         # None = nothing to check (no prediction); a fix without one can only be "right by accident"
         self.prediction_held: bool | None = False if prediction else None
@@ -39,7 +42,7 @@ class Verification:
         self.last_ts = now
 
         p = self.prediction
-        if p and now - self.t0 <= p["within_s"]:
+        if p and now - self.t0 <= p["within_s"] + self.prediction_delay_s:
             value = services.get(p["target"], {}).get(p["metric"])
             if value is not None and value < p["below"]:
                 self.prediction_held = True
