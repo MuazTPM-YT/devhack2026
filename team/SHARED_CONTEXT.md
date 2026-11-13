@@ -945,3 +945,10 @@ Seeded from reading the plan. Reply under each one.
   prediction held, harm clean, healthy 1m 15s after the action. Smoke #7
   was refused by `max_actions_per_hour: 3` (earlier smoke runs used it);
   for local testing Twaha's `config/policy.yaml` has 30, uncommitted.
+- [T] 2026-11-13 for M,A: Merged main into `twaha/live-fixes-2` (`49b075c`).
+  Corrections to my notes above: early abort uses **M's grace period**; my
+  hold-30-s version is dropped. The card is **M's spec card**; I added the
+  labelled `Model says: ...` sentence, a pattern sentence instead of
+  "unknown", and a plain-name guard before any kubectl undo command. The
+  new column is `incidents.llm_why` (not `why`), so it does not clash with
+  M's journal-based `Gateway.why`. Prompt merged to version 5.
