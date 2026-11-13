@@ -11,6 +11,8 @@ from notifier.state import NotifierState
 from schemas.models import Card
 
 TERMINAL = {"incident_resolved", "handed_off"}
+# payload extras the embeds show; kept with a wake so a re-page shows them too
+DETAILS = ("runbook", "seen_before")
 
 
 class NotificationConsumer:
@@ -26,6 +28,7 @@ class NotificationConsumer:
         event = record["event"]
         incident_id, kind = event.get("incident_id"), event["type"]
         payload = event.get("payload", {})
+        details = {k: payload[k] for k in DETAILS if payload.get(k)}
         pending = self.state.get("wakes", {})
         if kind in TERMINAL:
             pending.pop(incident_id, None)
@@ -33,20 +36,23 @@ class NotificationConsumer:
             card = Card.model_validate(payload["card"])
             if kind == "approval_requested":
                 await self.notifier.request_approval(payload["approval_id"], card,
-                                                     payload["diff"], payload["forecast"], payload["expires_at"])
+                                                     payload["diff"], payload["forecast"], payload["expires_at"],
+                                                     details=details)
                 pending[incident_id] = {"card": card.model_dump(), "briefing": "Approval pending",
-                                        "last_page": time.time(), "approval_id": payload["approval_id"]}
+                                        "last_page": time.time(), "approval_id": payload["approval_id"],
+                                        "details": details, "pages": 1}
             elif kind == "incident_resolved":
                 if card.status == "MITIGATED, NOT FIXED":
-                    await self.notifier.ticket(card)
+                    await self.notifier.ticket(card, details=details)
                 else:
-                    await self.notifier.fyi(card, self.link(payload.get("receipt_url", "")))
+                    await self.notifier.fyi(card, self.link(payload.get("receipt_url", "")), details=details)
             elif kind == "escalated":
-                message_id = await self.notifier.wake(card, payload.get("briefing", ""))
+                message_id = await self.notifier.wake(card, payload.get("briefing", ""), details=details)
                 pending[incident_id] = {"card": card.model_dump(), "briefing": payload.get("briefing", ""),
-                                        "last_page": time.time(), "message_id": message_id}
+                                        "last_page": time.time(), "message_id": message_id,
+                                        "details": details, "pages": 1}
             else:
-                await self.notifier.fyi(card, self.link(payload.get("receipt_url", "")))
+                await self.notifier.fyi(card, self.link(payload.get("receipt_url", "")), details=details)
         if kind == "approval_decided":
             approval_id = payload["approval_id"]
             row = self.state.get(f"approval:{approval_id}")
@@ -67,23 +73,25 @@ class NotificationConsumer:
         return f"{self.gateway_url.rstrip('/')}{url}" if url.startswith("/") else url
 
     async def repage_once(self):
-        sent: dict[str, tuple[float, Any]] = {}
+        sent: dict[str, tuple[float, Any, int]] = {}
         for incident_id, row in self.state.get("wakes", {}).items():
             if self.state.get(f"ack:{incident_id}") or time.time() - row["last_page"] < self.repage_s:
                 continue
+            page = row.get("pages", 1) + 1
             try:
-                message_id = await self.notifier.wake(Card.model_validate(row["card"]), row["briefing"])
+                message_id = await self.notifier.wake(Card.model_validate(row["card"]), row["briefing"],
+                                                      details={**row.get("details", {}), "page": page})
             except (discord.HTTPException, httpx.HTTPError):
                 continue
-            sent[incident_id] = (time.time(), message_id)
+            sent[incident_id] = (time.time(), message_id, page)
         # re-read: an incident can close while we wait on Discord; writing the old list back revived it
         pending = self.state.get("wakes", {})
         for incident_id in [i for i in pending if self.state.get(f"ack:{i}")]:
             pending.pop(incident_id)  # a human acknowledged it: stop paging
-        for incident_id, (ts, message_id) in sent.items():
+        for incident_id, (ts, message_id, page) in sent.items():
             if incident_id in pending:
                 row = pending[incident_id]
-                row["last_page"], row["message_id"] = ts, message_id or row.get("message_id")
+                row["last_page"], row["message_id"], row["pages"] = ts, message_id or row.get("message_id"), page
         self.state.set("wakes", pending)
 
     async def repage(self):

@@ -46,7 +46,7 @@ async def test_fyi_receipt_link_is_absolute(tmp_path):
     class Notifier:
         urls: list[str] = []
 
-        async def fyi(self, card, url):
+        async def fyi(self, card, url, details=None):
             self.urls.append(url)
 
     card = {"incident_id": "i", "status": "FIXED", "text": "fixed", "evidence_ids": []}
