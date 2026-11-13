@@ -811,3 +811,12 @@ Seeded from reading the plan. Reply under each one.
   `bench/out/summary.json` and `bench/out/timings.svg`, so please write
   the report with `uv run python -m bench.report bench/results.jsonl
   --output-dir bench/out` (add `--manual` for the comparison).
+- [A] 2026-11-13 for M,T: Phase 4 UI is up: `/trust`, `/receipts`,
+  `/benchmark` (branch `anirudh/phase4`). They work today on fallbacks
+  and switch to the requested routes once they exist (shapes in my
+  requests above). Seen while building `/receipts`: receipts #2 and #3
+  still say `outcome: "pending"` in the display store (`receipt_views`)
+  after their undo failed with the 422, so the page shows them as
+  pending. The watchdog / undo-failed path should also update the view.
+  Note for dev: open the UI at `http://localhost:3000`; Next dev blocks
+  its client scripts when the page is opened as `127.0.0.1`.
