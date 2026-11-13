@@ -258,10 +258,16 @@ class Coordinator:
                 events.append(("alerts_grouped", iid, grouped.model_dump(mode="json")))
                 events.append(("incident_scope_changed", iid, {"scope_revision": revision, "services": services,
                                                                "reasons": [reason, cause]}))
+            related: dict[str, list[dict[str, str]]] = {}
             for lk in decision.links:
                 a, b = sorted((names.get(lk.a, lk.a), names.get(lk.b, lk.b)))
                 self.ws.link(c, IncidentLink(incident_a=a, incident_b=b, relation=lk.relation,  # type: ignore[arg-type]
                                              reason=lk.reason, supporting_ids=lk.supporting_ids))
+                related.setdefault(a, []).append({"incident_id": b, "reason": lk.reason})
+                related.setdefault(b, []).append({"incident_id": a, "reason": lk.reason})
+            for kind, iid, payload in events:  # the UI shows possibly-related incidents next to the scope
+                if kind == "incident_scope_changed" and iid in related:
+                    payload["related"] = related[iid]
             for kind, iid, payload in events:
                 self._enqueue(c, kind, iid, payload)
         await self.flush()
@@ -363,6 +369,14 @@ class Coordinator:
         except Exception as e:
             log.warning("incident %s: experience not recorded: %r", iid, e)
 
+    # the gateway moved our fix on: show it (queued/asking = awaiting_gateway, written = monitoring)
+    def on_intent(self, iid: str, status: str | None) -> None:
+        phase = {"queued": "awaiting_gateway", "awaiting_approval": "awaiting_gateway", "executing": "monitoring",
+                 "verifying": "monitoring"}.get(status or "")
+        w = self.ws.workspace(iid)
+        if phase and w is not None and w["phase"] not in ("terminal", phase, "needs_human"):
+            self.ws.update(iid, w["revision"], phase=phase)
+
     async def follow_terminal_events(self) -> None:
         after, down_since = 0, None
         while True:
@@ -372,6 +386,8 @@ class Coordinator:
                     event = envelope["event"]
                     if event["type"] in TERMINAL_EVENTS and event.get("incident_id"):
                         self.on_terminal(event["incident_id"])
+                    elif event["type"] == "action_intent_changed" and event.get("incident_id"):
+                        self.on_intent(event["incident_id"], (event.get("payload") or {}).get("status"))
                 down_since = None
             except Exception as e:  # any error, else incidents stop closing for good
                 if down_since is None:

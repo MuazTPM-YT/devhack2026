@@ -83,6 +83,9 @@ async def test_two_unrelated_faults_get_separate_owners_and_fixes(tmp_path):
     assert all(e.get("event_id", "").startswith("evt-") for e in world.published)
     links = coord.ws.links(incidents[0])
     assert [lk.reason for lk in links] == ["unknown_topology"]  # product-catalog has no known edges
+    scopes = {e["incident_id"]: e["payload"] for e in published(world, "incident_scope_changed")}
+    assert all(p["related"][0]["reason"] == "unknown_topology" for p in scopes.values())
+    assert {p["related"][0]["incident_id"] for p in scopes.values()} == set(incidents)
 
 
 async def test_shared_cause_gets_one_commander(tmp_path):
@@ -321,3 +324,19 @@ async def test_event_id_redelivery_appends_once_even_after_restart(tmp_path):
     plain = await restarted.publish({"type": "incident_opened", "incident_id": "inc-1", "payload": {}})
     assert plain["seq"] == 2 and "event_id" not in plain["event"]
     assert json.loads(path.read_text().splitlines()[0])["event"]["event_id"] == "evt-1"
+
+
+async def test_gateway_progress_moves_the_phase(tmp_path):
+    world, clock = World(), Clock()
+    brain = coordinated(world, tmp_path, clock)
+    coord = brain.coordinator
+    await coord.start()
+    await coord.on_signals(batch(ep("payment")))
+    [iid] = coord.ws.unfinished()
+    await settle(coord)
+    assert coord.ws.workspace(iid)["phase"] == "awaiting_gateway"
+    coord.on_intent(iid, "verifying")
+    assert coord.ws.workspace(iid)["phase"] == "monitoring"
+    coord.on_terminal(iid)
+    coord.on_intent(iid, "awaiting_approval")  # late event after the end changes nothing
+    assert coord.ws.workspace(iid)["phase"] == "terminal"
