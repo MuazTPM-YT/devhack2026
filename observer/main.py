@@ -124,9 +124,13 @@ class Observer:
         except httpx.HTTPError as e:
             log.error("incident %s: escalation publish failed: %s", inc["id"], type(e).__name__)
 
+    # one bad poll (locked DB, odd API object) must not end detection for good
     async def run(self) -> None:
         while True:
-            await self.step()
+            try:
+                await self.step()
+            except Exception as e:
+                log.error("detector poll failed: %r; next poll in %s s", e, self.poll_s)
             await asyncio.sleep(self.poll_s)
 
     # close our open incident when the gateway reports it finished
@@ -142,7 +146,7 @@ class Observer:
                     if event["type"] in TERMINAL and inc and event.get("incident_id") == inc["id"]:
                         self.detector.close_incident()
                 down_since = None
-            except (httpx.HTTPError, KeyError, ValueError) as e:
+            except Exception as e:  # any error, else incidents stop closing for good
                 if down_since is None:  # once per outage, not every 2 s
                     log.warning("event stream failed: %s; retrying every 2 s", type(e).__name__)
                     down_since = self.clock()

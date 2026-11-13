@@ -191,3 +191,26 @@ async def test_stuck_incident_is_closed_and_escalated_after_max_age():
     assert obs.conn.execute("SELECT state FROM incidents WHERE id=?", (inc["id"],)).fetchone()[0] == "escalated"
     # payment is still sick: suppressed until it recovers once, so no re-page loop
     assert obs.detector.incident is None
+
+
+# one unexpected error (here a locked DB, three processes share it) ended the detector task for good:
+# no log line, nothing detected ever again
+async def test_detector_loop_survives_a_failed_poll(caplog):
+    import asyncio
+    import sqlite3
+    obs = make(Backend({}, {}), [0])
+    obs.poll_s = 0
+    calls = []
+
+    async def step():
+        calls.append(1)
+        if len(calls) == 1:
+            raise sqlite3.OperationalError("database is locked")
+        raise asyncio.CancelledError
+
+    obs.step = step
+    try:
+        await obs.run()
+    except asyncio.CancelledError:
+        pass
+    assert len(calls) == 2 and "database is locked" in caplog.text
