@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Atkinson_Hyperlegible_Next, Atkinson_Hyperlegible_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 
 import { Shell } from "@/components/shell";
@@ -7,8 +7,10 @@ import { readPolicy } from "@/lib/config";
 
 import "./globals.css";
 
-const sans = Geist({ subsets: ["latin"], variable: "--font-sans" });
-const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
+// built to be read fast and without mistakes (slashed zero, open shapes): this page is read under stress.
+// next/font has no fallback metrics for it, so no size-adjusted fallback
+const sans = Atkinson_Hyperlegible_Next({ subsets: ["latin"], variable: "--font-sans", adjustFontFallback: false });
+const mono = Atkinson_Hyperlegible_Mono({ subsets: ["latin"], variable: "--font-mono", adjustFontFallback: false });
 
 export const metadata: Metadata = {
   title: { default: "Akira", template: "%s · Akira" },
