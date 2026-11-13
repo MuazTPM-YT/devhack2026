@@ -2,21 +2,24 @@
 # Run: uv run --locked --env-file .env uvicorn gateway.main:app --host 127.0.0.1 --port 7003
 import asyncio
 import contextlib
+import json
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
+from brain import memory
+from brain.redact import INJECTION, redact_value
 from gateway import events, trust
 from gateway.audit import verify
 from gateway.approvals import approvers_from_env
 from gateway.checklist import Gateway
 from gateway.mcp_server import build_mcp
-from gateway.receipts import ReceiptStore, create_receipts_router
+from gateway.receipts import ReceiptStore, build_card, create_receipts_router
 from schemas import auth, config
 from schemas.db import DEFAULT_PATH, connect
 from schemas import logs
@@ -27,6 +30,7 @@ logs.setup()
 class Decide(BaseModel):
     decision: Literal["approved", "rejected"]
     decided_by: str
+    via: Literal["discord", "akira-mcp"] = "discord"
 
 
 class Clear(BaseModel):
@@ -36,6 +40,26 @@ class Clear(BaseModel):
 class RehearsalCredit(BaseModel):
     receipt_id: int
     diagnosis_matched: bool
+
+
+ApprovalState = Literal["pending", "approved", "rejected", "expired"]
+
+
+# the model's "why" was written after reading untrusted evidence: drop it when it looks like an instruction
+def incident_view(row: dict) -> dict:
+    out = {k: v for k, v in row.items() if k != "victims_json"}
+    out["victims"] = json.loads(row.get("victims_json") or "[]")
+    out["major"] = bool(row.get("major"))
+    if out.get("llm_why") and INJECTION.search(out["llm_why"]):
+        out["llm_why"] = None
+    return redact_value(out)
+
+
+def approval_view(row: dict, now: float) -> dict:
+    out = {k: v for k, v in row.items() if k != "action_json"}
+    out["action"] = json.loads(row["action_json"])
+    out["past_expiry"] = row["expires_at"] <= now
+    return redact_value(out)
 
 
 def require_env(*names: str) -> list[str]:
@@ -102,7 +126,7 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
     # caller must hold ONCALL_API_TOKEN (TokenGuard); decided_by is then checked against the allowlist
     @app.post("/approvals/{approval_id}/decide")
     async def decide(approval_id: str, body: Decide) -> dict:
-        d = await holder["gw"].decide(approval_id, body.decision, body.decided_by)
+        d = await holder["gw"].decide(approval_id, body.decision, body.decided_by, body.via)
         return d.model_dump(mode="json")
 
     # after a failed watchdog undo: an approver confirms the cluster was checked, actions may run again
@@ -143,6 +167,63 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
         gw = holder["gw"]
         with gw.lock:
             return [dict(r) for r in gw.conn.execute("SELECT * FROM ledger ORDER BY pattern, action, target")]
+
+    # ---- read views for the Akira MCP (open GETs like /receipts; text redacted) --------------------
+    # unfinished: anything not yet resolved, escalated or handed off (open, verifying, awaiting_approval, ...)
+    @app.get("/incidents")
+    def list_incidents(state: str | None = Query(None, max_length=40), unfinished: bool = False,
+                       limit: int = Query(50, ge=1, le=200)) -> list[dict]:
+        gw = holder["gw"]
+        where = ""
+        args: tuple[str, ...] = ()
+        if unfinished:
+            where = " WHERE state IS NULL OR state NOT IN ('resolved', 'escalated', 'handed_off')"
+        elif state:
+            where, args = " WHERE state = ?", (state,)
+        with gw.lock:
+            rows = gw.conn.execute(f"SELECT * FROM incidents{where} ORDER BY opened_at DESC LIMIT ?",
+                                   (*args, limit)).fetchall()
+        return [incident_view(dict(r)) for r in rows]
+
+    # one incident with everything around it: approvals, receipts + cards, its bus events, similar past ones
+    @app.get("/incidents/{incident_id}")
+    def get_incident(incident_id: str, events_limit: int = Query(300, ge=1, le=1000)) -> dict:
+        gw = holder["gw"]
+        with gw.lock:
+            row = gw.conn.execute("SELECT * FROM incidents WHERE id=?", (incident_id,)).fetchone()
+            if row is None:
+                raise HTTPException(404, "unknown incident")
+            asks = gw.conn.execute("SELECT * FROM approvals WHERE incident_id=? ORDER BY created_at",
+                                   (incident_id,)).fetchall()
+            ids = [r[0] for r in gw.conn.execute("SELECT id FROM receipts WHERE incident_id=? ORDER BY id",
+                                                 (incident_id,))]
+            past = memory.similar(gw.conn, incident_id, row["culprit"], row["pattern"])
+        receipts = [{"id": i, "receipt": r, "card": build_card(r, i)} for i in ids if (r := gw.receipts.get(i))]
+        mine = [rec for rec in events.active_bus().audit.records if rec["event"].get("incident_id") == incident_id]
+        now = gw.clock()
+        return {"incident": incident_view(dict(row)), "approvals": [approval_view(dict(a), now) for a in asks],
+                "receipts": receipts, "events": mine[-events_limit:], "events_total": len(mine), "similar": past}
+
+    @app.get("/approvals")
+    def list_approvals(state: ApprovalState | None = None, limit: int = Query(50, ge=1, le=200)) -> list[dict]:
+        gw = holder["gw"]
+        where, args = (" WHERE state = ?", (state,)) if state else ("", ())
+        with gw.lock:
+            rows = gw.conn.execute(f"SELECT * FROM approvals{where} ORDER BY created_at DESC LIMIT ?",
+                                   (*args, limit)).fetchall()
+        now = gw.clock()
+        return [approval_view(dict(r), now) for r in rows]
+
+    # bus records after a seq, as JSON (the SSE stream replays everything and never ends; pollers need a page)
+    @app.get("/events/log")
+    def events_log(after: int = Query(0, ge=0), limit: int = Query(200, ge=1, le=1000),
+                   incident_id: str | None = None) -> dict:
+        records = events.active_bus().audit.records
+        page = [r for r in records[after:] if incident_id is None or r["event"].get("incident_id") == incident_id]
+        # next_after: where the next poll starts; short of the end when the page was cut at limit
+        cut = len(page) > limit
+        return {"records": page[:limit], "last_seq": len(records),
+                "next_after": page[limit - 1]["seq"] if cut else len(records)}
 
     app.mount("/", mcp.streamable_http_app())  # serves /mcp; mounted last so the routes above win
     return app
