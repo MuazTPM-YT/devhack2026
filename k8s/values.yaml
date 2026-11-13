@@ -46,6 +46,12 @@ components:
       limits:
         memory: 450Mi
 
+  # same JVM story as ad: at 293Mi of 300Mi it OOMKilled again and again, worst after a kafka restart
+  fraud-detection:
+    resources:
+      limits:
+        memory: 450Mi
+
   payment:
     replicas: 2
   checkout:

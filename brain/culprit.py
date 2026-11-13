@@ -6,10 +6,10 @@ from collections import Counter
 import httpx
 
 from brain.graph import downstream
-from brain.rules import latest_change_before_onset
+from brain.rules import flag_targets, latest_change_before_onset
 
 
-# ~20 recent error traces per service, last 5 min. VERIFY params/path on A's cluster (internal Jaeger API)
+# ~20 recent error traces per service, last 5 min (internal Jaeger query API, checked on the live cluster)
 async def fetch_error_traces(http: httpx.AsyncClient, jaeger_url: str, services: list[str], now: float,
                              lookback_s: float = 300, limit: int = 20) -> list[dict]:
     traces: dict[str, dict] = {}
@@ -89,15 +89,25 @@ def find_culprit(traces: list[dict], unhealthy: list[str], edges: list[tuple[str
 
 
 # culprit had no change of its own: a recent change on something it depends on is the likelier root
-# (scenario 5: valkey-cart scaled to 0, cart shows the errors)
+# (scenario 5: valkey-cart scaled to 0, cart shows the errors; scenario 3: a flag that config/services.yaml
+# `flags:` maps to a dependency). -> (journal entry, service it moves the culprit to), or None
 def dependency_change(journal: list[dict], culprit: str, edges: list[tuple[str, str, float]], services: dict,
-                      onset: float, window_s: float, flag_map: dict | None = None) -> dict | None:
+                      onset: float, window_s: float, flag_map: dict | None = None,
+                      unhealthy: list[str] | tuple = ()) -> tuple[dict, str] | None:
     own = latest_change_before_onset(journal, culprit, onset, window_s, flag_map)
     if own and not own["by_agent"]:
         return None
     # ponytail: datastores emit no spans, so Jaeger has no edge to them; treat stateful services as dependencies
     deps = (downstream(edges, culprit) | {s for s, v in services.items() if v.get("kind") == "stateful"}) - {culprit}
-    hits = [j for j in journal if not j["by_agent"] and j["kind"] != "restart"
-            and onset - window_s <= j["ts"] <= onset and j["object"].startswith("deployment/")
-            and j["object"].split("/", 1)[1] in deps]
-    return max(hits, key=lambda j: (j["ts"], j["id"]), default=None)
+    if culprit not in services:
+        # a trace origin we can't act on (frontend-proxy): the services that are actually sick are candidates too
+        deps |= set(unhealthy) - {culprit}
+    hits: list[tuple[dict, str]] = []
+    for j in journal:
+        if j["by_agent"] or j["kind"] == "restart" or not onset - window_s <= j["ts"] <= onset:
+            continue
+        if j["object"].startswith("deployment/") and (svc := j["object"].split("/", 1)[1]) in deps:
+            hits.append((j, svc))
+        elif j["kind"] == "flag":
+            hits.extend((j, svc) for svc in sorted(flag_targets(j, flag_map or {}) & deps))
+    return max(hits, key=lambda h: (h[0]["ts"], h[0]["id"]), default=None)

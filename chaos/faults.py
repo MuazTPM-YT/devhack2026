@@ -16,9 +16,6 @@ FLIP_FLAG = "paymentFailure"
 FLIP_VARIANT = "50%"
 FLAG_CONFIGMAP = config.load("services")["flag_config"]["configmap"]
 FLAG_FILE = "demo.flagd.json"
-# flagd reads this emptyDir copy and hot-reloads it; flagd-ui mounts the same dir here
-LIVE_FLAGS = ["exec", "-i", "deploy/flagd", "-c", "flagd-ui", "--"]
-LIVE_FLAG_PATH = f"/app/data/{FLAG_FILE}"
 
 Kubectl = Callable[..., str]
 
@@ -77,16 +74,11 @@ def read_flags(run: Kubectl = kubectl) -> str:
     return json.loads(run("get", "configmap", FLAG_CONFIGMAP, "-o", "json"))["data"][FLAG_FILE]
 
 
-def read_live_flags(run: Kubectl = kubectl) -> str:
-    return run(*LIVE_FLAGS, "cat", LIVE_FLAG_PATH)
-
-
-# ConfigMap: survives flagd restarts and the observer journals it. Live file: takes effect now.
-# Never restart flagd: services' flagd clients go stale and keep the old value.
+# flagd reads the ConfigMap directly (k8s/values.yaml) and reloads ~60 s after a patch; never restart
+# flagd: services' flagd clients go stale and keep the old value (seen live)
 def write_flags(text: str, run: Kubectl = kubectl) -> None:
     run("patch", "configmap", FLAG_CONFIGMAP, "--type=merge",
         "-p", json.dumps({"data": {FLAG_FILE: text}}), f"--field-manager={FIELD_MANAGER}")
-    run(*LIVE_FLAGS, "sh", "-c", f"cat > {LIVE_FLAG_PATH}", input=text)
 
 
 # scenario 3: a plain bad flag change, half of payments fail; the fix is reverting the flag

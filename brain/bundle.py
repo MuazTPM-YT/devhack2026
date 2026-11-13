@@ -75,11 +75,17 @@ def trace_evidence(traces: list[dict], now: float, limit: int = 5) -> list[Evide
 
 
 # Kubernetes events on the culprit's pods, plus each container's last termination (OOMKilled, exit code)
-def k8s_evidence(pods: list[dict], events: list[dict], now: float) -> list[Evidence]:
+# newest `limit` events only: a crash-looping pod piles up dozens and they all read alike
+def _event_time(e: dict) -> str:
+    return e.get("lastTimestamp") or e.get("eventTime") or e.get("metadata", {}).get("creationTimestamp") or ""
+
+
+def k8s_evidence(pods: list[dict], events: list[dict], now: float, limit: int = 10) -> list[Evidence]:
     names = {p["metadata"]["name"] for p in pods}
+    mine = sorted((e for e in events if e.get("involvedObject", {}).get("name") in names), key=_event_time)[-limit:]
     out = [Evidence(id=f"event:{e['metadata']['uid']}", kind="event", ts=now,
                     summary=f"{e['involvedObject']['name']}: {e.get('reason')} {e.get('message', '')}"[:400])
-           for e in events if e.get("involvedObject", {}).get("name") in names]
+           for e in mine]
     for p in pods:
         for c in (p.get("status") or {}).get("containerStatuses") or []:
             term = (c.get("lastState") or {}).get("terminated")
@@ -91,8 +97,32 @@ def k8s_evidence(pods: list[dict], events: list[dict], now: float) -> list[Evide
     return out
 
 
-def log_evidence(pod: str, text: str, now: float, cap: int = 50) -> Evidence | None:
-    lines = [line for line in text.splitlines() if ERROR_LINE.search(line)][-cap:]
+# JSON log line -> "level msg error"; the useful words sit at the end after ids and timestamps
+def _compact(line: str) -> str:
+    if line.lstrip().startswith("{"):
+        try:
+            doc = json.loads(line)
+        except ValueError:
+            return line
+        if isinstance(doc, dict):
+            raw_err = doc.get("err")
+            err: dict = raw_err if isinstance(raw_err, dict) else {}
+            parts = [doc.get("level"), doc.get("msg") or doc.get("message"),
+                     err.get("message") or doc.get("error") or doc.get("exception")]
+            text = " ".join(str(p) for p in parts if p not in (None, ""))
+            return text or line
+    return line
+
+
+# up to `cap` distinct error lines (spec: 50), repeats counted, each cut to `line_chars`. Raw JSON lines
+# run ~1 KB and repeat; 2 pods x 50 of them made a 43k-token prompt that blew the 30 s deadline (live)
+def log_evidence(pod: str, text: str, now: float, cap: int = 50, line_chars: int = 240) -> Evidence | None:
+    counts: dict[str, int] = {}
+    for line in text.splitlines():
+        if ERROR_LINE.search(line):
+            short = _compact(line)[:line_chars]
+            counts[short] = counts.pop(short, 0) + 1  # re-insert: newest occurrence decides the order
+    lines = [f"{line} (x{n})" if n > 1 else line for line, n in counts.items()][-cap:]
     if not lines:
         return None
     body = "\n".join(lines)

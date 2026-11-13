@@ -242,6 +242,99 @@ async def test_datastore_scaled_to_zero_moves_culprit_to_protected_dependency(tm
                                      "by_agent": False}], "cart", [], SERVICES, 960, 600) is None  # own change wins
 
 
+# live 2026-11-13: payment errors from a flag flip, traces blamed frontend-proxy, no deploy in the window.
+# The flag's journal entry must move the culprit to payment (it used to end "unknown" -> escalated)
+async def test_flag_change_moves_untouchable_trace_culprit_to_flagged_service(tmp_path):
+    proxy_trace = {"traceID": "t9", "processes": {"p1": {"serviceName": "frontend-proxy"}},
+                   "spans": [{"spanID": "a", "processID": "p1", "operationName": "ingress",
+                              "tags": [{"key": "error", "value": True}]}]}
+
+    class FlagWorld(World):
+        def __call__(self, request):
+            path = request.url.path
+            if path == "/journal":
+                return httpx.Response(200, json=[{
+                    "id": 32, "object": "configmap/flagd-config", "kind": "flag", "ts": 950.0,
+                    "field_manager": "chaos-panel", "by_agent": False,
+                    "diff": {"flags[paymentFailure].defaultVariant": {"old": "off", "new": "50%"}}}])
+            if path.endswith("/api/dependencies"):
+                return httpx.Response(200, json={"data": []})
+            if path.startswith("/jaeger"):
+                return httpx.Response(200, json={"data": [proxy_trace]})
+            return super().__call__(request)
+
+    world = FlagWorld()
+    cause = {"cause_class": "recent_change", "culprit": "payment", "evidence_ids": ["journal:32"],
+             "explanation": "paymentFailure flag set to 50%."}
+    brain = make(world, [diagnosis_json(causes=[cause])], tmp_path)
+    brain.flag_map = config.load("services")["flags"]
+    record = await brain.handle(INC.model_copy(update={"unhealthy": ["payment"]}))
+    culprit_event = next(e for e in world.published if e["type"] == "culprit_found")
+    assert culprit_event["payload"]["culprit"] == "payment"
+    assert culprit_event["payload"]["moved_from"] == "frontend-proxy"
+    assert record["pattern"] == "recent_change"
+    assert [(a.tool, a.target, a.journal_entry) for a in brain.submitted] == [("revert_config", "payment", 32)]
+
+
+def test_dependency_change_flag_needs_a_mapped_dependency():
+    from brain.culprit import dependency_change
+    flag = {"id": 5, "object": "configmap/flagd-config", "kind": "flag", "ts": 950.0, "by_agent": False,
+            "diff": {"flags[paymentFailure].defaultVariant": {"old": "off", "new": "50%"}}}
+    flags = {"paymentFailure": "payment"}
+    edges = [("checkout", "payment", 1.0)]
+    assert dependency_change([flag], "checkout", edges, SERVICES, 960, 600, flags) == (flag, "payment")
+    # not downstream, culprit is a real service: no move
+    assert dependency_change([flag], "cart", edges, SERVICES, 960, 600, flags) is None
+    # unmapped flag never moves anything
+    assert dependency_change([flag], "checkout", edges, SERVICES, 960, 600, {}) is None
+    # an agent's own change never counts
+    assert dependency_change([{**flag, "by_agent": True}], "checkout", edges, SERVICES, 960, 600, flags) is None
+
+
+# a crash anywhere in handle() used to leave the incident open forever (observer blocks all later ones)
+async def test_crash_in_handle_still_escalates(tmp_path):
+    world = World()
+    brain = make(world, [diagnosis_json()], tmp_path)
+
+    async def boom(*a, **k):
+        raise RuntimeError("bundle exploded")
+
+    brain.diagnoser.diagnose = boom  # type: ignore[method-assign]
+    record = await brain.handle_safely(INC)
+    assert "bundle exploded" in record["error"]
+    assert world.published[-1]["type"] == "escalated"
+    assert "brain failed (RuntimeError)" in world.published[-1]["payload"]["briefing"]
+    assert brain.conn.execute("SELECT state FROM incidents").fetchone()[0] == "escalated"
+
+
+# the brain used to ignore re-POSTs, so an incident that grew to 3+ sick services never went major
+async def test_regroup_turns_grown_incident_major_without_a_second_action(tmp_path):
+    class Spread(World):
+        def __call__(self, request):
+            if request.url.path == "/health/now":
+                sick = {"err_ratio": 0.3, "p95_ms": 100.0, "unhealthy": True}
+                return httpx.Response(200, json={"ts": NOW, "services": {
+                    "checkout": {**sick, "first_breach_ts": 960.0}, "accounting": {**sick, "first_breach_ts": 965.0},
+                    "fraud-detection": {**sick, "first_breach_ts": 970.0}}})
+            if request.url.path == "/journal":
+                return httpx.Response(200, json=[{"id": 7, "object": "deployment/kafka", "kind": "replicas",
+                                                  "ts": 950.0, "field_manager": "chaos-panel", "by_agent": False,
+                                                  "diff": {"replicas": {"old": 1, "new": 0}}}])
+            return super().__call__(request)
+
+    world = Spread()
+    brain = make(world, [], tmp_path)
+    small = INC.model_copy(update={"unhealthy": ["checkout"]})
+    assert await brain.regroup(small) is None  # one service is not major
+    grown = INC.model_copy(update={"unhealthy": ["accounting", "checkout", "fraud-detection"]})
+    ranked = await brain.regroup(grown)
+    assert ranked and ranked[0]["target"] == "kafka" and ranked[0]["kind"] == "shared_change"
+    assert world.published[-1]["type"] == "major_incident"
+    assert tuple(brain.conn.execute("SELECT major, culprit FROM incidents").fetchone()) == (1, "kafka")
+    assert brain.submitted == []
+    assert await brain.regroup(grown) is None  # once per incident
+
+
 # MCP/schema refused it before the checklist ran: no one else would end the incident (it stayed open forever)
 async def test_schema_refusal_escalates_with_why(tmp_path):
     world = World()

@@ -117,6 +117,7 @@ Rules:
 - Brain: `uv run --locked --env-file .env uvicorn brain.main:app --host 127.0.0.1 --port 7002`
 - Gateway: `uv run --locked --env-file .env uvicorn gateway.main:app --host 127.0.0.1 --port 7003`
 - Notifier: `uv run --locked --env-file .env uvicorn notifier.main:app --host 127.0.0.1 --port 7005`
+- Chaos: `uv run --locked --env-file .env uvicorn chaos.main:app --host 127.0.0.1 --port 7004` (reset waits for observer severity 0 via `OBSERVER_URL`)
 - Audit: `uv run python scripts/verify_audit.py data/audit.jsonl`
 
 Python 3.12. Use `uv run --env-file .env` when starting a configured service.

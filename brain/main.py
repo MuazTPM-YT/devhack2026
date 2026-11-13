@@ -25,6 +25,9 @@ from brain.llm import DiagnosisService
 from schemas import config
 from schemas.db import DEFAULT_PATH, connect
 from schemas.models import ActionRequest, GatewayDecision, Incident
+from schemas import logs
+
+logs.setup()
 
 log = logging.getLogger("brain")
 
@@ -46,6 +49,7 @@ class Brain:
         self.diagnoser, self.k8s, self.conn = diagnoser, k8s, conn
         self.services, self.policy, self.clock = services, policy, clock
         self.results: dict[str, dict] = {}
+        self.majors: set[str] = set()  # incidents already analysed as major (at open or on regroup)
         self.flag_map: dict[str, str] = {}  # config/services.yaml `flags:`, set by build_from_env
         self.lock = threading.Lock()
         self.submit = submit or (lambda a: call_tool(self.gateway_url, a))
@@ -88,6 +92,7 @@ class Brain:
         journal_rows = await self._get_json(f"{self.observer_url}/journal", [], since=incident.onset_at - window_s)
         is_major = major.is_major(incident.unhealthy, first_breach, len(self.services), self.policy)
         if is_major:
+            self.majors.add(incident.id)
             # many services at once: the ranked shared cause beats the per-trace culprit
             ranked = major.analyse(incident.unhealthy, edges, first_breach, journal_rows, incident.onset_at, window_s)
             if ranked:
@@ -97,9 +102,9 @@ class Brain:
         moved_from = None
         if not is_major and culprit:
             dep = dependency_change(journal_rows, culprit, edges, self.services, incident.onset_at, window_s,
-                                    self.flag_map)
+                                    self.flag_map, incident.unhealthy)
             if dep:
-                moved_from, culprit = culprit, dep["object"].split("/", 1)[1]
+                moved_from, culprit = culprit, dep[1]
                 victims = sorted((set(victims) | {moved_from}) - {culprit})
         incident = incident.model_copy(update={"culprit": culprit, "victims": victims, "major": is_major})
         await self.publish("culprit_found", incident.id, {"culprit": culprit, "victims": victims,
@@ -133,8 +138,10 @@ class Brain:
         causes = result.diagnosis.causes if result.diagnosis else []
         llm_why = " ".join(causes[0].explanation.split())[:300] if causes else None
         with self.lock:
-            self.conn.execute("UPDATE incidents SET culprit=?, victims_json=?, pattern=?, major=?, llm_why=? "
-                              "WHERE id=?", (culprit, json.dumps(victims), pattern, int(is_major), llm_why, incident.id))
+            # MAX: a regroup may already have marked it major while we were diagnosing
+            self.conn.execute("UPDATE incidents SET culprit=?, victims_json=?, pattern=?, major=MAX(major, ?), "
+                              "llm_why=? WHERE id=?",
+                              (culprit, json.dumps(victims), pattern, int(is_major), llm_why, incident.id))
             self.conn.commit()
         record = {"incident": incident.model_dump(mode="json"), "pattern": pattern,
                   "action": action.model_dump(mode="json") if action else None,
@@ -152,6 +159,50 @@ class Brain:
                 follow = ActionRequest.model_validate({**extra, "prediction": None})
                 record["followups_sent"].append(await self.hand_over(incident, follow, result.diagnosis, pattern, why))
         return record
+
+    # alert grouping grew an already-diagnosed incident (§6.3.3 "within 2 minutes"): if it is major now,
+    # publish the ranked shared cause and mark it major so the gateway's major rules govern any pending
+    # approval. Never submits a second action: one may already be in flight.
+    async def regroup(self, incident: Incident) -> list[dict] | None:
+        if incident.id in self.majors:
+            return None
+        health = await self._get_json(f"{self.observer_url}/health/now", {"ts": self.clock(), "services": {}})
+        first_breach = {s: v["first_breach_ts"] for s, v in health["services"].items()
+                        if v.get("first_breach_ts") is not None}
+        if not major.is_major(incident.unhealthy, first_breach, len(self.services), self.policy):
+            return None
+        self.majors.add(incident.id)
+        try:
+            edges = await self.graph.get()
+        except (httpx.HTTPError, KeyError, ValueError):
+            edges = []
+        window_s = self.policy["change_window_minutes"] * 60
+        journal_rows = await self._get_json(f"{self.observer_url}/journal", [], since=incident.onset_at - window_s)
+        ranked = major.analyse(incident.unhealthy, edges, first_breach, journal_rows, incident.onset_at, window_s)
+        with self.lock:
+            self.conn.execute("UPDATE incidents SET major=1 WHERE id=?", (incident.id,))
+            if ranked:
+                self.conn.execute("UPDATE incidents SET culprit=? WHERE id=?", (ranked[0]["target"], incident.id))
+            self.conn.commit()
+        await self.publish("major_incident", incident.id, {"ranked": ranked, "regrouped": True})
+        return ranked
+
+    # a crash must still end the incident: without a terminal event the observer keeps it open and opens
+    # no other incident, ever
+    async def handle_safely(self, incident: Incident) -> dict:
+        try:
+            return await self.handle(incident)
+        except Exception as e:
+            log.error("incident %s failed in the brain: %r", incident.id, e)
+            decision = GatewayDecision(decision="escalated", failed_step="brain", reason=type(e).__name__)
+            record = {"incident": incident.model_dump(mode="json"), "error": repr(e)}
+            self.results[incident.id] = record
+            try:
+                record["gateway"] = await self.escalate(incident, None, decision,
+                                                        f"brain failed ({type(e).__name__}); look by hand", None)
+            except Exception as again:  # bus down too: logged, the observer's max age is the last net
+                log.error("incident %s: escalation failed too: %r", incident.id, again)
+            return record
 
     # the gateway decides from here; with nothing safe to do, wake a human ourselves
     async def hand_over(self, incident: Incident, action: ActionRequest | None, diagnosis: Any,
@@ -229,8 +280,12 @@ def create_app(brain: Brain | None = None) -> FastAPI:
     async def incidents(incident: Incident) -> dict:
         b = app.state.brain
         if incident.id in b.results or any(t.get_name() == incident.id for t in tasks):
+            # a re-POST is alert grouping: re-check for a major incident, never diagnose twice
+            regroup = asyncio.create_task(b.regroup(incident), name=f"{incident.id}:regroup")
+            tasks.add(regroup)
+            regroup.add_done_callback(_finished)
             return {"incident_id": incident.id, "status": "already_handled"}
-        task = asyncio.create_task(b.handle(incident), name=incident.id)
+        task = asyncio.create_task(b.handle_safely(incident), name=incident.id)
         tasks.add(task)
         task.add_done_callback(_finished)
         return {"incident_id": incident.id, "status": "accepted"}

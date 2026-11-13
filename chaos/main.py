@@ -1,16 +1,23 @@
+import logging
+import os
 import shlex
 import threading
+import time
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from chaos import faults, ground_truth
 from chaos.faults import KubectlError, Kubectl
 from chaos.reset import ensure_snapshot, reset
+from schemas import logs
+
+logs.setup()
 
 # URL path -> fault; every bench/harness.py SCENARIOS name has a route here
 FAULTS: dict[str, Callable[[Kubectl], dict[str, str]]] = {
@@ -27,6 +34,41 @@ READ_ONLY = {"get", "describe", "logs", "top", "explain", "api-resources", "api-
              "events", "auth", "cluster-info", "diff"}
 
 RawKubectl = Callable[[list[str]], tuple[bool, str]]
+Severity = Callable[[], float | None]
+log = logging.getLogger("chaos")
+
+
+# observer severity now; None when it can't be read (observer down or not started yet)
+def observer_severity(url: str) -> float | None:
+    try:
+        r = httpx.get(f"{url}/health/now", timeout=5)
+        r.raise_for_status()
+        return float(r.json()["severity"])
+    except (httpx.HTTPError, KeyError, ValueError, TypeError):
+        return None
+
+
+# plan §6.1: reset ends when severity is back to 0 and stays there for stable_s (one zero reading isn't
+# enough: live, cart flapped after valkey-cart came back and the next scenario opened on it).
+# True / False (timed out) / None (no observer configured)
+def wait_healthy(severity: Severity | None, timeout_s: float, every_s: float = 5, stable_s: float = 30,
+                 sleep: Callable[[float], None] = time.sleep,
+                 clock: Callable[[], float] = time.monotonic) -> bool | None:
+    if severity is None:
+        return None
+    deadline = clock() + timeout_s
+    calm_since: float | None = None
+    while True:
+        now = clock()
+        if severity() == 0:
+            calm_since = now if calm_since is None else calm_since
+            if now - calm_since >= stable_s:
+                return True
+        else:
+            calm_since = None
+        if now >= deadline:
+            return False
+        sleep(every_s)
 
 
 class KubectlBody(BaseModel):
@@ -35,7 +77,10 @@ class KubectlBody(BaseModel):
 
 # chaos panel on :7004, admin kubeconfig; the agent must never get a path to this app
 def create_app(data_dir: Path = Path("data"), run: Kubectl = faults.kubectl,
-               raw: RawKubectl = faults.raw_kubectl) -> FastAPI:
+               raw: RawKubectl = faults.raw_kubectl, severity: Severity | None = None,
+               reset_timeout_s: float = 300, reset_stable_s: float = 30) -> FastAPI:
+    if severity is None and (url := os.environ.get("OBSERVER_URL")):
+        severity = lambda: observer_severity(url)  # noqa: E731
     truth_path = data_dir / "ground_truth.jsonl"
     snapshot_path = data_dir / "healthy_snapshot.json"
     # one cluster write at a time, so a reset never races an inject
@@ -69,7 +114,10 @@ def create_app(data_dir: Path = Path("data"), run: Kubectl = faults.kubectl,
                 restored = reset(app.state.snapshot, run)
             except KubectlError as error:
                 raise HTTPException(502, str(error)) from None
-            return ground_truth.record(truth_path, "reset", restored=restored)
+            healthy = wait_healthy(severity, reset_timeout_s, stable_s=reset_stable_s)
+            if healthy is False:
+                log.warning("reset done but severity not 0 after %.0f s", reset_timeout_s)
+            return ground_truth.record(truth_path, "reset", restored=restored, healthy=healthy)
 
     # scenario 6: judges break things their own way; shlex split, never a shell
     @app.post("/chaos/kubectl")

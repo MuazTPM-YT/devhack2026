@@ -1,5 +1,5 @@
 # deterministic rules (IMPLEMENTATION.md §6.3.6). The LLM never picks the action when a rule matches.
-# Dict-based until schemas/ (C1) lands; actions follow the ActionRequest fields.
+# Works on plain dicts (journal rows, incident); actions follow the ActionRequest fields.
 
 # template-level changes undo by rollback; env by revert_config; replica count by scale
 TOOL_FOR_KIND = {"image": "rollback_deploy", "resources": "rollback_deploy", "other": "rollback_deploy",
@@ -22,7 +22,7 @@ def _action(incident: dict, tool: str, target: str, pattern: str, evidence: list
 
 
 # services a flag journal entry touches, via config/services.yaml `flags:`
-def _flag_targets(entry: dict, flag_map: dict) -> set[str]:
+def flag_targets(entry: dict, flag_map: dict) -> set[str]:
     names = [p[len("flags["):].split("]", 1)[0] for p in entry.get("diff", {}) if p.startswith("flags[")]
     return {flag_map[n] for n in names if n in flag_map}
 
@@ -33,14 +33,27 @@ def latest_change_before_onset(journal: list[dict], culprit: str, onset: float, 
                                flag_map: dict | None = None) -> dict | None:
     hits = [j for j in journal if onset - window_s <= j["ts"] <= onset and j["kind"] != "restart"
             and (j["object"] == f"deployment/{culprit}"
-                 or (j["kind"] == "flag" and culprit in _flag_targets(j, flag_map or {})))]
+                 or (j["kind"] == "flag" and culprit in flag_targets(j, flag_map or {})))]
     return max(hits, key=lambda j: (j["ts"], j["id"]), default=None)
 
 
-# -> (pattern, actions). pattern: recent_change | resource | protected | unknown
+# -> (pattern, actions). pattern: recent_change | resource | protected | unknown.
+# A watch-only service (in services.yaml, neither actable nor protected: accounting, fraud-detection) keeps
+# its pattern but gets no action: live, a restart_service on fraud-detection was proposed, refused by the
+# MCP schema and escalated with a confusing "validation error" briefing
 def match(incident: dict, journal: list[dict], events: list[dict], services: dict, policy: dict,
           memory_ratio: float | None = None, memory_limit: str | None = None,
           flag_map: dict | None = None) -> tuple[str, list[dict]]:
+    pattern, actions = _match(incident, journal, events, services, policy, memory_ratio, memory_limit, flag_map)
+    svc = services.get(incident.get("culprit") or "", {})
+    if actions and not svc.get("actable") and not svc.get("protected"):
+        return pattern, []
+    return pattern, actions
+
+
+def _match(incident: dict, journal: list[dict], events: list[dict], services: dict, policy: dict,
+           memory_ratio: float | None, memory_limit: str | None,
+           flag_map: dict | None) -> tuple[str, list[dict]]:
     culprit = incident.get("culprit")
     if culprit is None or culprit not in services:
         return "unknown", []

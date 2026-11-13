@@ -463,7 +463,7 @@ If there are no traces (the service is completely down), fall back to: the unhea
 
 #### 6.3.3 Major-incident analysis (`major.py`) P1
 
-Triggered when unhealthy services >= 4 or >= 30% within 2 minutes.
+Triggered when unhealthy services >= `major_incident.min_services` (3) or >= 30% within 2 minutes, checked when the incident opens and again each time alerts are grouped into it.
 
 1. **Failure order:** sort services by `first_breach_ts`.
 2. **Shared dependency:** intersect the downstream sets of all unhealthy services from the graph.

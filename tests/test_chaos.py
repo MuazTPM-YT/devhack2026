@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from chaos import ground_truth
 from chaos.faults import (BAD_PAYMENT_IMAGE, BROKEN_PAYMENT_ADDR, FLAG_CONFIGMAP, FLAG_FILE,
-                          FLIP_FLAG, LEAK_FLAG, LIVE_FLAG_PATH, KubectlError, bad_deploy,
+                          FLIP_FLAG, LEAK_FLAG, KubectlError, bad_deploy,
                           broken_config, datastore_down, flag_flip, memory_leak, shared_outage)
 from chaos.main import FAULTS, create_app
 from chaos.reset import TARGETS, diff_ops, ensure_snapshot, reset
@@ -34,8 +34,6 @@ class FakeKubectl:
             {"name": "CHECKOUT_PORT", "value": "8080"}, {"name": "PAYMENT_ADDR", "value": "payment:8080"}])
         self.deployments["jaeger"] = deployment("jaeger")
         self.configmaps = {FLAG_CONFIGMAP: {"data": {FLAG_FILE: GOOD_FLAGS}}}
-        # flagd's emptyDir copy, seeded from the ConfigMap like the init container does
-        self.live_flags = GOOD_FLAGS
         self.calls = []
         self.fail_on = None
 
@@ -73,14 +71,7 @@ class FakeKubectl:
         if args[:2] == ("patch", "configmap"):
             self.configmaps[args[2]]["data"].update(json.loads(args[args.index("-p") + 1])["data"])
             return ""
-        if args[0] == "exec":
-            command = args[args.index("--") + 1:]
-            if command == ("cat", LIVE_FLAG_PATH):
-                return self.live_flags
-            assert command == ("sh", "-c", f"cat > {LIVE_FLAG_PATH}") and input is not None
-            self.live_flags = input
-            return ""
-        if args[:2] == ("rollout", "status"):
+        if args[:2] in (("rollout", "status"), ("rollout", "restart")):
             return ""
         raise AssertionError(f"unexpected kubectl call {args}")
 
@@ -231,12 +222,11 @@ def test_shared_outage_scales_kafka_to_zero():
     assert "--field-manager=chaos-panel" in fake.calls[-1]
 
 
-def test_memory_leak_flips_flag_in_configmap_and_live_file_without_restart():
+def test_memory_leak_flips_flag_in_configmap_without_restart():
     fake = FakeKubectl()
     assert memory_leak(fake) == {"type": "resource_exhaustion", "target": "recommendation"}
     assert fake.leak_variant() == "on"
-    assert fake.live_flags == fake.configmaps[FLAG_CONFIGMAP]["data"][FLAG_FILE]
-    flags = json.loads(fake.live_flags)["flags"]
+    flags = json.loads(fake.configmaps[FLAG_CONFIGMAP]["data"][FLAG_FILE])["flags"]
     assert flags["adFailure"]["defaultVariant"] == "off"
     patches = [c for c in fake.calls if c[0] == "patch"]
     assert len(patches) == 1 and "--field-manager=chaos-panel" in patches[0]
@@ -244,12 +234,49 @@ def test_memory_leak_flips_flag_in_configmap_and_live_file_without_restart():
     assert not [c for c in fake.calls if c[:2] == ("rollout", "restart")]
 
 
-def test_reset_restores_flag_flipped_only_in_flagd_ui(tmp_path):
+# flagd reads the ConfigMap itself now: no exec into the flagd-ui container, ever
+def test_flag_faults_and_reset_only_touch_the_configmap(tmp_path):
     fake = FakeKubectl()
     snapshot = ensure_snapshot(tmp_path / "s.json", fake)
-    fake.live_flags = GOOD_FLAGS.replace('"off"', '"on"', 1)
+    flag_flip(fake)
     assert reset(snapshot, fake) == [f"configmap/{FLAG_CONFIGMAP}"]
-    assert fake.live_flags == GOOD_FLAGS
+    assert fake.configmaps[FLAG_CONFIGMAP]["data"][FLAG_FILE] == GOOD_FLAGS
+    assert not [c for c in fake.calls if c[0] == "exec"]
+
+
+# live: checkout hung ~85 min on a dead kafka connection after kafka was back; reset restarts its clients
+def test_reset_restarts_kafka_clients_only_when_kafka_was_restored(tmp_path):
+    fake = FakeKubectl()
+    snapshot = ensure_snapshot(tmp_path / "s.json", fake)
+    shared_outage(fake)
+    restored = reset(snapshot, fake)
+    assert restored == ["kafka", "checkout (restarted)", "accounting (restarted)", "fraud-detection (restarted)"]
+    restarts = [c for c in fake.calls if c[:2] == ("rollout", "restart")]
+    assert [c[2] for c in restarts] == ["deployment/checkout", "deployment/accounting", "deployment/fraud-detection"]
+    assert all("--field-manager=chaos-panel" in c for c in restarts)
+    fake.calls.clear()
+    bad_deploy(fake)
+    reset(snapshot, fake)
+    assert not [c for c in fake.calls if c[:2] == ("rollout", "restart")]
+
+
+def test_wait_healthy_needs_a_stable_zero_or_times_out():
+    from chaos.main import wait_healthy
+    now = [0.0]
+
+    def sleep(s):
+        now[0] += s
+
+    readings = iter([7, None, 0, 4, 0, 0, 0])  # a zero that flaps back to 4 doesn't count
+    assert wait_healthy(lambda: next(readings), 120, stable_s=10, sleep=sleep, clock=lambda: now[0]) is True
+    assert now[0] == 30  # zeros at t=20, 25, 30: 10 s calm
+    assert wait_healthy(lambda: 3, 12, sleep=sleep, clock=lambda: now[0]) is False
+    assert wait_healthy(None, 60) is None
+
+
+def test_http_reset_reports_healthy(tmp_path):
+    with TestClient(create_app(tmp_path, FakeKubectl(), severity=lambda: 0, reset_stable_s=0)) as client:
+        assert client.post("/chaos/reset").json()["healthy"] is True
 
 
 def test_reset_undoes_every_fault_at_once(tmp_path):
@@ -258,13 +285,14 @@ def test_reset_undoes_every_fault_at_once(tmp_path):
     for fault in FAULTS.values():
         fault(fake)
     restored = reset(snapshot, fake)
-    assert sorted(restored) == ["checkout", f"configmap/{FLAG_CONFIGMAP}", "kafka", "payment", "valkey-cart"]
+    assert sorted(restored) == ["accounting (restarted)", "checkout", "checkout (restarted)",
+                                f"configmap/{FLAG_CONFIGMAP}", "fraud-detection (restarted)", "kafka", "payment",
+                                "valkey-cart"]
     assert fake.replicas("kafka") == 1
     assert fake.image("payment") == GOOD_IMAGE
     assert fake.env("checkout")["PAYMENT_ADDR"] == "payment:8080"
     assert fake.replicas("valkey-cart") == 1
     assert fake.configmaps[FLAG_CONFIGMAP]["data"][FLAG_FILE] == GOOD_FLAGS
-    assert fake.live_flags == GOOD_FLAGS
     assert reset(snapshot, fake) == []
 
 
@@ -292,10 +320,9 @@ def test_fault_routes_match_bench_scenarios():
 def test_flag_flip_sets_payment_failure_and_leaves_other_flags():
     fake = FakeKubectl()
     assert flag_flip(fake) == {"type": "broken_config", "target": "payment", "key": FLIP_FLAG}
-    flags = json.loads(fake.live_flags)["flags"]
+    flags = json.loads(fake.configmaps[FLAG_CONFIGMAP]["data"][FLAG_FILE])["flags"]
     assert flags[FLIP_FLAG]["defaultVariant"] == "50%"
     assert flags[LEAK_FLAG]["defaultVariant"] == "off"
-    assert fake.live_flags == fake.configmaps[FLAG_CONFIGMAP]["data"][FLAG_FILE]
     assert not [c for c in fake.calls if c[:2] == ("rollout", "restart")]
 
 
@@ -373,4 +400,5 @@ def test_reset_with_old_snapshot_without_resources_still_works(tmp_path):
         for c in state["containers"]:
             c.pop("resources")
     shared_outage(fake)
-    assert reset(snapshot, fake) == ["kafka"] and fake.replicas("kafka") == 1
+    restored = reset(snapshot, fake)  # kafka back, then its clients restarted (RESTART_AFTER)
+    assert restored[0] == "kafka" and fake.replicas("kafka") == 1
