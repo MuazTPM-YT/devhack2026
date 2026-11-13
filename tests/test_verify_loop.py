@@ -105,6 +105,20 @@ async def test_undo_survives_status_churn(tmp_path):
     assert outcome == "undone" and w.apps.dep["spec"]["paused"] is False
 
 
+# live run 2026-11-13: failed undo left payment paused and its receipt pending, blocking every later action
+async def test_failed_undo_unpauses_and_frees_the_slot(tmp_path, caplog):
+    from kubernetes.client.rest import ApiException
+
+    def broken(w):
+        w.apps.fail_template = ApiException(status=422, reason="Invalid")
+
+    w, d, outcome = await executed(tmp_path, [sick(severity=9)], setup=broken)
+    assert outcome == "undo_failed" and w.apps.dep["spec"]["paused"] is False
+    assert w.conn.execute("SELECT outcome FROM receipts WHERE id=?", (d.receipt_id,)).fetchone()[0] == "undo_failed"
+    assert w.gw.receipts.get(d.receipt_id).outcome == "undo_failed"
+    assert d.receipt_id not in w.gw.verifying and "UNDO FAILED" in caplog.text
+
+
 async def test_human_change_during_verify_hands_off_without_undo(tmp_path):
     human = [{"id": 50, "object": "deployment/payment", "kind": "replicas", "ts": 1001.0,
               "field_manager": "kubectl", "by_agent": False, "diff": {}}]

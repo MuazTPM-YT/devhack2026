@@ -97,7 +97,7 @@ class Receipt(Model):
     diff: dict[str, Any]
     inverse: dict[str, Any] = Field(min_length=1)
     evidence_ids: list[str]
-    outcome: Literal["pending", "success", "undone", "handed_off", "right_by_accident"] = "pending"
+    outcome: Literal["pending", "success", "undone", "handed_off", "right_by_accident", "undo_failed"] = "pending"
     prediction_held: bool | None = None
     harm_clean: bool | None = None
     elapsed_s: float | None = None

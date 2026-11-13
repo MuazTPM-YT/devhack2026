@@ -400,6 +400,14 @@ class Gateway:
         try:
             await asyncio.to_thread(self.undo, action.target, receipt.inverse, pause)
         except WriteRefused as e:
+            # terminal, else the pending receipt counts as in flight and blocks every later action
+            log.error("receipt #%s: UNDO FAILED (%s)", receipt_id, e.reason)
+            with self.lock:
+                self.conn.execute("UPDATE receipts SET outcome='undo_failed' WHERE id=?", (receipt_id,))
+                self.conn.commit()
+            self.receipts.update(receipt_id, receipt.model_copy(update={"outcome": "undo_failed"}))
+            self.heartbeats.pop(receipt_id, None)
+            self.verifying.pop(receipt_id, None)
             await self.publish({"type": "escalated", "incident_id": action.incident_id, "payload": {
                 "card": build_incident_card(self.card_incident(row, action.target)).model_dump(mode="json"),
                 "briefing": f"UNDO FAILED ({e.reason}); receipt #{receipt_id} needs a human now"}})
@@ -528,6 +536,7 @@ class Gateway:
                 outcome = "undone"
             except WriteRefused as e:
                 reason, outcome = f"{reason}; UNDO FAILED ({e.reason})", "pending"
+                log.error("receipt #%s: %s", r["id"], reason)
             with self.lock:
                 self.conn.execute("UPDATE receipts SET outcome=? WHERE id=?",
                                   ("undone" if outcome == "undone" else "watchdog_failed", r["id"]))
