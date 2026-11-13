@@ -130,6 +130,15 @@ async def test_human_change_during_verify_hands_off_without_undo(tmp_path):
     assert ledger(w) == []
 
 
+# live 2026-11-13: chaos cleaned up its decoy env 6 s after the agent's right fix; the verifier handed the fix
+# off as "a person changed it". Step 2 already treats chaos writes as the incident's cause, not a takeover
+async def test_chaos_change_during_verify_is_no_hand_off(tmp_path):
+    chaos = [{"id": 50, "object": "deployment/payment", "kind": "env", "ts": 1001.0,
+              "field_manager": "chaos-panel", "by_agent": False, "diff": {}}]
+    w, d, outcome = await executed(tmp_path, [healthy()], journal_during=chaos)
+    assert outcome == "success" and w.types()[-1] == "incident_resolved"
+
+
 async def test_rehearsal_credit_once_and_only_for_rehearsal(tmp_path):
     w, d, outcome = await executed(tmp_path, [healthy()], decided_by=REHEARSAL_APPROVER)
     assert outcome == "success" and ledger(w) == []

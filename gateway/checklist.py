@@ -553,12 +553,14 @@ class Gateway:
                          action.prediction.model_dump() if action.prediction else None,
                          cfg["window_seconds"] + extra, cfg["early_abort"] and can_undo,
                          grace_s=cfg["early_abort_grace_seconds"] + extra, prediction_delay_s=extra)
-        health, human, result = plan["health"], [], None
+        health, human, others, result = plan["health"], [], [], None
         while result is None:
             await asyncio.sleep(self.verify_every)
             try:
                 health = await self.get_json("/health/now")
-                human = [r for r in await self.get_json("/journal", since=v.t0) if not r["by_agent"]]
+                others = [r for r in await self.get_json("/journal", since=v.t0) if not r["by_agent"]]
+                # same rule as step 2: a chaos write (fault, decoy, its cleanup) is no person taking over
+                human = [r for r in others if r.get("field_manager") != CHAOS_MANAGER]
                 if health.get("prometheus_ok") is False:
                     # stale reading = no data: decide nothing on it, let the window run (Muaz chose)
                     out_of_time = self.clock() - v.t0 >= v.window_s
@@ -588,7 +590,7 @@ class Gateway:
                                              reason="severity rose after the action", plan=plan)
         after = await asyncio.to_thread(lambda: spec_hashes(list_json(self.apps.list_namespaced_deployment),
                                                             list_json(self.core.list_namespaced_config_map)))
-        harm = harm_check(plan["hashes"], after, plan["declared"], {r["object"] for r in human},
+        harm = harm_check(plan["hashes"], after, plan["declared"], {r["object"] for r in others},
                           plan["health"], health, {action.target, *victims, *plan["blast"].get("upstream", [])})
         await self.publish({"type": "harm_check", "incident_id": action.incident_id,
                             "payload": {"receipt_id": receipt_id, **harm}})
