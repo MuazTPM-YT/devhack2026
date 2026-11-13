@@ -8,6 +8,7 @@ from brain.graph import DependencyGraph, downstream
 from brain.llm import DiagnosisService
 from brain.main import Brain, create_app
 from brain.providers.base import InferenceResponse
+from schemas import auth
 from schemas import config
 from schemas.db import connect
 from schemas.models import GatewayDecision, Incident
@@ -167,7 +168,7 @@ async def test_graph_cache_and_downstream():
 
 def test_post_incident_accepts_once(tmp_path):
     brain = make(World(), [diagnosis_json()], tmp_path)
-    with TestClient(create_app(brain)) as client:
+    with TestClient(create_app(brain), headers=auth.headers()) as client:
         body = INC.model_dump(mode="json")
         assert client.post("/incidents", json=body).json()["status"] == "accepted"
         assert client.post("/incidents", json=body).json()["status"] == "already_handled"

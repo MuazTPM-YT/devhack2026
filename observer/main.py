@@ -16,7 +16,7 @@ from gateway.client import read_events
 from observer import baselines, journal
 from observer.detector import Detector, fetch_readings
 from observer.kube_watch import Tracker, run_watch
-from schemas import config
+from schemas import auth, config
 from schemas.db import DEFAULT_PATH, connect
 from schemas.models import Card, Incident
 from schemas import logs
@@ -89,7 +89,7 @@ class Observer:
         for name in [n for n in ("bus", "brain") if n in targets]:  # bus first, as before
             url, payload = urls[name]
             try:
-                (await self.http.post(url, json=payload, timeout=5)).raise_for_status()
+                (await self.http.post(url, json=payload, timeout=5, headers=auth.headers())).raise_for_status()
             except httpx.HTTPError as e:
                 failed.add(name)
                 if not retry:
@@ -113,7 +113,7 @@ class Observer:
         card = Card(incident_id=inc["id"], status="WOKE YOU BECAUSE",
                     text=f"WOKE YOU BECAUSE: {', '.join(inc['unhealthy'])}\nWhy: {reason}", evidence_ids=[])
         try:
-            (await self.http.post(f"{self.gateway_url}/events/publish", timeout=5, json={
+            (await self.http.post(f"{self.gateway_url}/events/publish", timeout=5, headers=auth.headers(), json={
                 "type": "escalated", "incident_id": inc["id"],
                 "payload": {"card": card.model_dump(mode="json"), "briefing": reason}})).raise_for_status()
         except httpx.HTTPError as e:
@@ -162,6 +162,7 @@ def build_from_env() -> tuple[Observer, list[threading.Thread], threading.Event]
     from kubernetes import config as kube_config
 
     prom, kubeconfig, brain, gateway = require_env("PROMETHEUS_URL", "READER_KUBECONFIG", "BRAIN_URL", "GATEWAY_URL")
+    auth.token()  # brain and gateway refuse our POSTs without it; fail at start
     policy, queries, services = config.load("policy"), config.load("queries"), config.load("services")
     conn = connect(DEFAULT_PATH, shared=True)
     tracker = Tracker(conn, services["flag_config"]["configmap"])
@@ -198,6 +199,7 @@ def create_app(observer: Observer | None = None) -> FastAPI:
         await obs.http.aclose()
 
     app = FastAPI(title="oncall observer", lifespan=lifespan)
+    app.add_middleware(auth.TokenGuard)  # baselines refresh mid-incident would skew latency checks
 
     @app.get("/health/now")
     def health_now() -> dict:

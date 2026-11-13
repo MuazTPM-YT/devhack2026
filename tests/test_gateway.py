@@ -9,6 +9,7 @@ from gateway.checklist import Gateway
 from gateway.dryrun import outside_allowed, previous_template, spec_diff
 from gateway.mcp_server import TOOLS, build_mcp
 from gateway.receipts import ReceiptStore
+from schemas import auth
 from schemas import config
 from schemas.db import connect
 from schemas.models import Event
@@ -374,7 +375,7 @@ def test_http_app_routes(tmp_path):
     from gateway.main import create_app
 
     w = World(tmp_path)
-    with TestClient(create_app(w.gw), base_url="http://127.0.0.1:7003") as client:  # MCP rejects other Hosts
+    with TestClient(create_app(w.gw), base_url="http://127.0.0.1:7003", headers=auth.headers()) as client:  # MCP rejects other Hosts
         assert client.get("/health").json() == {"ok": True}
         assert client.get("/ledger").json() == []
         r = client.post("/approvals/nope/decide", json={"decision": "approved", "decided_by": "u1"})
@@ -400,7 +401,7 @@ def test_trust_receipts_and_audit_routes(tmp_path):
                                evidence_ids=[]))
     app = create_app(w.gw)
     app.state.audit_path = str(tmp_path / "audit.jsonl")
-    with TestClient(app, base_url="http://127.0.0.1:7003") as client:
+    with TestClient(app, base_url="http://127.0.0.1:7003", headers=auth.headers()) as client:
         rows = {(r["pattern"], r["action"]): r for r in client.get("/trust").json()}
         assert rows[("recent_change", "rollback_deploy")]["bar"] == 0.9
         assert rows[("recent_change", "rollback_deploy")]["open"] is True

@@ -145,6 +145,13 @@ identity, pending state, expiry, current safety checks, and concurrency. These
 routers assume trusted local callers; caller authentication belongs to the
 integrating gateway. Do not expose them on an untrusted network as-is.
 
+Every write route on the gateway, brain and observer (any method but GET/HEAD/OPTIONS,
+MCP tool calls included) needs header `X-Oncall-Token` equal to `ONCALL_API_TOKEN`.
+Set the same value (16+ characters) in every process's `.env`; a missing token fails
+at start. Read routes stay open for the UI. A manual approval is now:
+`curl -X POST -H "X-Oncall-Token: $ONCALL_API_TOKEN" -H 'content-type: application/json'
+-d '{"decision":"approved","decided_by":"<id>"}' $GATEWAY_URL/approvals/<id>/decide`.
+
 The notifier and Go adapter are not exercised live by the offline suite.
 
 ## Benchmarks and adversarial checks

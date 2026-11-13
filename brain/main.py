@@ -22,7 +22,7 @@ from brain.culprit import dependency_change, fetch_error_traces, find_culprit
 from brain.gateway_client import call_tool
 from brain.graph import DependencyGraph
 from brain.llm import DiagnosisService
-from schemas import config
+from schemas import auth, config
 from schemas.db import DEFAULT_PATH, connect
 from schemas.models import ActionRequest, GatewayDecision, Incident
 from schemas import logs
@@ -56,7 +56,7 @@ class Brain:
 
     async def publish(self, kind: str, incident_id: str | None, payload: dict) -> None:
         try:
-            r = await self.http.post(f"{self.gateway_url}/events/publish", timeout=5,
+            r = await self.http.post(f"{self.gateway_url}/events/publish", timeout=5, headers=auth.headers(),
                                      json={"type": kind, "incident_id": incident_id, "payload": payload})
             r.raise_for_status()
         except httpx.HTTPError as e:
@@ -261,6 +261,7 @@ def create_app(brain: Brain | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        auth.token()  # fail at start, not on the first incident
         app.state.brain = brain or build_from_env()
         yield
         for t in tasks:
@@ -269,6 +270,7 @@ def create_app(brain: Brain | None = None) -> FastAPI:
             await app.state.brain.http.aclose()
 
     app = FastAPI(title="oncall brain", lifespan=lifespan)
+    app.add_middleware(auth.TokenGuard)
 
     def _finished(task: asyncio.Task) -> None:
         tasks.discard(task)

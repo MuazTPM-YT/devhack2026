@@ -17,7 +17,7 @@ from gateway.approvals import approvers_from_env
 from gateway.checklist import Gateway
 from gateway.mcp_server import build_mcp
 from gateway.receipts import ReceiptStore, create_receipts_router
-from schemas import config
+from schemas import auth, config
 from schemas.db import DEFAULT_PATH, connect
 from schemas import logs
 
@@ -74,6 +74,7 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        auth.token()  # fail at start, not on the first approval
         holder["gw"] = gateway or build_from_env()
         app.state.gateway = holder["gw"]
         async with contextlib.AsyncExitStack() as stack:
@@ -88,6 +89,7 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
                 await holder["gw"].http.aclose()
 
     app = FastAPI(title="oncall gateway", lifespan=lifespan)
+    app.add_middleware(auth.TokenGuard)  # decide, clear, publish, MCP tools: our processes only
     app.include_router(events.router)
     app.include_router(create_receipts_router(ReceiptStore(Path(DEFAULT_PATH))) if gateway is None
                        else create_receipts_router(gateway.receipts))
@@ -96,7 +98,7 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
     def health() -> dict:
         return {"ok": True}
 
-    # ponytail: no caller auth beyond the approver allowlist; bind to 127.0.0.1 only
+    # caller must hold ONCALL_API_TOKEN (TokenGuard); decided_by is then checked against the allowlist
     @app.post("/approvals/{approval_id}/decide")
     async def decide(approval_id: str, body: Decide) -> dict:
         d = await holder["gw"].decide(approval_id, body.decision, body.decided_by)

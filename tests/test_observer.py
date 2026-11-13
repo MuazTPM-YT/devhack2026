@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from observer import baselines
 from observer.kube_watch import Tracker
 from observer.main import Observer, create_app, require_env
+from schemas import auth
 from schemas import config
 from schemas.db import connect
 
@@ -108,7 +109,7 @@ async def test_refresh_baselines_stores_medians():
 
 def test_endpoints():
     obs = make(Backend({}, {}), [0])
-    with TestClient(create_app(obs)) as client:
+    with TestClient(create_app(obs), headers=auth.headers()) as client:
         assert client.get("/health/now").status_code == 503
         obs.health = {"severity": 0, "services": {}}
         assert client.get("/health/now").json() == {"severity": 0, "services": {}}

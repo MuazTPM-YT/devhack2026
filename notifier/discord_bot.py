@@ -8,6 +8,7 @@ from brain.redact import redact
 from notifier.state import NotifierState
 from pydantic import ValidationError
 
+from schemas import auth
 from schemas.models import Card, GatewayDecision
 
 
@@ -30,7 +31,7 @@ class ApprovalController:
                 return "invalid decision"
             response = await self.client.post(
                 f"{self.gateway_url}/approvals/{approval_id}/decide",
-                json={"decision": decision, "decided_by": user_id}, timeout=10,
+                json={"decision": decision, "decided_by": user_id}, timeout=10, headers=auth.headers(),
             )
             if response.status_code != 200:
                 return "gateway refused decision"
