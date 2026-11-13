@@ -15,7 +15,6 @@ import { ActiveRun } from "./active-run";
 import { CliGuide } from "./cli-guide";
 import { Composer } from "./composer";
 import { EnvStrip } from "./env-strip";
-import { Health } from "./health";
 import styles from "./lab.module.css";
 import { TruthLog } from "./truth-log";
 
@@ -138,11 +137,6 @@ export function ChaosView() {
             </table>
           )}
         </div>
-      </details>
-
-      <details className={styles.more}>
-        <summary>Health now</summary>
-        <div className={styles.moreBody}><Health health={observer.health} error={observer.error} /></div>
       </details>
 
       <details className={styles.more} onToggle={(e) => setHistory(e.currentTarget.open)}>
