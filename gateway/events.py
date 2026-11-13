@@ -1,3 +1,4 @@
+import fcntl
 import json
 import os
 from contextlib import asynccontextmanager
@@ -26,14 +27,33 @@ async def lifespan(app: FastAPI):
     if _active_bus is not None:
         raise RuntimeError("Event router already active; use one gateway application per worker")
     bus = getattr(app.state, "event_bus", None)
+    lock = None
     if bus is None:
-        bus = EventBus(AuditLog(Path(getattr(app.state, "audit_path", "data/audit.jsonl"))))
+        path = Path(getattr(app.state, "audit_path", "data/audit.jsonl"))
+        lock = writer_lock(path)
+        bus = EventBus(AuditLog(path))
     _active_bus = bus
     app.state.event_bus = bus
     try:
         yield
     finally:
         _active_bus = None
+        if lock is not None:
+            lock.close()  # closing the file drops the flock
+
+
+# one writer per audit log, across processes. Live 2026-11-14: an old gateway kept running after a restart, both
+# appended (two seq 95, chain broken) and the old one expired an approval nobody saw. The kernel drops the lock
+# when the holder dies, kill -9 included
+def writer_lock(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(f"{path}.lock", "a")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        handle.close()
+        raise RuntimeError(f"another gateway is writing {path}; stop it first (scripts/demo.sh down)") from None
+    return handle
 
 
 # a Discord-bound event names its sender (payload "source"); the bus lives in the gateway, the only process

@@ -134,8 +134,10 @@ start_agent() {
   done
   for entry in "${AGENT[@]}"; do
     name=${entry%%:*} port=${entry##*:}
+    # SSE clients never hang up: without a cap a stopping gateway waits on them forever and its upkeep keeps
+    # expiring approvals (live 2026-11-14, a zombie gateway beside the new one)
     launch "$name" "$port" uv run --locked "${env_args[@]}" \
-      uvicorn "$name.main:app" --host 127.0.0.1 --port "$port"
+      uvicorn "$name.main:app" --host 127.0.0.1 --port "$port" --timeout-graceful-shutdown 5
   done
   [ -d ui/node_modules ] || (cd ui && npm ci)
   launch ui "$UI_PORT" bash -c "$source_cmd; set +a; cd ui && exec npm run dev"
