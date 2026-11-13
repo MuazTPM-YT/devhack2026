@@ -154,9 +154,7 @@ class Delegation:
             fleet = c.execute("SELECT COUNT(*) FROM investigation_tasks WHERE state IN ('pending', 'running')"
                               ).fetchone()[0]
             used = c.execute("SELECT COUNT(*) FROM model_calls WHERE incident_id=?", (ctx.incident_id,)).fetchone()[0]
-            spent = c.execute("SELECT COALESCE(SUM(MAX(COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0), "
-                              "reserved_tokens)), 0) FROM model_calls WHERE incident_id=?",
-                              (ctx.incident_id,)).fetchone()[0]
+            spent = self.ws.spent(c, ctx.incident_id)
             if prior is not None:
                 reason = "duplicate_active" if prior["state"] in ("pending", "running") else "already_answered"
             elif started >= self.policy.max_specialists_per_incident:

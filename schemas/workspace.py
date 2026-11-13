@@ -315,15 +315,20 @@ class Workspace:
                         "SELECT COUNT(*) FROM model_calls WHERE task_id=?", (task_id,)).fetchone()[0] >= task_limit:
                     return "request_budget"
             if self.policy.max_total_tokens is not None:
-                spent = c.execute("SELECT COALESCE(SUM(MAX(COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0), "
-                                  "reserved_tokens)), 0) FROM model_calls WHERE incident_id=?",
-                                  (incident_id,)).fetchone()[0]
+                spent = self.spent(c, incident_id)
                 if spent + reserved_tokens > self.policy.max_total_tokens:
                     return "token_budget"
             c.execute("INSERT INTO model_calls (call_id, incident_id, task_id, run_id, role, state, reserved_at, "
                       "reserved_tokens) VALUES (?, ?, ?, ?, ?, 'reserved', ?, ?)",
                       (call_id, incident_id, task_id, run_id, role, now, reserved_tokens))
             return None
+
+    # tokens charged so far: a finished call costs what it used; an open, failed or lost one keeps its
+    # whole reservation, since the provider may have billed it
+    def spent(self, c: sqlite3.Connection, incident_id: str) -> int:
+        return int(c.execute("SELECT COALESCE(SUM(CASE WHEN state='ok' THEN COALESCE(input_tokens, 0) + "
+                             "COALESCE(output_tokens, 0) ELSE reserved_tokens END), 0) FROM model_calls "
+                             "WHERE incident_id=?", (incident_id,)).fetchone()[0])
 
     # exactly once per call: only a reserved row can settle
     def settle_call(self, call_id: str, state: str, input_tokens: int | None = None, output_tokens: int | None = None,

@@ -212,8 +212,10 @@ def test_token_budget(tmp_path):
     open_one(ws)
     assert ws.reserve_call("c1", "inc-a", "r", "commander", reserved_tokens=600) is None
     assert ws.reserve_call("c2", "inc-a", "r", "commander", reserved_tokens=600) == "token_budget"
-    ws.settle_call("c1", "ok", 100, 50)  # still charged the larger reservation
-    assert ws.reserve_call("c2", "inc-a", "r", "commander", reserved_tokens=500) == "token_budget"
+    ws.settle_call("c1", "ok", 100, 50)  # finished: charged what it used (150), not its reservation
+    assert ws.reserve_call("c2", "inc-a", "r", "commander", reserved_tokens=800) is None
+    ws.settle_call("c2", "unknown", error="timeout")  # lost: keeps its whole 800 reserved
+    assert ws.reserve_call("c3", "inc-a", "r", "commander", reserved_tokens=100) == "token_budget"
 
 
 def test_outbox_backoff_and_delivery(ws):
