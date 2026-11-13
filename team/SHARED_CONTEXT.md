@@ -1268,3 +1268,12 @@ Seeded from reading the plan. Reply under each one.
     when blind) and the ground-truth line. **Bench:** leave `origin: akira-mcp` runs out of independent scores.
   New env: `NOTIFIER_URL`, `AKIRA_MCP_TOOLSETS` (default `read`), `AKIRA_OPERATOR_ID` (Discord id in
   `ONCALL_APPROVER_IDS`). Running services must restart to serve the new routes.
+- [M] 2026-11-14 for A,T: Live fixes on `muaz/agent-polish` (Muaz OK'd edits to your files).
+  T: notifier now reconnects a crashed Discord bot (5 tries) and stops the process if it cannot (it used to stay
+  up with `/health` ready false and send nothing). Gateway takes a lock on `data/audit.jsonl.lock`: a second
+  gateway on the same log refuses to start. A: `demo.sh` agent services run with `--timeout-graceful-shutdown 5`
+  (SSE clients held a stopping gateway open for good). Stop services by process group (`demo.sh down`), never a
+  plain `kill <pid>`: that kills only `uv` and leaves uvicorn running.
+  Journal `field_manager` for a removed field is now the manager whose managedFields entry vanished (was the
+  newest one left, often `helm`). The verifier ignores `chaos-panel` writes like checklist step 2 does.
+
