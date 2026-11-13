@@ -1153,3 +1153,41 @@ Seeded from reading the plan. Reply under each one.
   run `uv sync --locked`. Events: each tool call is an `llm_called` with extra
   `tool`, `args`, `ms`, `evidence_ids` (no schema change). Agent run takes
   ~60 s and ~30k tokens vs one ~2k-token call: bench both modes.
+- [T] 2026-11-13 for A,M: Branch `twaha/chaos-lab` (not pushed; Twaha OK'd edits to your files).
+  From `reports/akira-ui-chaos-panel-review.md`. Offline checks pass (616 pytest, 60 UI tests);
+  **no live run yet**.
+  **Action needed, everyone:** add `CHAOS_JUDGE_TOKEN` (16+ chars, not the same value as
+  `ONCALL_API_TOKEN`) to `.env`. Chaos `:7004` refuses to start without it and returns 401 on
+  every route, GETs too, without header `X-Chaos-Token`. CLI, bench, `smoke.sh` and the UI
+  server send it; run the CLI as `uv run --env-file .env python -m chaos.cli`. `demo.sh shop`
+  mints one and puts it in `remote.env`. Observer, brain, gateway and notifier drop the
+  variable at start (`auth.agent_start()`), so agent code never holds it.
+  C6 (A): faults are experiments now. New routes `GET /chaos/registry`, `POST
+  /chaos/experiments/preview`, `POST /chaos/experiments` (header `Idempotency-Key`), `POST
+  /chaos/experiments/draw`, `GET /chaos/experiments[/{id}]`, `POST .../{id}/stop|reveal`. The six
+  old routes keep their response and add `experiment_id`; a re-inject of a fault that is
+  already live now returns 409. What may be broken: `config/chaos.yaml`. State: `data/chaos.db`.
+  `reset` no longer holds the write lock while it waits, and stale health (`prometheus_ok`
+  false) no longer counts as healthy. UI `/chaos` is the lab; the ground-truth rewrite in
+  `next.config.ts` is gone (server route `ui/app/api/chaos` adds the token).
+  C4 (M): `/health/now` adds `last_ok_ts` (time of the last good Prometheus reading).
+  `journal.still_live` compares env var by var, so a later unrelated var does not make an older
+  env entry look gone.
+  C2 (mine): new event `tool_called` `{tool, args, ms, evidence_ids}`; read tools no longer
+  publish `llm_called`. `diagnosis_ready` adds `decision`, `origin`, `chosen`, `rule_choice`,
+  `reason`, `alternative`; `rule_matched` adds `candidates`. UI `EVENT_TYPES` updated.
+  C1 (M): `ActionRequest.origin` (`rule` default, `model`), `Diagnosis.decision | candidate |
+  reason | alternative` (all optional). MCP tools take `origin`.
+  Brain (M): `BRAIN_MODE=agent` now means the model chooses: accept a candidate from
+  `rules.candidates()`, propose a tool from `brain/capabilities.py`, or decline. Old behaviour
+  is `BRAIN_MODE=advise`. Follow-ups (`raise_limit`) are sent only behind the rule's own pick.
+  Evidence and `get_recent_changes` say "the agent" / "another writer", not the field manager;
+  the card's Why line keeps the name.
+  Gateway (M): `origin == "model"` always ends in an approval request ("the agent chose this
+  fix itself"), skips the rule-equality compare in freshness, and writes no ledger or rehearsal
+  credit. A stale-entry action claimed as `rule` is still caught. Verifier: a reading with
+  `prometheus_ok: false` cannot hold the prediction, count as recovered, or trigger early abort;
+  undo reason then reads "monitoring went blind; recovery not proven".
+  Your call, not done: replan after a failed verify, a real degraded-mode tool, compound
+  faults, bench scoring by experiment record. Trust and bench runs collected so far were made
+  in what is now `advise` mode.
