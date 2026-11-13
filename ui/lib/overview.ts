@@ -96,10 +96,10 @@ export function verdict(inc: Incident): Verdict | null {
   return inc.predictionHeld === true || status.startsWith("FIXED") ? "verified" : "unproven";
 }
 
-export const VERDICT: Record<Verdict, { label: string; tone: "ok" | "warn"; phrase: string }> = {
-  verified: { label: "Fix verified", tone: "ok", phrase: "fixed" },
-  unproven: { label: "Recovered, cause unproven", tone: "warn", phrase: "recovered, fix not proven" },
-  mitigated: { label: "Mitigated, not fixed", tone: "warn", phrase: "mitigated, permanent fix needed" },
+export const VERDICT: Record<Verdict, { label: string; short: string; tone: "ok" | "warn" }> = {
+  verified: { label: "Fix verified", short: "Fix verified", tone: "ok" },
+  unproven: { label: "Recovered, cause unproven", short: "Unproven", tone: "warn" },
+  mitigated: { label: "Mitigated, not fixed", short: "Mitigated", tone: "warn" },
 };
 
 export interface IncidentStats {

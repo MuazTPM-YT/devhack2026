@@ -91,3 +91,8 @@
   .cell:nth-child(2n) { border-right: 0; }
   .cell:last-child { grid-column: 1 / -1; border-bottom: 0; }
 }
+
+/* narrow screens stack the columns: the running experiment and its Stop button come first */
+@media (max-width: 1100px) {
+  .runFirst { order: -1; }
+}

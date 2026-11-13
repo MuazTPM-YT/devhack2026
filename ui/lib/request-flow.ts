@@ -184,8 +184,10 @@ export function describe(ev: IncidentEvent, next: IncidentEvent | null = null): 
       const on = str(p.culprit) ? `on ${str(p.culprit)}` : null;
       if (p.decision === "decline") return line("Agent declined to act", str(p.reason) ?? on, "warn");
       if (chosen?.tool && p.origin === "model") {
+        const same = rule?.tool === chosen.tool && rule?.target === chosen.target;
         return line(`Agent chose ${words(chosen.tool)} on ${chosen.target}`,
-          [rule?.tool ? `not the rule's ${words(rule.tool)}` : "no rule matched", str(p.reason)].filter(Boolean).join(" · "));
+          [!rule?.tool ? "no rule matched" : same ? "an older change than the rule's first pick" : `not the rule's ${words(rule.tool)}`,
+            str(p.reason)].filter(Boolean).join(" · "));
       }
       if (chosen?.tool && p.decision) return line(`Agent agreed with the rule: ${words(chosen.tool)} on ${chosen.target}`, str(p.reason) ?? on);
       return line(`Diagnosis: ${words(str(p.pattern) ?? "unknown")}`, on);

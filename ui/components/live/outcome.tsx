@@ -1,6 +1,6 @@
 import { Tag, type Tone } from "@/components/ui/tag";
 import { words } from "@/lib/format";
-import type { Incident, Outcome as OutcomeKind } from "@/lib/live";
+import type { Choice, Incident, Outcome as OutcomeKind } from "@/lib/live";
 import type { ReceiptView } from "@/lib/use-receipt";
 
 import s from "./sheet.module.css";
@@ -15,6 +15,15 @@ export const OUTCOME_TAG: Record<OutcomeKind | "open", { tone: Tone; label: stri
 function Yes({ value, yes, no }: { value: boolean | null | undefined; yes: string; no: string }) {
   if (value == null) return <span className="muted">–</span>;
   return <span className={value ? "ok" : "bad"}>{value ? yes : no}</span>;
+}
+
+function ownPick(choice: Choice): string {
+  const mine = choice.chosen, rule = choice.ruleChoice;
+  if (!mine) return "Agent chose its own fix";
+  if (!rule) return `Agent chose ${words(mine.tool)}; no rule matched`;
+  return rule.tool === mine.tool && rule.target === mine.target
+    ? `Agent chose to undo an older change than the rule's first pick (${words(mine.tool)})`
+    : `Agent chose ${words(mine.tool)}, not the rule's ${words(rule.tool)}`;
 }
 
 // the card the notifier posts, and the receipt numbers behind it
@@ -41,7 +50,7 @@ export function Outcome({ incident, receipt }: { incident: Incident; receipt: Re
         <p className={s.note}>
           <strong>
             {choice.decision === "decline" ? "Agent declined to act."
-              : choice.origin === "model" ? `Agent chose ${words(choice.chosen?.tool ?? "its own fix")}${rule ? `, not the rule's ${words(rule.tool)}` : ""}; a human approves it.`
+              : choice.origin === "model" ? `${ownPick(choice)}; a human approves it.`
                 : "Agent agreed with the rule's pick."}
           </strong>{" "}
           {choice.reason}

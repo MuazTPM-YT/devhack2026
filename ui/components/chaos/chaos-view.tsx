@@ -102,7 +102,7 @@ export function ChaosView() {
             </p></article>
           )}
         </div>
-        <div className={`${page.span4} ${page.stack}`}>
+        <div className={`${page.span4} ${page.stack} ${openRun ? styles.runFirst : ""}`}>
           {shown ? (
             <ActiveRun key={shown.id} run={shown} live={state} health={observer.health} policy={policy} busy={busy === shown.id}
                        onStop={() => act(shown.id, () => stopExperiment(shown.id))}

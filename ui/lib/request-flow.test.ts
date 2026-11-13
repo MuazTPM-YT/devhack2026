@@ -143,6 +143,9 @@ test("the diagnosis says who chose the fix", () => {
     "Agent agreed with the rule: rollback deploy on payment");
   const own = describe(ev("diagnosis_ready", { ...base, decision: "accept", origin: "model", chosen: { tool: "revert_config", target: "payment" }, reason: "The flag fits." }));
   assert.deepEqual([own.title, own.detail], ["Agent chose revert config on payment", "not the rule's rollback deploy · The flag fits."]);
+  // live, inc-1794578176880: both picks were revert_config on payment, for different changes
+  const older = describe(ev("diagnosis_ready", { ...base, rule_choice: { tool: "revert_config", target: "payment" }, decision: "accept", origin: "model", chosen: { tool: "revert_config", target: "payment" }, reason: "The flag fits." }));
+  assert.equal(older.detail, "an older change than the rule's first pick · The flag fits.");
   const no = describe(ev("diagnosis_ready", { ...base, decision: "decline", origin: null, chosen: null, reason: "Evidence too thin." }));
   assert.deepEqual([no.title, no.detail, no.tone], ["Agent declined to act", "Evidence too thin.", "warn"]);
 });

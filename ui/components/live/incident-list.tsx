@@ -19,9 +19,10 @@ export const STATUS_TAG: Record<IncidentStatus, { tone: Tone; label: string }> =
 };
 
 // resolved splits into what was actually proven (lib/overview.ts verdict)
-export function statusTag(inc: Incident | null, status: IncidentStatus): { tone: Tone; label: string } {
+export function statusTag(inc: Incident | null, status: IncidentStatus, short = false): { tone: Tone; label: string } {
   const proved = inc ? verdict(inc) : null;
-  return proved ? VERDICT[proved] : STATUS_TAG[status];
+  if (!proved) return STATUS_TAG[status];
+  return { tone: VERDICT[proved].tone, label: short ? VERDICT[proved].short : VERDICT[proved].label };
 }
 
 const MAX = 60;
@@ -41,7 +42,7 @@ export function IncidentList({ state, picked, now, maxAgeS }: {
           {ids.map((id) => {
             const inc = state.incidents[id];
             const status = incidentStatus(inc, now, maxAgeS);
-            const st = statusTag(inc, status);
+            const st = statusTag(inc, status, true);
             const took = (inc.closedAt ?? now) - inc.openedAt;
             return (
               <li key={id}>
