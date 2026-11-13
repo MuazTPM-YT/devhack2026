@@ -1,7 +1,7 @@
 # Twaha [T]: state
 
 **Last updated:** 2026-11-13
-**Current phase:** Chaos Lab + agent chooses the fix, offline checks done, live check NOT run
+**Current phase:** Chaos Lab + agent chooses the fix, offline checks done, live check done (2 runs)
 **Branch:** `twaha/chaos-lab` off `origin/main` `88d0ef7` (PR #43 merged), not pushed
 **Implementation:** PRs #8, #12, #15, #43 merged
 
@@ -30,10 +30,31 @@
     that reason, not for a test). Registry build and 3 previews run against live k3d with
     server-side dry runs only: 11 targets, `cartFailure 50%` + decoy and
     `checkout PAYMENT_ADDR wrong_host` preview OK, `shipping` flag refused "not watched".
-  - NOT done: live run of an experiment or of agent mode with the new prompt (needs
-    `CHAOS_JUDGE_TOKEN` in `.env` and a stack restart). No browser look at the populated lab:
-    the running dev server has no token, pages only checked for HTTP 200 and SSR text.
-    `.env.example` still lacks `CHAOS_JUDGE_TOKEN=` (deny rule blocks my edit).
+  - Live check 2026-11-13 19:10 to 19:32, k3d `oncall`, stack restarted with `scripts/demo.sh`,
+    both runs started from the browser (headless Chrome driven over DevTools):
+    - Run 1 `exp-56f262853c`, guided `cartFailure 50%` on cart: symptom +3m30s (frontend and
+      checkout p95; cart errors stayed ~4%, under the 5% line), `inc-1794577880789` opened +4m00s,
+      culprit cart, 19 reads, candidate c1 `revert_config cart` was right. **Agent answer was junk**:
+      `decline`, reason "test", cause "placeholder"; it was accepted and Discord was paged with
+      "agent declined to act: test". Fixed in `9f45690` (2 tests failed first): reason and causes
+      need real sentences, a decline must cite evidence, three bad answers -> rule pick, every
+      rejection logged. Stop from the browser restored the flag; shop back to severity 0.
+    - Run 2 `exp-30876b397e`, `paymentFailure 50%` + decoy (`PROMO_BANNER` env on payment):
+      `inc-1794578176880`, rule's c1 = the decoy, agent accepted c2 (the flag) with a correct
+      reason, 6 model requests, 10 reads, 35.7k + 4.2k tokens, no rejected answer. Gateway: all
+      gates passed, trust gate asked "the agent chose this fix itself". Twaha approved in Discord,
+      `revert_config` ran (receipt #17, origin model), recovered at +5m15s, FIXED, prediction
+      held, harm clean. Lab: `ended_by repaired`, decoy removed after verification, no ledger row
+      for the fix, `verify_audit.py`: 949 records verified. Total inject to verdict 315 s, of
+      which 75 s waiting for the approval.
+    - Auth live: chaos 401 without token on GET and POST; proxy 404 for `kubectl`, 403 cross-site,
+      401 "locked" for a non-loopback Host.
+    - Screenshots: `.playwright-mcp/akira-lab-*.png` (1440, 390, live page at 1680).
+  - Left over: `inc-1794577996231` (opened 19:23:16 while run 1 was still live) has no outcome: I restarted the brain while
+    it was diagnosing. It shows as open until the observer's 20 min max age.
+  - NOT tested live: blind draw, `bad_image` / `broken_env` / `scale_zero` from the lab, expiry
+    by timer on the real cluster, the passcode unlock from another machine, `advise` mode.
+    One run per case: the junk answer may come back in other shapes.
 
 - Agent tools (`twaha/agent-tools`): brain diagnoses as a pydantic-ai agent
   (`brain/agent.py`) with 9 read tools (`brain/tools.py`). Thin brief, max 6

@@ -14,7 +14,8 @@ limits:
 # family is the PS-4 failure type the judge is choosing; tested = seen to breach on this cluster
 flags:
   paymentFailure:               {family: broken_configuration, unit: share of charges that fail, tested: true}
-  cartFailure:                  {family: broken_configuration, unit: share of cart calls that fail}
+  # live at 50%: cart errors stayed under the 5% line, frontend and checkout p95 breached after ~3.5 min
+  cartFailure:                  {family: broken_configuration, unit: share of cart calls that fail, tested: true}
   adFailure:                    {family: broken_configuration}
   failedReadinessProbe:         {family: broken_configuration}
   imageSlowLoad:                {family: broken_configuration, unit: delay per image}

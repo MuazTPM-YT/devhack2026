@@ -107,6 +107,15 @@ test("milestones show one current step and never a step the backend did not conf
   assert.equal(stopped.at(-1)?.note, "stopped by the judge");
 });
 
+// live, exp-30876b397e: the flag was back at +3m13s, Akira's verdict came at +5m15s after verification
+test("a fault that ended before the verdict is listed before it", () => {
+  const inc = incident(160, ["action_executed", { receipt_id: 3, tool: "revert_config", target: "payment" }, 290],
+    ["incident_resolved", { card: { incident_id: "inc-160", status: "FIXED", text: "t", evidence_ids: [] }, prediction_held: true }, 415]);
+  const done = milestones(exp({ status: "finished", ended_at: 293, ended_by: "repaired" }), inc, 150);
+  assert.deepEqual(done.map((m) => m.key).slice(-3), ["acted", "ended", "closed"]);
+  assert.ok(done.every((m, i) => i === 0 || m.at == null || done[i - 1].at == null || done[i - 1].at! <= m.at));
+});
+
 test("expiry, stop and reset are never credited to Akira", () => {
   const acted = incident(160, ["action_executed", { receipt_id: 3, tool: "revert_config", target: "payment" }, 220]);
   assert.equal(attribution(exp({ ended_by: "repaired", ended_at: 225 }), acted), "Akira's revert_config reversed the cause");

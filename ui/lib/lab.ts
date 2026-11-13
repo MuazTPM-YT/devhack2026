@@ -215,6 +215,11 @@ export function milestones(exp: Experiment, incident: Incident | null, symptom: 
     { key: "closed", label: "Akira's verdict", at: closed, note: incident?.outcome ? incident.outcome.replace("_", " ") : undefined },
     { key: "ended", label: "Fault ended", at: exp.ended_at, note: exp.ended_by ? ENDED[exp.ended_by] ?? exp.ended_by : undefined },
   ];
+  // the list reads top to bottom in time: a fault that ended before Akira's verdict goes above it
+  if (exp.ended_at != null && closed != null && exp.ended_at < closed) {
+    const ended = steps.pop()!;
+    steps.splice(steps.findIndex((s) => s.key === "closed"), 0, ended);
+  }
   const over = !OPEN.includes(exp.status);
   let live = !over;
   return steps.map((s) => {
