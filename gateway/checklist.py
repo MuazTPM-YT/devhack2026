@@ -23,7 +23,7 @@ from gateway.verifier import Verification, harm_check, ledger_effect
 from gateway.executor import (WriteRefused, list_json, patch_configmap, patch_deployment, patch_scale,
                               read_configmap, read_deployment)
 from gateway.intents import IntentStore, precondition, submission
-from gateway.receipts import ReceiptStore, build_incident_card
+from gateway.receipts import ReceiptStore, build_incident_card, source, started_by
 from observer import journal
 from observer.kube_watch import service_of
 from schemas import auth
@@ -48,6 +48,30 @@ def tier_of(gate: dict) -> str:
     return "ask" if gate.get("approved_by") else "auto"
 
 
+# checklist step names in plain words, for the "Sent by" line on Discord
+STEP_WORDS = {"schema": "schema check", "hands_off": "hands-off check", "policy": "policy check",
+              "dry_run": "dry run", "net_benefit": "net-benefit check", "freshness": "freshness check",
+              "trust_gate": "trust gate", "approval": "approval", "execute": "execute", "retry": "retry deadline"}
+# why a fix was undone -> may the agent try another one? Blind monitoring proves nothing, so no retry on it
+RETRY_REASONS = ("severity rose after the action", "did not recover", "harm check failed")
+RETRY_DEADLINE_S = 300.0  # brain agent run is capped at 150 s; past this the brain is lost, page a human
+
+
+# gateway -> brain "try another fix" call; (accepted, why not)
+def brain_retry(http: httpx.AsyncClient, brain_url: str) -> Callable[[dict], Awaitable[tuple[bool, str]]]:
+    async def ask(body: dict) -> tuple[bool, str]:
+        r = await http.post(f"{brain_url}/incidents/{body['incident']['id']}/retry", json=body, timeout=5,
+                            headers=auth.headers())
+        if r.status_code == 202:
+            return True, ""
+        try:
+            detail = r.json().get("detail")
+        except ValueError:
+            detail = None
+        return False, f"brain refused the retry: {detail or r.status_code}"
+    return ask
+
+
 # "payment errors 38.0% -> 0.4%" for the card's first line: first watched service with both readings
 def error_change(before: dict, after: dict | None, services: list[str]) -> str | None:
     for s in services:
@@ -59,12 +83,27 @@ def error_change(before: dict, after: dict | None, services: list[str]) -> str |
 
 
 
+# one failed fix as the brain's error context: what ran, why it was undone, what the numbers did meanwhile
+def failed_try(receipt_id: int, action: ActionRequest, v: Verification, harm: dict | None, reason: str | None,
+               plan: dict | None) -> dict:
+    after = v.last_health.get("services", {})
+    return {"receipt_id": receipt_id, "tool": action.tool, "target": action.target, "params": action.params,
+            "journal_entry": action.journal_entry, "origin": action.origin, "change": (plan or {}).get("summary"),
+            "why_undone": reason, "ran_s": round(v.last_ts - v.t0, 1),
+            "severity_before": v.sev_before, "severity_after": v.last_health.get("severity"),
+            "recovered": v.recovered, "prediction": action.prediction.model_dump() if action.prediction else None,
+            "prediction_held": v.prediction_held, "worse_services": (harm or {}).get("worse_services", []),
+            "readings_after": {s: {k: after.get(s, {}).get(k) for k in ("err_ratio", "p95_ms", "unhealthy")}
+                               for s in v.watched}}
+
+
 class Gateway:
     def __init__(self, conn: sqlite3.Connection, apps: Any, core: Any, http: httpx.AsyncClient, observer_url: str,
                  services: dict, policy_cfg: dict, publish: Callable[[dict], Awaitable[Any]],
                  receipts: ReceiptStore, approvers: set[str], clock: Callable[[], float] = time.time,
                  graph: Any = None, flag_map: dict | None = None, rehearsal: bool = False,
-                 books: list[dict] | None = None):
+                 books: list[dict] | None = None,
+                 request_retry: Callable[[dict], Awaitable[tuple[bool, str]]] | None = None):
         self.conn, self.apps, self.core, self.http, self.observer_url = conn, apps, core, http, observer_url
         self.services, self.policy, self.publish, self.receipts = services, policy_cfg, publish, receipts
         self.approvers, self.clock = approvers, clock
@@ -81,6 +120,13 @@ class Gateway:
         self.books = books or []  # config/runbooks.yaml; hard rules enforced in steps 3 and 7
         self.guide: dict[str, dict] = {}  # incident id -> runbook + seen-before for Discord; same ceiling as why
         self.health: dict[str, dict] = {}  # incident id -> last health read, for the card's numbers; same ponytail
+        self.started: dict[str, dict] = {}  # incident id -> the change that started it, for Discord; same ponytail
+        # retry after a clean undo (§6.4.11): None = retries off. ponytail: tries and grants live in memory;
+        # a gateway restart forgets them, so the next fix the brain sends is treated as a first pick (asks more)
+        self.request_retry = request_retry
+        self.tries: dict[str, list[dict]] = {}  # incident id -> failed fixes, the brain's error context
+        # incident id -> (granted at, attempt number); attempt None = adopted after a restart, not a retry
+        self.retry_grants: dict[str, tuple[float, int | None]] = {}
         self.intents: IntentStore | None = None  # orchestration on (migration v2): durable action intents
         self.workspace: Any = None  # schemas.workspace.Workspace on the same connection: read views only
         self.orchestration: Any = None  # schemas.orchestration.OrchestrationPolicy this gateway started with
@@ -99,9 +145,19 @@ class Gateway:
                         major=bool(row.get("major")), severity=row.get("severity_at_open") or 0)
 
     def card(self, row: dict, target: str | None, **kw: Any) -> Card:
+        retry = {"tries": self.tries.get(row["id"], []), "max": self.max_tries, **kw.pop("retry", {})}
         return build_incident_card(self.card_incident(row, target), why=self.why.get(row["id"]),
                                    pattern=row.get("pattern"), model_says=row.get("llm_why"),
-                                   health=self.health.get(row["id"]), **kw)
+                                   health=self.health.get(row["id"]), retry=retry, **kw)
+
+    @property
+    def max_tries(self) -> int:
+        return 1 + int(self.policy["budgets"]["max_retries"])
+
+    # Discord's Origin block: which part of the gateway sent it, and the change that started the incident
+    def facts(self, incident_id: str, row: dict | None, part: str, step: str) -> dict:
+        return {"source": source(part, step),
+                "started": self.started.get(incident_id) or started_by(None, row or {})}
 
     # runbook + "seen before" line for one incident's notification payloads; first computed in run()
     def guidance(self, incident_id: str, pattern: str | None = None, tool: str | None = None,
@@ -134,9 +190,10 @@ class Gateway:
 
     # a failed step ends the incident's automation: tell everyone, wake a human unless it fixed itself
     async def stop(self, action: ActionRequest | dict, row: dict | None, steps: list[dict], name: str,
-                   outcome: str, reason: str | None) -> GatewayDecision:
+                   outcome: str, reason: str | None, sent_by: tuple[str, str] | None = None) -> GatewayDecision:
         incident_id = action.incident_id if isinstance(action, ActionRequest) else str(action.get("incident_id"))
         target = action.target if isinstance(action, ActionRequest) else action.get("target")
+        part, step = sent_by or ("gateway", STEP_WORDS.get(name, name))
         await self.step(incident_id, steps, name, False, reason)
         if reason and reason.startswith("API server refused"):  # RBAC or admission said no (scenario 12)
             await self.publish({"type": "blocked", "incident_id": incident_id,
@@ -149,7 +206,8 @@ class Gateway:
                              proposal=action if isinstance(action, ActionRequest) else None)
             await self.publish({"type": "incident_resolved", "incident_id": incident_id,
                                 "payload": {"card": card.model_dump(mode="json"),
-                                            "briefing": f"follow-up not done: {reason}"}})
+                                            "briefing": f"follow-up not done: {reason}",
+                                            **self.facts(incident_id, row, part, step)}})
             return decision
         if row is not None:
             gone = name == "freshness" and outcome == "refused"
@@ -161,7 +219,8 @@ class Gateway:
             tool = action.tool if isinstance(action, ActionRequest) else action.get("tool")
             await self.publish({"type": event, "incident_id": incident_id,
                                 "payload": {"card": card.model_dump(mode="json"), "briefing": reason or "",
-                                            **self.guidance(incident_id, pattern, tool, target)}})
+                                            **self.guidance(incident_id, pattern, tool, target),
+                                            **self.facts(incident_id, row, part, step)}})
         return decision
 
     # ---- entry points --------------------------------------------------------------------------
@@ -209,7 +268,8 @@ class Gateway:
         if state != "approved":
             if intent_id is not None:
                 await self.moved(intent_id, "terminal", reason=f"approval {state}")
-            return await self.stop(action, inc, [], "approval", "escalated", f"approval {state}")
+            return await self.stop(action, inc, [], "approval", "escalated", f"approval {state}",
+                                   sent_by=("gateway", "approval decision"))
         # things may have changed while we waited: steps 2 to 6 again, trust gate skipped
         token = _intent.set(intent_id)
         try:
@@ -246,6 +306,13 @@ class Gateway:
         entry = next((r for r in journal_rows if r["id"] == action.journal_entry), None)
         if (why := why_text(entry, row["onset_at"])) is not None:
             self.why[action.incident_id] = why
+        # the change behind the incident for Discord: the one this fix reverts, else the newest on the target
+        first = entry or latest_change_before_onset(journal_rows, action.target, row["onset_at"] or 0, window_s,
+                                                    self.flag_map)
+        if first is not None or action.incident_id not in self.started:
+            self.started[action.incident_id] = started_by(first, row)
+        # a retry this gateway granted after a clean undo (close()); the brain cannot claim one
+        retry = None if approved else self.retry_grants.pop(action.incident_id, (0.0, None))[1]
         # company runbooks, matched by code from what the gateway itself read (never the brain's word)
         matched = runbooks.match(self.books, action.pattern, action.target, action.tool,
                                  entry["kind"] if entry else None)
@@ -268,10 +335,12 @@ class Gateway:
             used = {**used, "hour": 0}
         protected = bool(self.services.get(action.target, {}).get("protected"))
         # these can only end in an approval request, so an action still verifying doesn't block them
-        # a fix the model chose itself (not the rule's first pick) always goes to a human
+        # a fix the model chose itself (not the rule's first pick) goes to a human, except a granted retry
+        # (Muaz chose): it still meets every other check, the trust gate included
         chosen_by_model = action.origin == "model"
+        ask_model = chosen_by_model and retry is None
         asking = not approved and (self.policy["tools"][action.tool]["auto_eligible"] is False or protected
-                                   or chosen_by_model)
+                                   or ask_model)
         ok, outcome, reason = policy.check(action.model_dump(), self.services, self.policy, used, asking=asking)
         if not ok:
             return await self.stop(action, row, steps, "policy", outcome, reason)
@@ -373,7 +442,7 @@ class Gateway:
             if not (action.pattern == "recent_change" and shared and action.journal_entry == shared["id"]):
                 return await self.ask(action, row, steps, plan, "major incident: a human approves every action "
                                                                 "except reverting the shared change", gate)
-        if not approved and chosen_by_model:
+        if not approved and ask_model:
             return await self.ask(action, row, steps, plan, "the agent chose this fix itself, not the rule's "
                                                             "first pick; a human must approve", gate)
         if not approved:
@@ -384,7 +453,7 @@ class Gateway:
 
         # 8 execute
         return await self.execute(action, row, steps, plan, {**gate, "approved_by": approved_by, "pattern": action.pattern,
-                                                             "origin": action.origin})
+                                                             "origin": action.origin, "attempt": retry or 1})
 
     async def ask(self, action: ActionRequest, row: dict, steps: list[dict], plan: dict, reason: str | None,
                   gate: dict | None = None, step_name: str = "trust_gate") -> GatewayDecision:
@@ -402,7 +471,8 @@ class Gateway:
         await self.publish({"type": "approval_requested", "incident_id": action.incident_id, "payload": {
             "card": card.model_dump(mode="json"), "approval_id": appr["id"], "expires_at": appr["expires_at"],
             "diff": f"{action.tool} {action.target}: {plan['summary']}; changes {changed}",
-            "forecast": forecast_text(plan), **self.guidance(action.incident_id)}})
+            "forecast": forecast_text(plan), **self.guidance(action.incident_id),
+            **self.facts(action.incident_id, row, "gateway", STEP_WORDS.get(step_name, step_name))}})
         self.set_state(action.incident_id, "awaiting_approval")
         return decision
 
@@ -536,12 +606,14 @@ class Gateway:
                          cfg["window_seconds"] + extra, cfg["early_abort"] and can_undo,
                          grace_s=cfg["early_abort_grace_seconds"] + extra, prediction_delay_s=extra,
                          scope=set(scope["services"]) if scope else None)
-        health, human, result = plan["health"], [], None
+        health, human, others, result = plan["health"], [], [], None
         while result is None:
             await asyncio.sleep(self.verify_every)
             try:
                 health = await self.get_json("/health/now")
-                human = [r for r in await self.get_json("/journal", since=v.t0) if not r["by_agent"]]
+                others = [r for r in await self.get_json("/journal", since=v.t0) if not r["by_agent"]]
+                # same rule as step 2: a chaos write (fault, decoy, its cleanup) is no person taking over
+                human = [r for r in others if r.get("field_manager") != CHAOS_MANAGER]
                 if health.get("prometheus_ok") is False:
                     # stale reading = no data: decide nothing on it, let the window run (Muaz chose)
                     out_of_time = self.clock() - v.t0 >= v.window_s
@@ -571,7 +643,7 @@ class Gateway:
                                              reason="severity rose after the action", plan=plan)
         after = await asyncio.to_thread(lambda: spec_hashes(list_json(self.apps.list_namespaced_deployment),
                                                             list_json(self.core.list_namespaced_config_map)))
-        harm = harm_check(plan["hashes"], after, plan["declared"], {r["object"] for r in human},
+        harm = harm_check(plan["hashes"], after, plan["declared"], {r["object"] for r in others},
                           plan["health"], health, {action.target, *victims, *plan["blast"].get("upstream", [])},
                           excused=frozenset(scope["unrelated"]) if scope else frozenset())
         await self.publish({"type": "harm_check", "incident_id": action.incident_id,
@@ -613,7 +685,8 @@ class Gateway:
             await self.publish({"type": "escalated", "incident_id": action.incident_id, "payload": {
                 "card": card.model_dump(mode="json"),
                 "briefing": f"UNDO FAILED ({e.reason}); receipt #{receipt_id} needs a human now",
-                **self.guidance(action.incident_id, action.pattern, action.tool, action.target)}})
+                **self.guidance(action.incident_id, action.pattern, action.tool, action.target),
+                **self.facts(action.incident_id, row, "verifier", "undo")}})
             self.set_state(action.incident_id, "escalated")
             return "undo_failed"
         await self.publish({"type": "action_undone", "incident_id": action.incident_id,
@@ -623,7 +696,8 @@ class Gateway:
     # fix did not prove itself but undoing it is unsafe (or we could not see): leave it, hand it to a person.
     # failure=False: blind to the end, which says nothing about the fix
     async def keep_and_page(self, receipt_id: int, action: ActionRequest, row: dict, receipt: Receipt,
-                            reason: str, failure: bool = True) -> str:
+                            reason: str, failure: bool = True,
+                            sent_by: tuple[str, str] = ("verifier", "fix check")) -> str:
         with self.lock:
             self.conn.execute("UPDATE receipts SET outcome='handed_off' WHERE id=?", (receipt_id,))
             # unproven is a failure for trust, same as close() books an undo; the bench credits rehearsals
@@ -639,7 +713,8 @@ class Gateway:
         briefing = f"no safe undo ({receipt.inverse.get('why')}); fix kept after: {reason}" if failure \
             else f"{reason}; fix kept, a person must check"
         await self.publish({"type": "escalated", "incident_id": action.incident_id, "payload": {
-            "card": card.model_dump(mode="json"), "briefing": briefing}})
+            "card": card.model_dump(mode="json"), "briefing": briefing,
+            **self.facts(action.incident_id, row, *sent_by)}})
         self.set_state(action.incident_id, "escalated")
         return "handed_off"
 
@@ -696,30 +771,112 @@ class Gateway:
                     and action.origin != "model"):
                 trust.record(self.conn, action.pattern, action.tool, action.target, "real", effect, self.clock())
             self.conn.commit()
+        # fixes run in this incident, this one included (follow-ups count: they share the per-incident budget)
+        with self.lock:
+            done = self.conn.execute("SELECT COUNT(*) FROM receipts WHERE incident_id=?",
+                                     (action.incident_id,)).fetchone()[0]
+        if outcome == "undone":
+            self.tries.setdefault(action.incident_id, []).append(
+                {"attempt": done, **failed_try(receipt_id, action, v, harm, reason, plan)})
+        # a clean undo for a wrong fix may hand the incident back to the brain instead of paging (§6.4.11)
+        retrying, no_retry = False, None
+        # single-agent path only: with orchestration on, intents and the coordinator own what comes next
+        if outcome == "undone" and reason in RETRY_REASONS and self.request_retry is not None and self.intents is None:
+            no_retry = self.retry_blocker(action.incident_id)
+            retrying = no_retry is None
         event = {"success": "incident_resolved", "right_by_accident": "incident_resolved",
                  "handed_off": "handed_off"}.get(outcome, "escalated")
-        state = {"incident_resolved": "resolved"}.get(event, event)
+        state = "replanning" if retrying else {"incident_resolved": "resolved"}.get(event, event)
+        # state first: the brain's next fix can reach run() before this method returns
         with self.lock:
             self.conn.execute("UPDATE incidents SET state=?, resolved_at=? WHERE id=?",
                               (state, self.clock() if state == "resolved" else None, action.incident_id))
             self.conn.commit()
         self.heartbeats.pop(receipt_id, None)
         self.verifying.pop(receipt_id, None)
+        if retrying:
+            no_retry = await self.start_retry(action, row, done + 1)
+            retrying = no_retry is None
+            if not retrying:
+                self.set_state(action.incident_id, "escalated")
         mitigated = action.tool == "restart_service" and outcome in ("success", "right_by_accident")
         victims = json.loads(row.get("victims_json") or "[]")
+        retry: dict[str, Any] = {"next": done + 1} if retrying else {"stop": no_retry}
         card = self.card(row, action.target, receipt=final, receipt_id=receipt_id, mitigated=mitigated,
-                         reason=reason,
+                         reason=reason, retry=retry,
                          took_s=self.clock() - (row.get("opened_at") or v.t0), did=(plan or {}).get("summary"),
                          metric=error_change((plan or {}).get("health") or {}, v.last_health,
                                              [action.target, *victims]))
+        briefing = (reason or "") + (f"; no retry: {no_retry}" if no_retry else "")
         # the bench (§9.1) reads tier, harm, prediction and forecast vs actual off the terminal event
-        await self.publish({"type": event, "incident_id": action.incident_id, "payload": {
+        await self.publish({"type": "retry_started" if retrying else event, "incident_id": action.incident_id,
+                            "payload": {
             "card": card.model_dump(mode="json"), "receipt_url": f"/receipts/{receipt_id}",
-            "briefing": reason or "", "receipt_id": receipt_id, "tier": tier_of(receipt.trust),
+            "briefing": briefing, "receipt_id": receipt_id, "tier": tier_of(receipt.trust),
             "prediction_held": final.prediction_held, "harm_clean": final.harm_clean,
             "forecast_s": final.forecast_s, "actual_added_s": final.added_disruption_s,
-            **self.guidance(action.incident_id, action.pattern, action.tool, action.target)}})
+            **({"attempt": retry["next"], "max_attempts": self.max_tries} if retrying else {}),
+            **self.guidance(action.incident_id, action.pattern, action.tool, action.target),
+            **self.facts(action.incident_id, row, "verifier", "fix check")}})
         return outcome
+
+    # why the agent may not try another fix now; None = it may
+    def retry_blocker(self, incident_id: str) -> str | None:
+        with self.lock:
+            used = policy.usage(self.conn, incident_id, self.clock())
+            waiting = self.conn.execute("SELECT COUNT(*) FROM approvals WHERE incident_id=? AND state='pending'",
+                                        (incident_id,)).fetchone()[0]
+        b = self.policy["budgets"]
+        if used["incident"] >= self.max_tries:
+            return f"all {self.max_tries} fixes tried"
+        hour = 0 if self.rehearsal else used["hour"]
+        if used["incident"] >= b["max_actions_per_incident"] or hour >= b["max_actions_per_hour"]:
+            return "action budget used up"
+        if waiting:  # a follow-up (raise_limit) still waits for a person: they are already involved
+            return "another approval for this incident is waiting for a person"
+        return None
+
+    # grant the retry, then ask the brain for the next fix; None = the brain took it, else why not
+    async def start_retry(self, action: ActionRequest, row: dict, attempt: int) -> str | None:
+        assert self.request_retry is not None
+        failed = self.tries.get(action.incident_id, [])
+        self.retry_grants[action.incident_id] = (self.clock(), attempt)
+        body = {"incident": self.card_incident(row, action.target).model_dump(mode="json"), "attempt": attempt,
+                "max_attempts": self.max_tries, "failed": failed}
+        try:
+            ok, why = await self.request_retry(body)
+        except (httpx.HTTPError, ValueError) as e:
+            ok, why = False, f"brain unreachable ({type(e).__name__})"
+        if ok:
+            log.info("incident %s: fix %s failed, brain asked for fix %s of %s", action.incident_id, attempt - 1,
+                     attempt, self.max_tries)
+            return None
+        self.retry_grants.pop(action.incident_id, None)
+        log.warning("incident %s: no retry: %s", action.incident_id, why)
+        return why
+
+    # a granted retry the brain never answered (crash, restart): page instead of waiting for the max age
+    async def retry_timeouts(self) -> int:
+        now, done = self.clock(), 0
+        # a gateway restart forgot its grants: watch those incidents from now; their next fix is no retry (asks)
+        with self.lock:
+            orphans = [r[0] for r in self.conn.execute("SELECT id FROM incidents WHERE state='replanning'")]
+        for incident_id in orphans:
+            self.retry_grants.setdefault(incident_id, (now, None))
+        for incident_id, (granted_at, _) in list(self.retry_grants.items()):
+            row = self.incident(incident_id)
+            if row is None or row.get("state") != "replanning":
+                self.retry_grants.pop(incident_id, None)  # the brain escalated itself, or a fix is running
+                continue
+            if now - granted_at < RETRY_DEADLINE_S:
+                continue
+            self.retry_grants.pop(incident_id, None)
+            await self.stop({"incident_id": incident_id, "target": row.get("culprit"), "pattern": row.get("pattern")},
+                            row, [], "retry", "escalated",
+                            f"the brain sent no new fix within {RETRY_DEADLINE_S:.0f} s of the retry; look by hand",
+                            sent_by=("gateway", "retry deadline"))
+            done += 1
+        return done
 
     # Q2: bench reports ground truth; credit only finished rehearsal receipts, once
     def rehearsal_credit(self, receipt_id: int, diagnosis_matched: bool) -> dict:
@@ -773,7 +930,7 @@ class Gateway:
             await self.publish({"type": "approval_decided", "incident_id": action.incident_id,
                                 "payload": {"approval_id": r["id"], "decision": "expired"}})
             await self.stop(action, self.incident(action.incident_id), [], "approval", "escalated",
-                            "approval expired")
+                            "approval expired", sent_by=("gateway", "approval expiry"))
             if self.intents is not None and r.get("intent_id"):
                 await self.moved(r["intent_id"], "terminal", reason="approval expired")
         return len(rows)
@@ -803,7 +960,8 @@ class Gateway:
                                      evidence_ids=view.evidence_ids if view else [])
                 await self.keep_and_page(r["id"], lost, row, view or Receipt(
                     incident_id=r["incident_id"], tool=r["tool"], target=r["target"], diff={}, inverse=inverse,
-                    evidence_ids=[]), f"{reason}; no safe undo, fix kept", failure=False)
+                    evidence_ids=[]), f"{reason}; no safe undo, fix kept", failure=False,
+                    sent_by=("watchdog", "lost verifier"))
                 self.set_state(r["incident_id"], "escalated")
                 done += 1
                 continue
@@ -831,7 +989,8 @@ class Gateway:
             await self.publish({"type": "escalated", "incident_id": r["incident_id"],
                                 "payload": {"card": card.model_dump(mode="json"), "briefing": reason,
                                             **self.guidance(r["incident_id"], gate.get("pattern"), r["tool"],
-                                                            r["target"])}})
+                                                            r["target"]),
+                                            **self.facts(r["incident_id"], row, "watchdog", "lost verifier")}})
             done += 1
         return done
 
@@ -840,6 +999,7 @@ class Gateway:
             try:
                 await self.expire_approvals()
                 await self.watchdog()
+                await self.retry_timeouts()
                 if self.intents is not None:
                     await self.sync_intents()
                     await self.drain_intents()

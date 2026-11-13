@@ -5,10 +5,44 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** audit fixes on `muaz/agent-polish` (not pushed); live shop rerun pending (A)
+**Current phase:** retries + Discord origin on `muaz/agent-polish` (not pushed); live run pending
 **Branches:** all merged up to PR #38. Now `muaz/agent-polish` (not pushed)
 
 ## Done (with proof)
+
+- Live runs 2026-11-13/14 on k3d `oncall` (same branch). Found and fixed, each with a test that failed first:
+  notifier bot died on a Discord 503 at connect and stayed up silent (`fdf7e7a`: reconnect 5 times, then stop
+  loud); journal blamed a removed field on the newest manager left (`cc73c96`: blame the manager that vanished);
+  verifier handed off a right fix when chaos removed its decoy (`76af19a`: chaos writes are no hand-off, as step
+  2); two gateways after a restart broke the audit chain (`dc3fcc8`: audit writer lock, demo.sh
+  `--timeout-graceful-shutdown 5`; live: 2nd gateway refused, stop took 6 s). The 3 stray audit lines are kept in
+  `data/audit.zombie-2026-11-14.jsonl`; `/audit/verify` -> ok, 124 records. Merged main (`978f0b5`), 714 passed.
+  Live: agent picked the right fix past a decoy twice; one fix executed (flag revert).
+  Retry live 2026-11-14 00:24-00:37 (flag 50% + payment:v2-bad, both needed): fix 1 rollback approved, did not
+  recover, undone -> `retry_started` -> agent read the failed fix, chose flag revert -> approved, did not recover,
+  undone -> page "tried 2 fixes; each failed", `no retry: action budget used up` (1 fix earlier that hour).
+  Fixed after: retry push line (`d57c0cd`); test gateway apps wrote live data/audit.jsonl (`4aff979`).
+  715 passed. First model call hit the 150 s deadline (rule pick used): T's open item.
+
+- Retries + Discord origin (branch `muaz/agent-polish`, not pushed). Muaz chose: 3 fixes per incident, retries
+  run alone (trust gate kept), only fixes run and cleanly undone retry, agent mode only, all three origin parts.
+  - Before: no retry at all; `budgets.max_retries: 1` was never read. Now `max_retries: 2` (3 fixes).
+  - Gateway decides (`Gateway.close`): undo for "did not recover", "severity rose", "harm check failed", tries
+    and budget left, no other approval waiting -> state `replanning`, event `retry_started` (FYI), POST
+    `BRAIN_URL/incidents/{id}/retry` with every failed fix (tool, change, why undone, severity before/after,
+    readings, prediction, worse services). Else page as before, briefing `...; no retry: <why>`.
+  - Granted retry (gateway memory, brain cannot claim one) skips only the "model picked it" ask; trust gate,
+    protected, runbook, major, net benefit, freshness still ask. No grant answered in 300 s -> page; gateway
+    restart adopts `replanning` incidents (next fix asks).
+  - Brain: failed fixes leave the candidates (renumbered), model sees `failed_attempts`, a repeat is refused.
+  - Observer: max age 1200 -> 2400 s; incident still `open` (brain never handed over) pages after 600 s.
+  - Discord: Your move line, Impact (all sick services), Fixes tried, Origin (started by / sent by + machine /
+    LIVE or REHEARSAL, stamped by the gateway bus), Timeline (Discord time tags), footer Event #, embed time.
+  Proof: `uv run pytest` -> `666 passed`; `ruff check .` -> `All checks passed!`; `mypy ... chaos` -> `no issues
+  found in 75 source files`; UI `npm test` 62 pass, typecheck OK, build OK. Two tests changed (setup/additive,
+  intent kept): `test_observer.py` stuck-incident test marks the incident handed over; `test_embeds.py` consumer
+  test also sees the new `event` detail; UI `overview.test.ts` mirrors max age 2400. Fakes only: real shop, real
+  LLM and Discord NOT run.
 
 - Full audit + local end-to-end run (branch `muaz/agent-polish`, 15 commits from `20ea15c` to `48c2194`):
   - Harness (not in git, job scratch dir): k3d `oncall-test` (k3s v1.31.5) with tiny Deployments named like the

@@ -1,5 +1,6 @@
 import time
 
+import discord
 import httpx
 
 from notifier.consumer import NotificationConsumer
@@ -226,6 +227,70 @@ async def test_unreadable_saved_wake_still_pages_as_text(tmp_path):
     assert notifier.pages == [("i", "payment is failing", [])]
 
 
+class FlakyBot:
+    def __init__(self, failures):
+        self.failures, self.starts, self.clears = list(failures), 0, 0
+
+    async def start(self, token):
+        self.starts += 1
+        if self.failures:
+            raise self.failures.pop(0)
+
+    async def close(self):
+        pass
+
+    def clear(self):
+        self.clears += 1
+
+
+async def no_wait(_):
+    pass
+
+
+# live 2026-11-13: discord 503 on connect killed the bot; paging was dead while /health still answered
+async def test_bot_reconnects_after_a_crash_on_connect():
+    from notifier.main import run_bot
+
+    bot = FlakyBot([AttributeError("'NoneType' object has no attribute 'sequence'"), OSError("503")])
+    await run_bot(bot, "t", sleep=no_wait)
+    assert (bot.starts, bot.clears) == (3, 2)
+
+
+async def test_bot_gives_up_loud_and_a_bad_token_fails_at_once():
+    import discord
+    import pytest
+
+    from notifier.main import run_bot
+
+    with pytest.raises(RuntimeError, match="discord unreachable after 3 tries"):
+        await run_bot(FlakyBot([OSError()] * 3), "t", tries=3, sleep=no_wait)
+    bad = FlakyBot([discord.LoginFailure("bad token")])
+    with pytest.raises(discord.LoginFailure):
+        await run_bot(bad, "t", sleep=no_wait)
+    assert bad.starts == 1
+
+
+async def test_dead_bot_stops_the_process(monkeypatch):
+    import asyncio
+
+    from notifier import main
+
+    killed = []
+    monkeypatch.setattr(main.os, "kill", lambda pid, sig: killed.append(sig))
+
+    async def boom():
+        raise RuntimeError("discord unreachable")
+
+    task = asyncio.create_task(boom())
+    await asyncio.gather(task, return_exceptions=True)
+    main.die_on_failure(task)
+    assert killed == [main.signal.SIGTERM]
+    ok = asyncio.create_task(asyncio.sleep(0))
+    await ok
+    main.die_on_failure(ok)
+    assert len(killed) == 1
+
+
 # decided in Akira MCP: the stored row names who and where, so the closed Discord message can say so
 async def test_decision_from_akira_mcp_closes_message_with_decider(tmp_path, monkeypatch):
     monkeypatch.setattr("notifier.consumer.time.time", lambda: 50)
@@ -311,3 +376,108 @@ async def test_superseded_approval_closes_its_buttons(tmp_path, monkeypatch):
             "approval_id": "a", "decision": "superseded", "decided_by": "u1"}}})
         await consumer.expire_once()
     assert closed == [("a", "superseded")]
+
+
+# ---- /purge: approvers clear the channel it is typed in, after a private Confirm (Muaz chose) -------------
+class FakeResponse:
+    def __init__(self):
+        self.sent, self.edited = [], []
+
+    async def send_message(self, text, **kw):
+        self.sent.append((text, kw))
+
+    async def edit_message(self, **kw):
+        self.edited.append(kw)
+
+
+class FakeFollowup:
+    def __init__(self):
+        self.sent = []
+
+    async def send(self, text, **kw):
+        self.sent.append(text)
+
+
+class FakeChannel(discord.TextChannel):
+    def __init__(self, cid=1, name="wake", messages=3):  # no discord state: only what /purge touches
+        self.id, self.name, self.messages, self.calls = cid, name, messages, []
+
+    async def purge(self, **kw):
+        self.calls.append(kw)
+        return [object()] * self.messages
+
+
+def interaction(user_id, channel):
+    return type("I", (), {"user": type("U", (), {"id": user_id})(), "channel": channel,
+                          "response": FakeResponse(), "followup": FakeFollowup()})()
+
+
+def purge_bot(tmp_path, approvers=("123",)):
+    from notifier.discord_bot import DiscordNotifier
+    bot = DiscordNotifier.__new__(DiscordNotifier)  # no login
+    bot.controller = ApprovalController(httpx.AsyncClient(), "http://gateway", set(approvers),
+                                        NotifierState(tmp_path / "s.db"))
+    bot.wake_channel = 1
+    return bot
+
+
+async def test_purge_is_for_approvers_only(tmp_path):
+    bot, channel = purge_bot(tmp_path), FakeChannel()
+    i = interaction(999, channel)
+    await bot.ask_purge(i)
+    assert i.response.sent[0][0] == "not authorised" and i.response.sent[0][1]["ephemeral"] is True
+    assert channel.calls == []
+
+
+async def test_purge_asks_first_and_warns_about_live_approvals(tmp_path):
+    bot, channel = purge_bot(tmp_path), FakeChannel()
+    bot.controller.state.set("approval:a", {"expires_at": time.time() + 60, "message_id": 5, "channel_id": 1})
+    bot.controller.state.set("approval:old", {"expires_at": time.time() + 60, "channel_id": 1, "decision": "approved"})
+    i = interaction(123, channel)
+    await bot.ask_purge(i)
+    text, kw = i.response.sent[0]
+    assert text.startswith("Delete every message in #wake?") and "1 approval still waits" in text
+    assert kw["ephemeral"] is True and kw["view"] is not None and channel.calls == []
+
+
+async def test_purge_confirm_deletes_everything_and_cancel_nothing(tmp_path):
+    from notifier.discord_bot import PurgeView
+    bot, channel = purge_bot(tmp_path), FakeChannel(messages=42)
+    view = PurgeView(bot, "123", channel)
+    stranger = interaction(999, channel)
+    await view.do_confirm(stranger)
+    assert channel.calls == [] and "only the person who typed /purge" in stranger.response.sent[0][0]
+    owner = interaction(123, channel)
+    await view.do_confirm(owner)
+    assert channel.calls[0]["limit"] is None and "123" in channel.calls[0]["reason"]
+    assert owner.followup.sent == ["Deleted 42 messages in #wake."]
+    cancel_view, other = PurgeView(bot, "123", FakeChannel()), interaction(123, FakeChannel())
+    await cancel_view.do_cancel(other)
+    assert other.response.edited[0]["content"] == "Cancelled. Nothing was deleted."
+
+
+async def test_purge_without_delete_permission_says_so(tmp_path):
+    from notifier.discord_bot import PurgeView
+
+    class Locked(FakeChannel):
+        async def purge(self, **kw):
+            raise discord.Forbidden(type("R", (), {"status": 403, "reason": "Forbidden"})(), "Missing Permissions")
+
+    bot, channel = purge_bot(tmp_path), Locked()
+    i = interaction(123, channel)
+    await PurgeView(bot, "123", channel).do_confirm(i)
+    assert "Manage Messages" in i.followup.sent[0]
+
+
+# a purged approval message is gone: closing it must not retry every 5 s forever
+async def test_expired_approval_whose_message_was_purged_counts_as_closed(tmp_path):
+    class Gone(PagerNotifier):
+        async def close_approval(self, approval_id, row, decision):
+            raise discord.NotFound(type("R", (), {"status": 404, "reason": "Not Found"})(), "Unknown Message")
+
+    state = NotifierState(tmp_path / "s.db")
+    state.set("approval:a", {"expires_at": 1, "message_id": 1, "channel_id": 2})
+    async with httpx.AsyncClient() as client:
+        consumer = NotificationConsumer(client, "http://gateway", Gone(), state, repage_s=10)
+        await consumer.expire_once()
+    assert state.get("approval:a")["view_closed"] is True

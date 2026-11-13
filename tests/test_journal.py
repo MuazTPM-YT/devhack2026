@@ -44,6 +44,21 @@ class JournalTest(unittest.TestCase):
                                ("k3s", "2026-11-13T00:06:00Z", "status")))
         self.assertEqual(journal.author(new), "oncall-agent")
 
+    # live 2026-11-13: chaos removed its decoy env; chaos-panel's managedFields entry went with it, so the newest
+    # one left was helm's and the verifier handed off a working fix to "a person (helm)"
+    def test_removal_is_blamed_on_the_manager_whose_fields_vanished(self):
+        old = deploy(env=[{"name": "PROMO_BANNER", "value": "autumn"}],
+                     managers=(("helm", "2026-11-13T00:00:00Z", None), ("chaos-panel", "2026-11-13T00:05:00Z", None)))
+        new = deploy(env=[])
+        e = journal.entry("deployment", old, new, 1.0, "flagd-config")
+        self.assertEqual(e["field_manager"], "chaos-panel")
+
+    def test_manager_that_wrote_wins_over_newest_unchanged_one(self):
+        old = deploy(managers=(("helm", "2026-11-13T00:00:00Z", None), ("kubectl", "2026-11-13T00:09:00Z", None)))
+        new = deploy(image="x", managers=(("helm", "2026-11-13T00:10:00Z", None),
+                                          ("kubectl", "2026-11-13T00:09:00Z", None)))
+        self.assertEqual(journal.entry("deployment", old, new, 1.0, "flagd-config")["field_manager"], "helm")
+
     def test_env_inverse_restores_and_deletes(self):
         old = deploy(env=[{"name": "ADDR", "value": "payment:8080"}, {"name": "KEEP", "value": "1"}])
         new = deploy(env=[{"name": "ADDR", "value": "wrong:1"}, {"name": "KEEP", "value": "1"},

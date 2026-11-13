@@ -70,6 +70,25 @@ async def test_event_router_rejects_second_active_application(tmp_path):
     assert not second.state.audit_path.exists()
 
 
+# live 2026-11-14: an old gateway kept running after a restart and both appended to one audit log; the
+# chain broke (two seq 95) and the old one expired an approval nobody saw. One writer per audit log
+async def test_second_gateway_on_the_same_audit_log_refuses_to_start(tmp_path):
+    import fcntl
+
+    import pytest
+    from gateway import events
+    app = FastAPI()
+    app.state.audit_path = tmp_path / "audit.jsonl"
+    app.include_router(events.router)
+    with open(tmp_path / "audit.jsonl.lock", "a") as other:  # another process holding it
+        fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(RuntimeError, match="another gateway is writing"):
+            async with app.router.lifespan_context(app):
+                pass
+    async with app.router.lifespan_context(app):  # released: starts
+        assert (await events.publish({"type": "blocked"}))["seq"] == 1
+
+
 async def test_event_router_validates_before_persisting_and_shares_database(tmp_path):
     import pytest
     from pydantic import ValidationError

@@ -182,6 +182,8 @@ async def test_stuck_incident_is_closed_and_escalated_after_max_age():
     await obs.step()
     clock[0] = 1030.0
     _, inc = await obs.step()
+    # the brain handed it over (a refused action, as live); one never handed over has its own deadline below
+    obs.conn.execute("UPDATE incidents SET state='verifying' WHERE id=?", (inc["id"],))
     clock[0] = 1030.0 + POLICY["detection"]["incident_max_age_seconds"] - 1
     await obs.step()
     assert obs.detector.incident is not None  # not yet
@@ -192,6 +194,27 @@ async def test_stuck_incident_is_closed_and_escalated_after_max_age():
     assert esc and esc[0]["incident_id"] == inc["id"] and "lost track" in esc[0]["payload"]["briefing"]
     assert obs.conn.execute("SELECT state FROM incidents WHERE id=?", (inc["id"],)).fetchone()[0] == "escalated"
     # payment is still sick: suppressed until it recovers once, so no re-page loop
+    assert obs.detector.incident is None
+
+
+# brain restarted mid-diagnosis: nothing reached the gateway, state still 'open'. With 3 fixes the max age is
+# 40 min; this must page after handover_seconds instead
+async def test_incident_never_handed_over_pages_after_handover_seconds():
+    clock = [1000.0]
+    backend = Backend({"payment": 0.4}, {"payment": 120.0, "cart": 30.0})
+    obs = make(backend, clock)
+    await obs.step()
+    clock[0] = 1030.0
+    _, inc = await obs.step()
+    clock[0] = 1030.0 + POLICY["detection"]["handover_seconds"] - 1
+    await obs.step()
+    assert obs.detector.incident is not None
+    clock[0] += 2
+    backend.posts.clear()
+    await obs.step()
+    esc = [b for p, b in backend.posts if p == "/events/publish" and b["type"] == "escalated"]
+    assert esc and "never handed" in esc[0]["payload"]["briefing"]
+    assert esc[0]["payload"]["source"]["part"] == "observer" and esc[0]["payload"]["card"]["fields"]
     assert obs.detector.incident is None
 
 

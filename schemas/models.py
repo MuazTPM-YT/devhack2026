@@ -13,7 +13,7 @@ EventType = Literal[
     "rule_matched", "llm_called", "diagnosis_ready", "checklist_step", "approval_requested",
     "approval_decided", "action_executed", "verify_tick", "early_abort", "action_undone",
     "harm_check", "incident_resolved", "escalated", "handed_off", "injection_quarantined", "blocked",
-    "tool_called",
+    "tool_called", "retry_started",
     # orchestration (schemas/orchestration.py); only emitted when orchestration mode is not disabled
     "incident_scope_changed", "delegation_decided", "investigation_task_changed", "finding_recorded",
     "evidence_reused", "orchestration_budget_changed", "action_intent_changed",
@@ -280,6 +280,7 @@ PAYLOADS: dict[str, type[Payload]] = {
     "incident_resolved": CardPayload,
     "escalated": CardPayload,
     "handed_off": CardPayload,
+    "retry_started": CardPayload,
 }
 
 

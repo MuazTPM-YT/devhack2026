@@ -12,7 +12,7 @@ export const EVENT_TYPES = [
   "rule_matched", "llm_called", "diagnosis_ready", "checklist_step", "approval_requested",
   "approval_decided", "action_executed", "verify_tick", "early_abort", "action_undone",
   "harm_check", "incident_resolved", "escalated", "handed_off", "injection_quarantined", "blocked",
-  "tool_called",
+  "tool_called", "retry_started",
   // orchestration (coordinated mode only)
   "incident_scope_changed", "delegation_decided", "investigation_task_changed", "finding_recorded",
   "evidence_reused", "orchestration_budget_changed", "action_intent_changed",
@@ -127,6 +127,7 @@ export const STAGE_OF: Record<string, Stage> = {
   early_abort: "verify",
   action_undone: "verify",
   harm_check: "verify",
+  retry_started: "diagnose",
   incident_scope_changed: "group",
   delegation_decided: "diagnose",
   investigation_task_changed: "diagnose",
@@ -291,6 +292,11 @@ function apply(inc: Incident, type: string, p: Record<string, unknown>, ts: numb
       break;
     case "blocked":
       next.blocked += 1;
+      break;
+    case "retry_started":
+      // the gateway undid a failed fix and asked the brain for another: the later tiles run again
+      next.stages = { ...next.stages, check: "idle", act: "idle", verify: "idle" };
+      next = { ...next, checklist: [], approval: null, ticks: [], harmClean: null };
       break;
     case "incident_scope_changed":
       next.orch = { ...(next.orch ?? emptyOrch()), scopeRevision: num(p.scope_revision) ?? 0,

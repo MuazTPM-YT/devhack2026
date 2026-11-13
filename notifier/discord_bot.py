@@ -1,10 +1,12 @@
 import asyncio
+import logging
 import re
 import time
 from collections.abc import Sequence
 
 import discord
 import httpx
+from discord import app_commands
 
 from brain.redact import redact
 from notifier import embeds
@@ -14,6 +16,7 @@ from pydantic import ValidationError
 from schemas import auth
 from schemas.models import Card, GatewayDecision
 
+log = logging.getLogger("notifier")
 COLOUR = {"page": 0xD83C3E, "ask": 0xE8A317, "ok": 0x2EA043, "info": 0x808890}
 # re-page notes the notifier writes itself; gateway briefings are already explained inside the card
 NOTES = {"Approval pending": "Still waiting for Approve or Reject on the first message.",
@@ -35,6 +38,15 @@ def embed_of(card: Card, extra: Sequence[tuple[str, str]] = (), url: str | None 
             break  # a whole-embed overflow makes discord reject the page
         embed.add_field(name=name, value=value, inline=inline)
     return embed
+
+
+def rehearsal(details: dict | None) -> bool:
+    return ((details or {}).get("source") or {}).get("mode") == "rehearsal"
+
+
+# the push line above the embed; a rehearsal says so first, so test noise is plain in the channel list
+def line(card: Card, details: dict | None) -> str:
+    return ("[REHEARSAL] " if rehearsal(details) else "") + card.headline
 
 
 class ApprovalController:
@@ -146,6 +158,42 @@ class ApprovalView(discord.ui.View):
         self.add_item(ApprovalButton(approval_id, "rejected", "Reject", controller))
 
 
+# /purge, step 2: only the person who typed it may confirm; replies stay private to them
+class PurgeView(discord.ui.View):
+    def __init__(self, notifier: "DiscordNotifier", user_id: str, channel: discord.TextChannel | discord.Thread):
+        super().__init__(timeout=60)
+        self.notifier, self.user_id, self.channel = notifier, user_id, channel
+
+    @discord.ui.button(label="Delete everything", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self.do_confirm(interaction)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self.do_cancel(interaction)
+
+    async def do_confirm(self, interaction: discord.Interaction):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("only the person who typed /purge can confirm it",
+                                                    ephemeral=True)
+            return
+        await interaction.response.edit_message(content=f"Deleting every message in #{self.channel.name}...",
+                                                view=None)
+        try:
+            deleted = await self.channel.purge(limit=None, reason=f"/purge by discord user {self.user_id}")
+        except discord.Forbidden:
+            await interaction.followup.send("Discord refused: the bot needs Manage Messages and Read Message "
+                                            "History in this channel. Nothing more was deleted.", ephemeral=True)
+            return
+        log.warning("/purge by %s: deleted %s messages in #%s", self.user_id, len(deleted), self.channel.name)
+        await interaction.followup.send(f"Deleted {len(deleted)} messages in #{self.channel.name}.", ephemeral=True)
+        self.stop()
+
+    async def do_cancel(self, interaction: discord.Interaction):
+        await interaction.response.edit_message(content="Cancelled. Nothing was deleted.", view=None)
+        self.stop()
+
+
 class DiscordNotifier(discord.Client):
     def __init__(self, controller: ApprovalController, fyi_channel: int, wake_channel: int,
                  tickets_channel: int, role_id: int):
@@ -153,6 +201,41 @@ class DiscordNotifier(discord.Client):
         self.controller = controller
         self.fyi_channel, self.wake_channel = fyi_channel, wake_channel
         self.tickets_channel, self.role_id = tickets_channel, role_id
+        self.tree = app_commands.CommandTree(self)
+
+        @self.tree.command(name="purge", description="Delete every message in this channel (approvers only)")
+        async def purge(interaction: discord.Interaction):
+            await self.ask_purge(interaction)
+
+    # slash commands per server: a global sync takes up to an hour to show, a server sync is instant
+    async def on_ready(self):
+        for guild in self.guilds:
+            self.tree.copy_global_to(guild=guild)
+            try:
+                await self.tree.sync(guild=guild)
+            except discord.HTTPException as e:  # invited without the applications.commands scope
+                log.warning("could not register /purge in %s: %s", guild.name, e)
+
+    # /purge, step 1: approvers only (Muaz chose), then a private Confirm. Live approvals go too: say so
+    async def ask_purge(self, interaction: discord.Interaction):
+        user = str(interaction.user.id)
+        if user not in self.controller.approvers:
+            await interaction.response.send_message("not authorised", ephemeral=True)
+            return
+        channel = interaction.channel
+        if not isinstance(channel, (discord.TextChannel, discord.Thread)):
+            await interaction.response.send_message("/purge works only in a server text channel", ephemeral=True)
+            return
+        now = time.time()
+        live = sum(1 for row in self.controller.state.approvals().values()
+                   if row.get("channel_id") == channel.id and not row.get("decision") and row["expires_at"] > now)
+        warn = (f" {live} approval still waits for Approve; its buttons go too, so it can only expire or be "
+                "decided outside Discord." if live == 1 else
+                f" {live} approvals still wait for Approve; their buttons go too, so they can only expire or be "
+                "decided outside Discord." if live else "")
+        await interaction.response.send_message(
+            f"Delete every message in #{channel.name}?{warn} This cannot be undone.",
+            view=PurgeView(self, user, channel), ephemeral=True)
 
     async def setup_hook(self):
         for approval_id, row in self.controller.state.approvals().items():
@@ -180,21 +263,38 @@ class DiscordNotifier(discord.Client):
                                       embed=embed)
         return await channel.send(prefix + redact(text)[:1900], allowed_mentions=mentions, view=view)
 
-    # T's card embed + who it is for, runbook, seen before, approvers, page count (details = payload extras)
+    # T's card embed + who it is for, what to do, runbook, seen before, origin, timeline, approvers, page count
+    # (details = payload extras + the bus record's seq and time)
     def dressed(self, kind: str, card: Card, extra: Sequence[tuple[str, str]] = (), details: dict | None = None,
-                url: str | None = None) -> discord.Embed:
+                url: str | None = None, approval_id: str | None = None,
+                expires_at: float | None = None) -> discord.Embed:
         details = details or {}
+        page = details.get("page", 1)
+        src, started, event = details.get("source"), details.get("started"), details.get("event")
         more: list[tuple[str, str]] = []
         if kind == "approval":
             more.append(("Who can approve", embeds.mentions(self.controller.approvers)))
-        if kind == "wake" and details.get("page", 1) > 1:
-            more.append(("Page", f"#{details['page']}; re-pages until acknowledged or resolved"))
+        if kind == "wake" and page > 1:
+            more.append(("Page", f"#{page}; re-pages until acknowledged or resolved"))
+        # before runbook and seen-before: when the embed is too big, those go first
+        if origin := embeds.origin_text(src, started, page):
+            more.append(("Origin", origin))
+        if when := embeds.timeline_text(started, event, page):
+            more.append(("Timeline", when))
         if rb := details.get("runbook"):
             more.append(("Runbook", embeds.runbook_text(rb)))
         if details.get("seen_before"):
             more.append(("Seen before", details["seen_before"]))
         embed = embed_of(card, [*extra, *more], url=url)
         embed.set_author(name=embeds.AUDIENCE[kind])
+        embed.description = f"{embed.description or ''}\n\n**Your move:** " \
+                            f"{embeds.your_move(kind, card.status, expires_at)}"
+        if rehearsal(details):
+            embed.title = f"[REHEARSAL] {embed.title or ''}"[:256]
+        embed.set_footer(text=redact(embeds.ids_text(card.footer, event, approval_id))[:500])
+        embed.timestamp = embeds.event_time(event)
+        while len(embed) > embeds.MAX_TOTAL and len(embed.fields) > 1:
+            embed.remove_field(len(embed.fields) - 1)  # discord rejects the whole page over 6000
         return embed
 
     # cards from before embeds (old events, re-pages) have no fields: send their text as before
@@ -202,7 +302,7 @@ class DiscordNotifier(discord.Client):
         if not card.fields:
             await self.send_text(self.fyi_channel, f"{card.text}\n{receipt_url}")
             return
-        await self.send_text(self.fyi_channel, card.headline,
+        await self.send_text(self.fyi_channel, line(card, details),
                              embed=self.dressed("fyi", card, details=details, url=receipt_url))
 
     async def wake(self, card: Card, briefing: str, details: dict | None = None) -> int | None:
@@ -211,7 +311,7 @@ class DiscordNotifier(discord.Client):
             message = await self.send_text(self.wake_channel, f"{card.text}\n{briefing}", wake=True, view=view)
         else:
             note = [("Update", NOTES[briefing])] if briefing in NOTES else []
-            message = await self.send_text(self.wake_channel, card.headline, wake=True, view=view,
+            message = await self.send_text(self.wake_channel, line(card, details), wake=True, view=view,
                                            embed=self.dressed("wake", card, note, details))
         return message.id
 
@@ -219,7 +319,8 @@ class DiscordNotifier(discord.Client):
         if not card.fields:
             await self.send_text(self.tickets_channel, card.text)
             return
-        await self.send_text(self.tickets_channel, card.headline, embed=self.dressed("ticket", card, details=details))
+        await self.send_text(self.tickets_channel, line(card, details),
+                             embed=self.dressed("ticket", card, details=details))
 
     async def request_approval(self, approval_id: str, card: Card, diff: str,
                                forecast: str, expires_at: float, details: dict | None = None) -> None:
@@ -233,8 +334,9 @@ class DiscordNotifier(discord.Client):
         else:
             extra = [("Side effects", forecast), ("Exact change", f"```{diff.replace('`', '')[:900]}```"),
                      ("Expires", f"<t:{int(expires_at)}:R> (<t:{int(expires_at)}:t>)")]
-            message = await self.send_text(self.wake_channel, card.headline, wake=True, view=view,
-                                           embed=self.dressed("approval", card, extra, details))
+            message = await self.send_text(self.wake_channel, line(card, details), wake=True, view=view,
+                                           embed=self.dressed("approval", card, extra, details,
+                                                              approval_id=approval_id, expires_at=expires_at))
         self.controller.state.set(f"approval:{approval_id}", {
             "message_id": message.id, "channel_id": message.channel.id, "expires_at": expires_at,
         })

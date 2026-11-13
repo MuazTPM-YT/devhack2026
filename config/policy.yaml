@@ -6,14 +6,17 @@ detection:
   sustain_seconds: 30
   poll_seconds: 5
   # an incident nobody ended (lost terminal event, crashed process) is closed and escalated after this;
-  # above the longest real path: diagnose + 2 approvals (300 s each) + verify (120 + 90 s for a flag)
-  incident_max_age_seconds: 1200
+  # above the longest real path: 3 fixes, each diagnose (150 s) + approval (300 s) + verify (120 + 90 s for a flag)
+  incident_max_age_seconds: 2400
+  # an incident the brain never handed to the gateway (brain crashed mid-diagnosis) is escalated after this;
+  # above one diagnosis: agent run (150 s) + its reads
+  handover_seconds: 600
 change_window_minutes: 10          # "recent change" window before onset
 budgets:
   max_actions_per_incident: 3
   max_actions_per_hour: 3
   max_in_flight: 1
-  max_retries: 1
+  max_retries: 2                   # after a clean undo, up to 2 more fixes: 3 per incident (Muaz chose)
 tools:
   rollback_deploy:      {reversible: true, auto_eligible: true}
   revert_config:        {reversible: true, auto_eligible: true}

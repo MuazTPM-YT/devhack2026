@@ -509,3 +509,49 @@ async def test_change_author_never_reaches_the_model(tmp_path):
     record = await brain.handle(INC)
     assert record["diagnosis"] is not None and len(seen) == 1
     assert "chaos-panel" not in seen[0] and "change by another writer" in seen[0]
+
+
+# retry (§6.4.11): the rule's failed pick leaves the list; with nothing left the agent declines and a human
+# gets the failed fixes, who sent the page, and the change that started it
+async def test_retry_drops_the_failed_fix_and_pages_with_the_tries(tmp_path):
+    from test_agent import chosen
+
+    world = World()
+    brain = choosing_brain(world, tmp_path, lambda m, i: chosen(
+        i, "decline", reason="The only recorded change was already undone and nothing improved.", prediction=None))
+    tried = [{"attempt": 1, "tool": "rollback_deploy", "target": "payment", "params": {}, "journal_entry": 41,
+              "why_undone": "did not recover", "receipt_id": 3, "ran_s": 120.0}]
+    record = await brain.handle(INC, tried=tried)
+    assert brain.submitted == [] and record["attempt"] == 2
+    assert last(world, "rule_matched")["candidates"] == [] and last(world, "rule_matched")["tools"] == []
+    esc = last(world, "escalated")
+    tries = next(f["body"] for f in esc["card"]["fields"] if f["label"] == "Fixes tried")
+    assert tries.startswith("1. Rolled payment back to its previous version: it did not bring the service back")
+    assert esc["source"]["part"] == "brain" and esc["source"]["step"] == "diagnosis"
+    assert esc["started"]["change"] == "image change on deployment/payment" and esc["started"]["by"] == "chaos-panel"
+
+
+def test_retry_route_needs_agent_mode_and_starts_a_diagnosis(tmp_path):
+    world = World()
+    body = {"incident": INC.model_dump(mode="json"), "attempt": 2, "max_attempts": 3,
+            "failed": [{"tool": "rollback_deploy", "target": "payment", "params": {}, "journal_entry": 41}]}
+    bundle_brain = make(world, [], tmp_path)
+    with TestClient(create_app(bundle_brain), headers=auth.headers()) as client:
+        r = client.post("/incidents/inc-1/retry", json=body)
+        assert r.status_code == 409 and "BRAIN_MODE=agent" in r.json()["detail"]
+    brain = choosing_brain(world, tmp_path)
+    seen = []
+
+    async def handle_safely(incident, tried=None):
+        seen.append((incident.id, tried))
+        return {}
+
+    brain.handle_safely = handle_safely  # type: ignore[method-assign]
+    with TestClient(create_app(brain), headers=auth.headers()) as client:
+        assert client.post("/incidents/inc-2/retry", json=body).status_code == 422  # id must match the path
+        assert client.post("/incidents/inc-1/retry", json={**body, "failed": []}).status_code == 422
+        r = client.post("/incidents/inc-1/retry", json=body)
+        assert r.status_code == 202 and r.json()["attempt"] == 2
+    assert seen == [("inc-1", body["failed"])]
+    with TestClient(create_app(brain)) as client:  # no token: our processes only
+        assert client.post("/incidents/inc-1/retry", json=body).status_code == 401

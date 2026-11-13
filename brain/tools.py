@@ -81,6 +81,8 @@ class ToolBox:
     choose: bool = False
     candidates: list[dict] = field(default_factory=list)
     tools_ok: set[str] = field(default_factory=set)
+    # fixes already run and undone in this incident (gateway retry context); never chosen again
+    tried: list[dict] = field(default_factory=list)
     # orchestration (mode != disabled): shared read cache, and who this run is for the delivered ledger
     cache: EvidenceCache | None = None
     workspace: Any = None  # schemas.workspace.Workspace

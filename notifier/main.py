@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import signal
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -23,6 +24,35 @@ log = logging.getLogger(__name__)
 class Ack(BaseModel):
     by: str = Field(min_length=1, max_length=40)
     via: Literal["discord", "akira-mcp"] = "akira-mcp"
+
+log = logging.getLogger("notifier")
+BOT_TRIES = 5
+
+
+# live 2026-11-13: discord answered the first handshake with 503, discord.py crashed in its own reconnect
+# (AttributeError), and paging died while /health still answered: an approval expired unseen.
+# Reconnect a few times; a wrong token never gets better, so it fails at once
+async def run_bot(client, token: str, tries: int = BOT_TRIES, wait_s: float = 5.0, sleep=asyncio.sleep) -> None:
+    for attempt in range(1, tries + 1):
+        try:
+            await client.start(token)
+            return  # closed on purpose: shutdown
+        except discord.LoginFailure:
+            raise
+        except Exception as e:
+            log.error("discord bot stopped (%r); reconnect %s of %s in %.0f s", e, attempt, tries, wait_s * attempt)
+            await client.close()
+            client.clear()  # discord.py: makes a closed client startable again
+            await sleep(wait_s * attempt)
+    raise RuntimeError(f"discord unreachable after {tries} tries; no page can go out")
+
+
+# a dead bot or consumer must stop the process, not leave it up and silent
+def die_on_failure(task: asyncio.Task) -> None:
+    if not task.cancelled() and task.exception() is not None:
+        log.critical("notifier %s failed: %r; stopping so nobody mistakes it for alive", task.get_name(),
+                     task.exception())
+        os.kill(os.getpid(), signal.SIGTERM)
 
 
 def required(name: str) -> str:
@@ -57,8 +87,10 @@ async def lifespan(app: FastAPI):
         consumer = NotificationConsumer(client, gateway_url, notifier, state,
                                          float(os.environ.get("REPAGE_SECONDS", "120")))
         async with asyncio.TaskGroup() as group:
-            bot_task = group.create_task(notifier.start(token))
-            consumer_task = group.create_task(consumer.run())
+            bot_task = group.create_task(run_bot(notifier, token), name="discord bot")
+            consumer_task = group.create_task(consumer.run(), name="event consumer")
+            for task in (bot_task, consumer_task):
+                task.add_done_callback(die_on_failure)
             app.state.notifier = notifier
             try:
                 yield

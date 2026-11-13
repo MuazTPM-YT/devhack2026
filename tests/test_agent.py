@@ -283,3 +283,33 @@ async def test_decline_must_show_what_was_looked_at():
                                                       reason="The env change does not explain errors on checkout; "
                                                              "check the payment provider status page first."))
     assert sent_back(script, "decline must cite") and result.action is None and result.error is None
+
+
+def user_brief(script) -> dict:
+    import json
+    return json.loads(next(p.content for msg in script.seen[0][0] for p in msg.parts
+                           if getattr(p, "part_kind", "") == "user-prompt"))
+
+
+# ---- retry after a failed fix (§6.4.11): failed fixes are context for the model, never a choice again ----
+TRIED = [{"attempt": 1, **RULE.model_dump(mode="json"), "why_undone": "did not recover", "severity_before": 4,
+          "severity_after": 4, "recovered": False, "receipt_id": 3}]
+
+
+async def test_retry_brief_shows_failed_fixes_and_a_repeat_is_refused():
+    repeat = {**RULE.model_dump(mode="json"), "prediction": PREDICT}
+    left = [{**CANDS[1], "id": "c1"}]  # brain/main.py drops the failed rule pick and renumbers
+    script = Script(lambda m, i: call("get_recent_changes"),
+                    lambda m, i: chosen(i, "other", proposed=repeat),
+                    lambda m, i: chosen(i, "accept", "c1"))
+    result = await service(script, choose=True).diagnose(make_box(), "recent_change", None, None, left, CAPS,
+                                                         tried=TRIED)
+    brief = user_brief(script)
+    assert brief["failed_attempts"][0]["why_undone"] == "did not recover"
+    assert sent_back(script, "that fix already failed in this incident")
+    assert (result.action.tool, result.action.journal_entry, result.action.origin) == ("revert_config", 40, "model")
+
+
+async def test_first_try_brief_has_no_failed_attempts():
+    script, _ = await choose(lambda m, i: chosen(i, "accept", "c1"))
+    assert "failed_attempts" not in user_brief(script)

@@ -725,7 +725,7 @@ Every 10 s: any `pending_verification` older than 180 s with no verifier heartbe
 
 #### 6.4.11 One retry (P2)
 
-After a clean undo, the brain may submit the second-ranked cause's action once, subject to the full checklist. `max_retries: 1`.
+After a clean undo (did not recover, got worse, harm check failed), the gateway hands the incident back to the brain with every failed fix as context; the agent (BRAIN_MODE=agent) picks a different fix, subject to the full checklist (trust gate included; only the "model picked it" ask is skipped). `max_retries: 2`, so 3 fixes per incident.
 
 ### 6.5 Kubernetes security manifests (`k8s/`) [M] P0
 

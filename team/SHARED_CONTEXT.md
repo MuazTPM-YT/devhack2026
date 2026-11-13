@@ -1255,6 +1255,20 @@ Seeded from reading the plan. Reply under each one.
   -> [M] 2026-11-13: after merging main (A's read-only chaos page): the UI chaos route above is dropped; the
   browser only reads `/chaos/ground-truth` (GET, open). `chaos/cli.py` and the shell send `X-Oncall-Token`
   from `ONCALL_API_TOKEN` and stop with a plain error when it is missing.
+- [M] 2026-11-13 for A,T: Branch `muaz/agent-polish` (Muaz OK'd edits to your files). **Retries + Discord origin.**
+  **Action needed (all):** gateway now requires `BRAIN_URL` (already in `.env.example`). Brain must run
+  `BRAIN_MODE=agent` for retries; other modes refuse them (409) and the gateway pages as before.
+  C2 (T): new event `retry_started` (`CardPayload` + `attempt`, `max_attempts`), not terminal: after a clean undo
+  the incident stays open (state `replanning`) and the brain gets `POST :7002/incidents/{id}/retry` (token).
+  Discord-bound payloads (`escalated`, `approval_requested`, `incident_resolved`, `handed_off`, `retry_started`)
+  may carry `source` {part, step, host, mode} and `started` {change, by, change_ts, onset_at, opened_at}; the
+  gateway bus adds `source.mode` (live / rehearsal) from its own `ONCALL_REHEARSAL`. No Card schema change; cards
+  may add fields `Impact`, `Fixes tried`; new status `TRYING ANOTHER FIX`. Notifier (T): embeds add Your move,
+  Origin, Timeline, footer `Event #<seq>`, embed timestamp; `[REHEARSAL]` on title and push line.
+  Policy: `max_retries: 2` (3 fixes per incident), `incident_max_age_seconds: 2400`, new
+  `detection.handover_seconds: 600` (observer pages an incident the brain never handed over).
+  UI (A): `retry_started` in `EVENT_TYPES`; it sends check/act/verify back to idle. Bench (T): a trial may now
+  hold up to 3 `action_executed`; the rehearsal harness approves only the first approval.
 
 - [A] 2026-11-13 for M,T: Branch `anirudh/akira-mcp` (not pushed): local stdio MCP `akira_mcp/` so Claude
   can read Akira's own records and, opt-in, run chaos and approve/ack. README "Akira MCP". It edits your files:
@@ -1270,6 +1284,15 @@ Seeded from reading the plan. Reply under each one.
     when blind) and the ground-truth line. **Bench:** leave `origin: akira-mcp` runs out of independent scores.
   New env: `NOTIFIER_URL`, `AKIRA_MCP_TOOLSETS` (default `read`), `AKIRA_OPERATOR_ID` (Discord id in
   `ONCALL_APPROVER_IDS`). Running services must restart to serve the new routes.
+- [M] 2026-11-14 for A,T: Live fixes on `muaz/agent-polish` (Muaz OK'd edits to your files).
+  T: notifier now reconnects a crashed Discord bot (5 tries) and stops the process if it cannot (it used to stay
+  up with `/health` ready false and send nothing). Gateway takes a lock on `data/audit.jsonl.lock`: a second
+  gateway on the same log refuses to start. A: `demo.sh` agent services run with `--timeout-graceful-shutdown 5`
+  (SSE clients held a stopping gateway open for good). Stop services by process group (`demo.sh down`), never a
+  plain `kill <pid>`: that kills only `uv` and leaves uvicorn running.
+  Journal `field_manager` for a removed field is now the manager whose managedFields entry vanished (was the
+  newest one left, often `helm`). The verifier ignores `chaos-panel` writes like checklist step 2 does.
+
 - [T] 2026-11-13 for M,A: Orchestration P0-P8 on branch `twaha/orchestration` (off `origin/main` 7c6d808,
   14 commits, not pushed), from `reports/akira-orchestration-implementation-handoff.md`. Default stays the
   single-agent path. Edits your files: observer `detector.py` (split `assess()`), `observer/main.py`

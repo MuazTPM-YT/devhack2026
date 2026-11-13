@@ -128,9 +128,29 @@ def _configmap_changes(old: dict, new: dict, is_flags: bool) -> tuple[str, dict,
 
 
 # newest writer wins; status writes come from controllers, not people, so skip them
-def author(obj: dict) -> str | None:
-    fields: list[dict[str, Any]] = [m for m in obj.get("metadata", {}).get("managedFields") or [] if m.get("subresource") != "status"]
+def author(obj: dict, old: dict | None = None) -> str | None:
+    fields = _managers(obj)
+    if old is not None:
+        before = {_mkey(m): m.get("time") for m in _managers(old)}
+        # who wrote this change: a manager entry that is new or re-stamped
+        touched = [m for m in fields if before.get(_mkey(m)) != m.get("time")]
+        if touched:
+            return max(touched, key=lambda m: m.get("time") or "").get("manager")
+        # nobody re-stamped: a manager whose only fields were removed drops out of managedFields
+        # (live: chaos removed its decoy env and helm, the newest left, got the blame)
+        now = {_mkey(m) for m in fields}
+        gone = [m for m in _managers(old) if _mkey(m) not in now]
+        if gone:
+            return max(gone, key=lambda m: m.get("time") or "").get("manager")
     return max(fields, key=lambda m: m.get("time") or "", default={}).get("manager")
+
+
+def _managers(obj: dict) -> list[dict[str, Any]]:
+    return [m for m in obj.get("metadata", {}).get("managedFields") or [] if m.get("subresource") != "status"]
+
+
+def _mkey(m: dict) -> tuple:
+    return m.get("manager"), m.get("operation"), m.get("subresource")
 
 
 # one MODIFIED event -> journal row, or None when nothing we track changed
@@ -143,7 +163,7 @@ def entry(resource: str, old: dict, new: dict, now: float, flag_configmap: str) 
     if changes is None:
         return None
     kind, diff, inverse = changes
-    manager = author(new)
+    manager = author(new, old)
     return {"ts": now, "kind": kind, "object": f"{resource}/{name}", "field_manager": manager,
             "resource_version": new["metadata"].get("resourceVersion"), "diff": diff, "inverse": inverse,
             "by_agent": manager == AGENT_MANAGER}

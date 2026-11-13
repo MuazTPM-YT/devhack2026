@@ -4,13 +4,17 @@ import json
 import httpx
 import pytest
 
-from brain.coordinator import Coordinator
+from brain.coordinator import QUEUE_GRACE_S, Coordinator
 from gateway.audit import AuditLog, EventBus
-from schemas import migrations
+from schemas import config, migrations
 from schemas.db import connect
 from schemas.orchestration import OrchestrationPolicy, SignalBatch, SignalEpisode
 from schemas.workspace import Workspace
+
 from tests.test_brain import World, diagnosis_json, make
+
+# the policy's max age (3 fixes per incident raised it), not a copy that goes stale
+MAX_AGE = config.load("policy")["detection"]["incident_max_age_seconds"]
 
 
 class Clock:
@@ -265,7 +269,7 @@ async def test_max_age_escalates_once(tmp_path):
     [iid] = coord.ws.unfinished()
     await asyncio.sleep(0)  # commander picks it up
     assert coord.ws.workspace(iid)["phase"] == "investigating"
-    clock.t += 1200
+    clock.t += MAX_AGE
     await coord.expire()
     await coord.expire()
     assert [e["incident_id"] for e in published(world, "escalated")] == [iid]
@@ -284,7 +288,7 @@ async def test_queued_incident_escalates_before_max_age(tmp_path):
     await coord.on_signals(batch(ep("payment"), ep("product-catalog")))
     phases = {i: coord.ws.workspace(i)["phase"] for i in coord.ws.unfinished()}
     waiting = next(i for i, p in phases.items() if p == "queued")
-    clock.t += 1080
+    clock.t += MAX_AGE - QUEUE_GRACE_S
     await coord.expire()
     assert coord.ws.workspace(waiting)["last_error"] == "queue_wait"
     for task in coord.commanders.values():

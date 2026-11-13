@@ -67,7 +67,7 @@ Exit status: covered by `tests/test_major.py` (fakes); NOT MET live, needs A's `
 
 ## Phase 6: stretch (only if Phase 4 exit is met early)
 
-- [ ] P2 One retry after clean undo (§6.4.11)
+- [x] P2 One retry after clean undo (§6.4.11) — now up to 3 fixes (`max_retries: 2`, Muaz chose) — proof: `tests/test_verify_loop.py` retry tests (context to brain, no retry on failed undo / budget / waiting approval / brain down, deadline, restart) + `tests/test_brain.py`, `tests/test_agent.py` retry tests pass; `uv run pytest` -> 666 passed. Fakes only, not run live.
 - [ ] P2 Calibration chart of Claude's confidence
 - [ ] P2 Second LLM through MCP
 
