@@ -12,9 +12,9 @@ from typing import Any
 
 from pydantic_ai.exceptions import AgentRunError, UsageLimitExceeded
 from pydantic_ai.models import Model
-from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import RunUsage, UsageLimits
 
+from brain.agent import request_settings
 from brain.budget import DEFAULT_OUTPUT, BudgetedModel
 from brain.redact import redact_value
 from brain.specialists import TOOL_NAMES, change_causality_agent
@@ -212,7 +212,7 @@ class Delegation:
         try:
             async with asyncio.timeout(max(0.0, task["deadline_at"] - self.clock())):
                 run = await self.agent.run(json.dumps(brief, sort_keys=True), deps=child, model=model, usage=usage,
-                                           usage_limits=limits, model_settings=ModelSettings(max_tokens=DEFAULT_OUTPUT))
+                                           usage_limits=limits, model_settings=request_settings(ctx.incident_id))
             finding, state = run.output, "succeeded"
         except TimeoutError:
             state, error = "timed_out", "deadline"

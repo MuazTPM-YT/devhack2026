@@ -148,6 +148,13 @@ def select(diagnosis: Diagnosis, pattern: Pattern, rule_action: ActionRequest | 
     return action.model_copy(update={"origin": "rule" if mine else "model"})
 
 
+# every provider request for one incident, commander or specialist: OpenCode Go answers 400 without the session
+def request_settings(incident_id: str) -> ModelSettings:
+    return ModelSettings(max_tokens=InferenceRequest.max_tokens, timeout=DEADLINE_S, extra_headers={
+        "User-Agent": "devhack-oncall-agent/0.1",
+        "x-opencode-session": hashlib.sha256(incident_id.encode()).hexdigest()})
+
+
 # same OpenCode Go account and env checks as the bundle adapter; reuses the brain's http client.
 # max_retries: orchestration sets 0 so every provider attempt passes the budget (the SDK retries twice by default)
 def model_from_env(http: httpx.AsyncClient, max_retries: int | None = None) -> OpenAIChatModel:
@@ -215,9 +222,7 @@ class AgentDiagnosisService:
             "past_incidents": (guide or {}).get("past_incidents", []),
             **({"experience": guide["experience"]} if guide and guide.get("experience") else {}),
             **(box.orch.brief() if box.orch is not None else {})})
-        settings = ModelSettings(max_tokens=InferenceRequest.max_tokens, timeout=DEADLINE_S, extra_headers={
-            "User-Agent": "devhack-oncall-agent/0.1",
-            "x-opencode-session": hashlib.sha256(incident.id.encode()).hexdigest()})
+        settings = request_settings(incident.id)
         events: list[dict[str, Any]] = []
         try:
             async with asyncio.timeout(self.timeout_s if timeout_s is None else min(self.timeout_s, timeout_s)):

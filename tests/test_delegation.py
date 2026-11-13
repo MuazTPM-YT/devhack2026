@@ -322,3 +322,17 @@ async def test_budget_wrapper_refuses_oversized_request(tmp_path):
     model = BudgetedModel(svc.model, ws, "inc-1", "r", "commander")
     result = await svc.diagnose(box, "recent_change", ActionRequest.model_validate(CANDS[0]["action"]), model=model)
     assert result.error == "round_limit" and ws.rows("SELECT * FROM model_calls") == []
+
+
+# live (decoy rerun): the specialist's only request got HTTP 400; OpenCode Go needs the session header
+async def test_specialist_requests_carry_the_provider_session_header(tmp_path):
+    import hashlib
+
+    script = Script(read_both, lambda m, i: finding(i, cite=("journal:42",)))
+    gate, ws, box, _, _ = world(tmp_path, script)
+    ctx = await gate.context("inc-1", CANDS, SCOPE)
+    await box.call("get_recent_changes", {}, box.changes(10, None))
+    result = await ctx.request(box, QID[0], 0, None, None)
+    assert result.finding is not None
+    headers = script.seen[0][1].model_settings["extra_headers"]
+    assert headers["x-opencode-session"] == hashlib.sha256(b"inc-1").hexdigest()
