@@ -37,3 +37,44 @@ def test_missing_or_short_token_fails_loud(monkeypatch):
     monkeypatch.delenv(auth.ENV)
     with pytest.raises(RuntimeError, match="ONCALL_API_TOKEN"):
         auth.token()
+
+
+# /journal carries env var VALUES (a password set as env shows in clear); it was an open GET, and the UI
+# proxy put it on the local network. Now it needs the token; the gateway and the brain send it
+def test_journal_needs_the_token_and_our_readers_send_it(tmp_path):
+    import asyncio
+
+    import httpx
+
+    from observer.kube_watch import Tracker
+    from observer.main import Observer, create_app
+    from schemas import config
+    from schemas.db import connect
+    from test_gateway import action
+
+    conn = connect(":memory:", shared=True)
+    obs = Observer(conn, Tracker(conn, "flagd-config"), httpx.AsyncClient(), "http://p", "http://b", "http://g",
+                   config.load("policy"), config.load("queries"), ["payment"])
+    obs.health = {"ts": 0, "severity": 0, "services": {}}
+    with TestClient(create_app(obs)) as client:
+        assert client.get("/journal").status_code == 401
+        assert client.get("/journal", headers=auth.headers()).status_code == 200
+        assert client.get("/health/now").status_code == 200  # UI and chaos poll it
+
+    w = World(tmp_path)
+    seen = []
+
+    def spy(request):
+        seen.append((request.url.path, request.headers.get(auth.HEADER)))
+        return w.obs(request)
+
+    w.gw.http = httpx.AsyncClient(transport=httpx.MockTransport(spy))
+    asyncio.run(w.gw.submit(action()))
+    assert ("/journal", auth.token()) in seen
+
+    from brain.main import Brain
+    seen.clear()
+    b = Brain(httpx.AsyncClient(transport=httpx.MockTransport(spy)), "http://obs", "http://gw", "http://j",
+              None, lambda s, n: {}, conn, {}, config.load("policy"))
+    asyncio.run(b._get_json("http://obs/journal", [], since=0))
+    assert seen == [("/journal", auth.token())]

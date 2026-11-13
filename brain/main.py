@@ -67,7 +67,7 @@ class Brain:
 
     async def _get_json(self, url: str, default: Any, **params: Any) -> Any:
         try:
-            r = await self.http.get(url, params=params, timeout=10)
+            r = await self.http.get(url, params=params, timeout=10, headers=auth.headers())  # /journal needs it
             r.raise_for_status()
             return r.json()
         except (httpx.HTTPError, ValueError) as e:

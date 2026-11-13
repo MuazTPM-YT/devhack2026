@@ -21,13 +21,14 @@ def headers() -> dict[str, str]:
     return {HEADER: token()}
 
 
-# every write (POST, DELETE, ...) needs the token; reads stay open so the browser UI can poll and stream
+# every write (POST, DELETE, ...) needs the token; reads stay open so the browser UI can poll and stream,
+# except `private_reads` paths (observer /journal: env var values)
 class TokenGuard:
-    def __init__(self, app: ASGIApp):
-        self.app = app
+    def __init__(self, app: ASGIApp, private_reads: frozenset[str] = frozenset()):
+        self.app, self.private_reads = app, private_reads
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http" and scope["method"] not in READS:
+        if scope["type"] == "http" and (scope["method"] not in READS or scope["path"] in self.private_reads):
             supplied = dict(scope["headers"]).get(HEADER.lower().encode(), b"")
             if not hmac.compare_digest(supplied, token().encode()):
                 await JSONResponse({"detail": f"missing or wrong {HEADER}"}, status_code=401)(scope, receive, send)

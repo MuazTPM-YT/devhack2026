@@ -208,7 +208,8 @@ def create_app(observer: Observer | None = None) -> FastAPI:
         await obs.http.aclose()
 
     app = FastAPI(title="oncall observer", lifespan=lifespan)
-    app.add_middleware(auth.TokenGuard)  # baselines refresh mid-incident would skew latency checks
+    # writes: a baselines refresh mid-incident would skew latency checks; /journal shows env values
+    app.add_middleware(auth.TokenGuard, private_reads=frozenset({"/journal"}))
 
     @app.get("/health/now")
     def health_now() -> dict:

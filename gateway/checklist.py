@@ -24,6 +24,7 @@ from gateway.executor import (WriteRefused, list_json, patch_configmap, patch_de
 from gateway.receipts import ReceiptStore, build_incident_card
 from observer import journal
 from observer.kube_watch import service_of
+from schemas import auth
 from schemas.models import ActionRequest, Card, GatewayDecision, Incident, Receipt
 
 log = logging.getLogger("gateway")
@@ -114,7 +115,7 @@ class Gateway:
                             "payload": {"name": name, "passed": passed, "reason": reason}})
 
     async def get_json(self, path: str, **params: Any) -> Any:
-        r = await self.http.get(f"{self.observer_url}{path}", params=params, timeout=10)
+        r = await self.http.get(f"{self.observer_url}{path}", params=params, timeout=10, headers=auth.headers())
         r.raise_for_status()
         return r.json()
 
