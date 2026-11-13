@@ -4,11 +4,67 @@ Update this file at the end of every session. Newest facts on top of each
 section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
-**Last updated:** 2026-11-13
-**Current phase:** retries + Discord origin on `muaz/agent-polish` (not pushed); live run pending
-**Branches:** all merged up to PR #38. Now `muaz/agent-polish` (not pushed)
+**Last updated:** 2026-11-14
+**Current phase:** memory/env autonomy verified live; remaining drills stopped at user deadline
+**Branches:** `codex/safe-journal-autonomy` (push/PR/merge authorized)
 
 ## Done (with proof)
+
+- Live autonomy drills (2026-11-14), real model, Kubernetes and Discord:
+  memory `exp-980170a108` / `inc-ed16da4ac2a3` / receipt #30: recommendation 200Mi -> 32Mi -> 200Mi,
+  success in 37 s from onset, prediction held, harm clean, `journal_revert:memory`, no approvals.
+  Env `exp-8aa003c2b1` / `inc-6fe7da54591a` / receipt #31: wrong PRODUCT_CATALOG_ADDR port restored,
+  errors 66.7% -> 0%, success in 152 s from onset, `journal_revert:env`, no approvals. Both selected
+  rule c1 with real model acceptance. Read Discord FYI messages: FIXED, no action needed, no buttons.
+  MCP write dialog returned cancel; renewed user consent allowed same bounded Chaos API drills, MCP
+  tracked results. Ad flag `exp-a9dc856857` inconclusive: manual cleanup preceded delayed incident
+  `inc-8564aea2deee`; model output invalid, rule fallback refused already-restored flag. No repair credit.
+  Follow-up recommendation flag `exp-6ae6689360` stopped and field restored at user's deadline.
+  Replica live drill NOT RUN; no baseline scale changed. Flag/replica paths retain automated test proof only.
+  User authorized stopping remaining drills, pushing verified code, opening PR and merging. No code changed
+  after 949-pass full suite, Ruff/mypy clean; local overrides and teammate edits remain uncommitted.
+
+- Fixed single-replica surge forecast blocking safe memory restores (2026-11-14).
+  Live incident `inc-5198ce6253f6` selected recommendation 32Mi -> 200Mi, but net-benefit asked with a
+  10535 s forecast. `gateway/blast.py` now treats 1+ replicas with RollingUpdate, maxUnavailable=0 and
+  positive maxSurge as no planned capacity loss. Invalid/zero surge stays unsafe; Recreate still asks.
+  Regression failed before fix for both rule/model memory restores with one replica and healthy frontend
+  caller; after fix both verify recovery and notifier FYI without approval. 12 new forecast/surge cases.
+  Proof: 61 targeted pass; full isolated suite with tracked defaults 949 pass (20.38 s), Ruff clean,
+  mypy clean (99 files), graph updated. Existing local config overrides untouched. Gateway restarted
+  alone, /health ok; MCP reports all services up, Prometheus/Discord ready, severity 0. Actual live
+  recommendation strategy now forecasts 0 s instead of 10535 s. No new live fault/model/Discord drill.
+
+- Chaos Lab now has actual memory/capacity fault parameters feeding new repair proposals (2026-11-14).
+  `memory_limit` offers reviewed caps below live limit and at least live request on recommendation/ad/email;
+  `replica_reduction` leaves 1+ replicas, on those services plus payment/checkout. Missing baseline capacity
+  stays unavailable with a reason. `brain.rules.memory_restore` turns a memory-only limit reduction into
+  `raise_limit` with exact old memory/container/journal evidence instead of rolling back the whole template.
+  `autonomy.memory_restores` permits those exact inverses on the same three non-critical services; generic
+  increases, critical services, mixed resource changes and all existing safety failures still ask/refuse.
+  Existing runbook guidance extended (18 entries retained); model capabilities expose the exception; prompt
+  `agent-5`. UI types/choice labels added; engine injection/cleanup handles memory as one field.
+  Proof: isolated suite with tracked defaults 937 pass (19.21 s), 15 new cases; compiled UI tests 84 pass;
+  Ruff/mypy clean (99 files), UI typecheck clean, graph updated. Node 22 lacks TypeScript support: `npm test`
+  cannot run TS directly here; compiled with existing tsc into /tmp, then ran node:test.
+  Live API dry runs: recommendation 200Mi -> 32Mi -> 200Mi, ad 450Mi -> 128Mi -> 450Mi, checkout replicas
+  2 -> 1 -> 2; judge injection and oncall-agent repair accepted, deployment specs unchanged. Current
+  non-critical services have 1 replica, so nonzero reduction is unavailable until baseline has 2 or 3.
+  No actual live injection/model/Discord drill. Restart chaos + brain + gateway to load new handlers/policy;
+  production UI needs rebuild for new choice labels. Existing local overrides remain outside commit.
+
+- Safe autonomous journal reverts, `codex/safe-journal-autonomy` (2026-11-14). User approved a quick subset:
+  `config/policy.yaml` `autonomy.journal_reverts: [ad, email, recommendation]` allows exact flag/env inverses
+  and restoring a reduced replica count without incident-time approval or 29 trust runs. Gateway checks
+  explicit non-critical stateless scope, latest journal entry, fresh Prometheus health (3 polls), prediction,
+  exact inverse and no ledger failures; runbook, major, protected, budget and in-flight gates remain.
+  Model choices can qualify. Receipt/card names the policy; normal notifier FYI reports verified success.
+  Failed autonomous model fixes now debit trust too, so undo + escalation suspends the next auto attempt.
+  Prompt version `agent-4`. No new dependency. Proof: 23 new checks; full isolated suite with tracked config
+  defaults `922 passed` (19.84 s), Ruff clean, mypy clean (99 files), graphify updated. Workspace suite:
+  920 passed, 2 failures from existing local overrides (orchestration coordinated, hourly budget 30).
+  Local overrides preserved, excluded from commit. Sandbox async thread wakeups stall; tests pass outside.
+  Real cluster, model and Discord NOT run. Restart gateway + brain to load the new policy/prompt.
 
 - Live runs 2026-11-13/14 on k3d `oncall` (same branch). Found and fixed, each with a test that failed first:
   notifier bot died on a Discord 503 at connect and stayed up silent (`fdf7e7a`: reconnect 5 times, then stop

@@ -33,14 +33,17 @@ def startup_seconds(pods: list[dict]) -> float:
 
 def surge_ok(deployment: dict) -> bool:
     s = deployment["spec"].get("strategy") or {}
-    return s.get("type") == "RollingUpdate" and str((s.get("rollingUpdate") or {}).get("maxUnavailable")) in ("0", "0%")
+    rolling = s.get("rollingUpdate") or {}
+    surge = str(rolling.get("maxSurge", "25%")).removesuffix("%")
+    return (s.get("type") == "RollingUpdate" and str(rolling.get("maxUnavailable")) in ("0", "0%")
+            and surge.isdecimal() and int(surge) > 0)
 
 
 # seconds of lost capacity the action itself may cause
 def forecast_added_seconds(tool: str, replicas: int, surge: bool, startup_s: float) -> float:
     if tool not in ROLLOUT_TOOLS:
         return 0.0  # scale changes capacity without restarting the running pods
-    if replicas >= 2 and surge:
+    if replicas >= 1 and surge:
         return 0.0  # a new pod is Ready before an old one goes
     return startup_s
 

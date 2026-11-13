@@ -1,6 +1,8 @@
 # deterministic rules (IMPLEMENTATION.md §6.3.6). match() is the rule's own pick; candidates() lists every
 # fix the evidence supports, so the diagnosis agent can accept the pick, take another, or decline.
 # Works on plain dicts (journal rows, incident); actions follow the ActionRequest fields.
+import copy
+import re
 
 # template-level changes undo by rollback; env by revert_config; replica count by scale
 TOOL_FOR_KIND = {"image": "rollback_deploy", "resources": "rollback_deploy", "other": "rollback_deploy",
@@ -45,10 +47,35 @@ def latest_change_before_onset(journal: list[dict], culprit: str, onset: float, 
 
 
 # the inverse of one recorded change, as an action
-def _undo(incident: dict, change: dict, culprit: str, pattern: str) -> dict:
+def _undo(incident: dict, change: dict, culprit: str, pattern: str, policy: dict) -> dict:
     tool = TOOL_FOR_KIND[change["kind"]]
     params = {"replicas": change["diff"]["replicas"]["old"]} if tool == "scale" else {}
+    if restored := memory_restore(change, policy):
+        tool, params = "raise_limit", restored
     return _action(incident, tool, culprit, pattern, [f"journal:{change['id']}"], params, change["id"])
+
+
+# restore one lowered memory cap; mixed resource changes need a full rollback
+def memory_restore(change: dict, policy: dict) -> dict | None:
+    diff = change.get("diff") or {}
+    if change.get("kind") != "resources" or len(diff) != 1:
+        return None
+    path, values = next(iter(diff.items()))
+    container = re.fullmatch(r"containers\[([^]]+)\]\.resources", path)
+    if container is None:
+        return None
+    old, new = values.get("old") or {}, values.get("new") or {}
+    before, after = (old.get("limits") or {}).get("memory"), (new.get("limits") or {}).get("memory")
+    try:
+        if not 0 < to_bytes(str(after)) < to_bytes(str(before)) <= to_bytes(policy["tools"]["raise_limit"]["max_memory"]):
+            return None
+    except (ValueError, OverflowError):
+        return None
+    restored = copy.deepcopy(new)
+    restored["limits"]["memory"] = before
+    if restored != old:
+        return None
+    return {"memory": before, "container": container[1]}
 
 
 def _resource(incident: dict, culprit: str, events: list[dict], policy: dict, memory_ratio: float | None,
@@ -93,11 +120,11 @@ def _match(incident: dict, journal: list[dict], events: list[dict], services: di
     if services[culprit].get("protected"):
         # propose the obvious inverse anyway; the gateway always escalates protected targets
         if change and change["kind"] == "replicas":
-            return "protected", [_undo(incident, change, culprit, "protected")]
+            return "protected", [_undo(incident, change, culprit, "protected", policy)]
         return "protected", []
 
     if change and not change["by_agent"] and change["kind"] in TOOL_FOR_KIND:
-        return "recent_change", [_undo(incident, change, culprit, "recent_change")]
+        return "recent_change", [_undo(incident, change, culprit, "recent_change", policy)]
 
     actions = _resource(incident, culprit, events, policy, memory_ratio, memory_limit)
     return ("resource", actions) if actions else ("unknown", [])
@@ -129,7 +156,7 @@ def candidates(incident: dict, journal: list[dict], events: list[dict], services
         window_s = policy["change_window_minutes"] * 60
         for change in changes_before_onset(journal, culprit, incident["onset_at"], window_s, flag_map):
             if not change["by_agent"] and change["kind"] in TOOL_FOR_KIND:
-                found.append(_undo(incident, change, culprit, "recent_change"))
+                found.append(_undo(incident, change, culprit, "recent_change", policy))
         found += _resource(incident, culprit, events, policy, memory_ratio, memory_limit)
     unique: list[dict] = []
     for action in found:

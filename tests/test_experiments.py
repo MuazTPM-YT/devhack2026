@@ -1,3 +1,5 @@
+import asyncio
+import copy
 import json
 
 import pytest
@@ -12,6 +14,49 @@ from tests.test_registry import FLAGS
 
 FLIP = Spec(target="payment", capability="flag:paymentFailure", choice="50%")
 ADDR = Spec(target="checkout", capability="env:PAYMENT_ADDR", choice="wrong_port")
+
+
+@pytest.mark.parametrize("kind,capability,choice,tool,params", [
+    ("memory", "memory_limit", "64Mi", "raise_limit", {"memory": "256Mi", "container": "ad"}),
+    ("replicas", "replica_reduction", "1", "scale", {"replicas": 2}),
+])
+async def test_lab_fault_becomes_executable_model_params_and_verified_recovery(tmp_path, kind, capability,
+                                                                            choice, tool, params):
+    from brain.agent import select
+    from brain.rules import candidates, match
+    from observer import journal
+    from schemas.models import ActionRequest, Diagnosis, Prediction
+    from test_tools import autonomous_world
+
+    gateway, action, status = autonomous_world(tmp_path / "gateway", kind)
+    lab = World(tmp_path / "lab")
+    before = copy.deepcopy(gateway.apps.dep)
+    if kind == "memory":
+        before["spec"]["template"]["spec"]["containers"][0]["resources"]["limits"]["memory"] = "256Mi"
+    else:
+        before["spec"]["replicas"] = 2
+    lab.fake.deployments["ad"] = copy.deepcopy(before)
+    experiment = lab.engine.start(Spec(target="ad", capability=capability, choice=choice))
+    assert experiment["status"] == "active"
+    after = lab.fake.deployments["ad"]
+    change = journal.entry("deployment", before, after, 950.0, FLAG_CONFIGMAP)
+    gateway.apps.dep = copy.deepcopy(after)
+    gateway.obs.journal = [{**change, "id": 42, "field_manager": "chaos-panel", "by_agent": False}]
+    incident = {"id": "inc-1", "culprit": "ad", "onset_at": 960.0}
+    rule = match(incident, gateway.obs.journal, [], gateway.gw.services, gateway.gw.policy)[1][0]
+    pattern, options = candidates(incident, gateway.obs.journal, [], gateway.gw.services, gateway.gw.policy)
+    diagnosis = Diagnosis(causes=[], confidence=0.9, decision="accept", candidate=options[0]["id"])
+    proposed = select(diagnosis, pattern, ActionRequest.model_validate(rule), options)
+    assert proposed.tool == tool and proposed.params == params
+    proposed.prediction = Prediction.model_validate(action["prediction"])
+    decision = await gateway.gw.submit(proposed.model_dump())
+    assert decision.decision == "executed" and "approval_requested" not in gateway.types()
+    status["recovered"] = True
+    assert await asyncio.wait_for(next(iter(gateway.gw.tasks)), 5) == "success"
+    lab.fake.deployments["ad"] = gateway.apps.dep
+    lab.later(5)
+    assert lab.engine.get(experiment["id"])["ended_by"] == "repaired"
+    assert gateway.events[-1]["type"] == "incident_resolved"
 
 
 class World:

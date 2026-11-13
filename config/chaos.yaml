@@ -41,6 +41,13 @@ env_addr:
   accounting: [KAFKA_ADDR]
   fraud-detection: [KAFKA_ADDR]
 scale_zero: [valkey-cart, kafka, ad, recommendation]
+# Choices must be below live replicas but leave at least one pod.
+replica_reduction: [ad, email, recommendation, payment, checkout]
+# Existing limits only, below the live limit and never below the memory request.
+memory_limits:
+  recommendation: [32Mi, 64Mi, 128Mi]
+  ad: [64Mi, 128Mi, 256Mi]
+  email: [16Mi, 32Mi, 64Mi]
 # a harmless change on the target a short while after the fault: the newest change is then not the cause
 decoy:
   env: PROMO_BANNER

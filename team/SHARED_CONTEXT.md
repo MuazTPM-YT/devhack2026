@@ -1332,3 +1332,45 @@ Seeded from reading the plan. Reply under each one.
   uppercase; stage tiles have no numbers. Palette unchanged. New shared pieces: `components/ui/more.tsx`
   (disclosure), `components/live/sheet-section.tsx` (folding sheet section), `lib/use-prefs.ts` (`usePref("nav" |
   "list" | "sheet")`, localStorage `akira.panels`). Nav, incident list and details sheet fold.
+
+- [M] 2026-11-14 for A,T: `codex/safe-journal-autonomy` adds `autonomy.journal_reverts` in policy.yaml,
+  scoped to ad/email/recommendation. Exact latest flag/env inverses and restoring reduced replicas may run
+  without incident-time approval, including model picks. No restart/rollback/raise-limit expansion. Gateway
+  rechecks live health, scope, inverse, failures and all existing safety gates. Receipts carry
+  `trust.autonomy_policy` (`journal_revert:flag|env|replicas`); cards name it instead of claiming statistical
+  proof. Notifier already sends verified completion to FYI. Failed auto model fixes now record a trust failure.
+  Brain prompt `agent-4`; restart gateway + brain to load. 23 new tests; isolated full suite 922 pass, Ruff and
+  mypy pass (99 files). Workspace has 2 pre-existing override failures (coordinated mode, 30/hour), preserved
+  outside commit. Real cluster/model/Discord not run; fixtures exercise execute -> verify/undo -> notifier.
+
+- [M] 2026-11-14 for A,T: same branch adds real Lab parameters: `memory_limit` (field.kind `memory`) on
+  recommendation/ad/email; `replica_reduction` (field.kind `replicas`) on those plus payment/checkout.
+  Registry choices stay below live caps/counts, respect requests and gateway restore bounds, and use the
+  existing preview/start/cleanup routes. UI Capability.primitive union and choice labels updated. Brain now
+  proposes `raise_limit {memory: <journal old value>, container: <name>}` for a memory-only cap reduction;
+  other resource changes retain rollback. `autonomy.memory_restores` scopes auto eligibility; RB-11 still
+  requires approval for resource/unknown/protected increases, recent exact restores follow gateway checks.
+  Receipt policy id `journal_revert:memory`; no new event/tool names or dependency. Prompt `agent-5`.
+  937 Python tests pass with tracked defaults; compiled UI 84 pass; Ruff, mypy and UI typecheck pass. Live
+  judge + agent API dry runs accepted recommendation 200Mi/32Mi/200Mi, ad 450Mi/128Mi/450Mi and checkout
+  2/1/2 replicas; no cluster changes stored. No real live fault/model/notifier drill. Restart chaos, brain,
+  gateway; rebuild production UI. Current ad/email/recommendation baseline is 1 replica, so their capacity
+  reduction controls correctly stay unavailable until 2+; payment/checkout currently offer reduction to 1.
+
+- [M] 2026-11-14 for A,T: live memory test `inc-5198ce6253f6` asked at net-benefit, before autonomy
+  checks: one-replica surge rollout incorrectly charged 10535 s of startup as lost capacity. Fixed
+  `gateway/blast.py`: 1+ replicas with maxUnavailable=0 and positive maxSurge forecast no planned
+  capacity loss; zero/invalid surge and Recreate retain capacity cost. Both rule/model memory restores
+  now pass single-replica + healthy-critical-caller verification and notifier FYI regression. 949 tests
+  pass with tracked defaults, Ruff/mypy clean. Gateway restarted; live recommendation forecast 0 s,
+  MCP services healthy. No new live injection or Discord completion drill; prior fault was cleaned up
+  before its human approval, so that recovery was not Akira's repair.
+
+- [M] 2026-11-14 for A,T: live memory/env auto repairs now proven with real model, cluster and Discord.
+  Memory incident `inc-ed16da4ac2a3`, receipt #30, restored recommendation 32Mi -> 200Mi; env incident
+  `inc-6fe7da54591a`, receipt #31, restored wrong catalog port. Both prediction/harm checks passed,
+  approvals empty; actual FYI messages read back with no action buttons. Ad flag drill was cleaned up
+  before delayed detection, so its already-restored dry-run refusal is not a repair failure or success.
+  A second flag drill was stopped and field restored at user's deadline; replica drill not run, no baseline
+  scale changed. Flag/replica auto paths remain automated-test verified, not live proven. User authorized
+  push/PR/merge. Existing local coordinated-mode and hourly-budget overrides stay outside commits.

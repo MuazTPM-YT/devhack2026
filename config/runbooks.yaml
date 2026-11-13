@@ -31,6 +31,8 @@ runbooks:
     steps:
       - Revert the config change; never edit env values by hand at night.
       - Name the changed keys only. Never paste env values into chat or tickets.
+      - For a lowered memory cap, restore only the old journaled limit; never above 1Gi.
+      - Automatic memory restoration is limited to autonomy.memory_restores; other increases need approval.
 
   - id: RB-03
     title: Feature flag flipped
@@ -114,7 +116,7 @@ runbooks:
     title: Raising a memory limit
     severity: SEV-3
     owner: capacity owner of the service
-    match: {tools: [raise_limit]}
+    match: {tools: [raise_limit], pattern: [resource, unknown, protected]}
     require_approval: true
     steps:
       - Raising a limit hides a leak. Approve only with a morning ticket to find it.

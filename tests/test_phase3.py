@@ -1,6 +1,8 @@
 import asyncio
 import json
 
+import pytest
+
 from gateway import blast
 from test_gateway import World, action
 from test_verify_loop import Script, healthy
@@ -15,7 +17,9 @@ def test_blast_radius_forecast_and_net_benefit():
     r = blast.blast_radius("payment", EDGES, health)
     assert r == {"upstream": ["ad", "checkout", "frontend"], "healthy_affected": ["ad", "frontend"]}
     assert blast.forecast_added_seconds("rollback_deploy", 2, True, 40) == 0
-    assert blast.forecast_added_seconds("rollback_deploy", 1, True, 40) == 40
+    assert blast.forecast_added_seconds("rollback_deploy", 1, True, 40) == 0
+    assert blast.forecast_added_seconds("rollback_deploy", 1, False, 40) == 40
+    assert blast.forecast_added_seconds("rollback_deploy", 0, True, 40) == 40
     assert blast.forecast_added_seconds("scale", 1, False, 40) == 0
     ok, nb = blast.net_benefit(10, r, 20, SERVICES, POLICY)  # 20 s x 1 critical healthy caller = 20 added
     assert not ok and nb["added"] == 20
@@ -29,6 +33,20 @@ def test_startup_and_surge():
     assert blast.startup_seconds([pod]) == 12 and blast.startup_seconds([]) == blast.DEFAULT_STARTUP_S
     assert blast.surge_ok({"spec": {"strategy": {"type": "RollingUpdate", "rollingUpdate": {"maxUnavailable": 0}}}})
     assert not blast.surge_ok({"spec": {}})
+
+
+@pytest.mark.parametrize("surge, safe", [(1, True), ("1", True), ("25%", True),
+                                        (0, False), ("0%", False), ("invalid", False),
+                                        (-1, False), (None, False)])
+def test_surge_requires_room_for_a_replacement(surge, safe):
+    deployment = {"spec": {"strategy": {"type": "RollingUpdate", "rollingUpdate": {
+        "maxUnavailable": 0, "maxSurge": surge}}}}
+    assert blast.surge_ok(deployment) is safe
+
+
+@pytest.mark.parametrize("tool", sorted(blast.ROLLOUT_TOOLS))
+def test_single_replica_surge_does_not_charge_startup_as_downtime(tool):
+    assert blast.forecast_added_seconds(tool, 1, True, 10535) == 0
 
 
 class FakeGraph:

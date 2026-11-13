@@ -46,7 +46,8 @@ class Spec(BaseModel):
 def place(kind: str, name: str, key: str | None) -> str:
     if kind == "flag":
         return f"configmap/flagd-config flags[{name}].defaultVariant"
-    return f"deployment/{name} " + {"image": "image", "replicas": "replicas"}.get(kind, f"env {key}")
+    return f"deployment/{name} " + {"image": "image", "replicas": "replicas",
+                                  "memory": "resources.limits.memory"}.get(kind, f"env {key}")
 
 
 class Engine:
