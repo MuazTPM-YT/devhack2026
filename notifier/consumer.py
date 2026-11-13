@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import time
 from typing import Any
 
@@ -30,6 +31,7 @@ class NotificationConsumer:
         payload = event.get("payload", {})
         details = {k: payload[k] for k in DETAILS if payload.get(k)}
         pending = self.state.get("wakes", {})
+        before = copy.deepcopy(pending)
         if kind in TERMINAL:
             pending.pop(incident_id, None)
         if kind in {"approval_requested", "incident_resolved", "escalated", "handed_off"}:
@@ -65,7 +67,8 @@ class NotificationConsumer:
                 pending.pop(incident_id)
         if payload.get("acknowledged"):
             pending.pop(incident_id, None)
-        self.state.set("wakes", pending)
+        if pending != before:  # most events (ticks, steps) change nothing: skip the write
+            self.state.set("wakes", pending)
         self.state.set("cursor", seq)
 
     # gateway sends "/receipts/2"; discord needs a full link to make it clickable

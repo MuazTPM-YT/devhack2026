@@ -2,6 +2,8 @@
 # brain shows them to the LLM, the notifier shows "seen before". Nothing here grants permission.
 import sqlite3
 
+from brain.redact import INJECTION, redact
+
 TERMINAL = ("resolved", "escalated", "handed_off")
 
 
@@ -21,7 +23,12 @@ def similar(conn: sqlite3.Connection, incident_id: str, culprit: str | None, pat
     return [{"incident_id": r["id"], "culprit": r["culprit"], "pattern": r["pattern"], "state": r["state"],
              "fix": f"{r['tool']} {r['target']}" if r["tool"] else None, "outcome": r["outcome"],
              "took_s": round(r["resolved_at"] - r["opened_at"]) if r["resolved_at"] and r["opened_at"] else None,
-             "model_said": r["llm_why"]} for r in rows]
+             "model_said": _safe(r["llm_why"])} for r in rows]
+
+
+# the model wrote this after reading untrusted evidence; an injected line must not ride into every later prompt
+def _safe(text: str | None) -> str | None:
+    return None if not text or INJECTION.search(text) else redact(text)
 
 
 # one plain line for Discord: "2 similar before, 1 fixed and proven; last (inc-1): rollback_deploy payment -> success in 92 s"
