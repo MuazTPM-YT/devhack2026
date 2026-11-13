@@ -736,9 +736,11 @@ Seeded from reading the plan. Reply under each one.
   window right after a good rollback no longer aborts it. Single-tick tests
   (`test_verifier.py:34`, `test_trust_integration` early_abort case) now
   pass `abort_after_s=0`; their assertions did not change.
-- [T] 2026-11-13 for M: LLM deadline is now 45 s (`DEADLINE_S` in
-  `brain/providers/base.py`, `bf9f082`). The Go adapter's httpx timeout was
-  also hard 30 s and now follows the same constant.
+- [T] 2026-11-13 for M: LLM deadline is now 90 s (`DEADLINE_S` in
+  `brain/providers/base.py`). The Go adapter's httpx timeout was also hard
+  30 s and now follows the same constant. Live calls: 16-20 s usually, one
+  hit 45 s with a 2-3k token prompt, so it is provider latency, not prompt
+  size. The brain waits for the LLM, so a slow call delays the action.
 - [T] 2026-11-13 for M,A: Smoke on Twaha's own k3d cluster, main `89ca81e`
   + both fixes above, new `k8s/values.yaml` applied: **PASS**,
   `incident=inc-1794542033381 outcome=incident_resolved`,
@@ -746,13 +748,22 @@ Seeded from reading the plan. Reply under each one.
   Discord at +107.8 s; rollback +107.9 s; severity 7 -> 4 (+122.9) -> 0
   (+173.1); harm clean. Severity never rose, so early abort was not tested
   live. Audit verified 129 records.
-- [T] 2026-11-13 for M: The LLM hit `deadline_exceeded` at 45 s in that run.
-  A direct call with a small bundle took 12.6 s (1225 prompt tokens); A's
-  live success used 44323 tokens. The live bundle size is the likely cause,
-  not the provider. Effect: no prediction -> card `RECOVERED; PREDICTION
-  FAILED`, "Why: unknown", outcome right_by_accident, **no trust credit**.
-  Trust runs cannot open the gate while this happens. Open: trim the
-  prompt or the bundle.
+- [T] 2026-11-13 for M: Smoke #3 LLM hit `deadline_exceeded` at 45 s. With
+  no diagnosis there is no prediction: card `RECOVERED; PREDICTION FAILED`,
+  "Why: unknown", outcome right_by_accident, **no trust credit**. Trust runs
+  cannot open the gate while this happens.
+- [T] 2026-11-13 for M: Smoke #4 (LLM 14.7 s, OK) **escalated, wrong
+  culprit**: `culprit_found` = `frontend-proxy` from traces, `changes: 0`,
+  rule `unknown`, "no safe action". Smoke #3 also picked `frontend-proxy`
+  first; `dependency_change` moved it to payment then, but not in #4.
+  Journal had the payment image change at +0.0 s, onset +15.1 s, so it was
+  in the window. Guess (traces evicted, Jaeger keeps 5000): `from_traces`
+  counts frontend-proxy and payment as one origin each per trace (frontend
+  span not marked error), and `Counter.most_common` breaks the tie by
+  insertion order, so the root wins. `dependency_change` then needs
+  frontend-proxy -> frontend -> checkout -> payment edges; checkout ->
+  payment has ~4 calls in the 5000-trace window, so it can drop out.
+  Suggest: on a tie, prefer the origin deepest in the trace.
 - [T] 2026-11-13 for M: Auth gap, not fixed: `POST /approvals/{id}/decide`
   trusts `decided_by` from the request body, so any local process can approve
   as a listed approver. Needs your call (shared secret between notifier and
