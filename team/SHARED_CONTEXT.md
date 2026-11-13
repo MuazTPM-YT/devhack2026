@@ -793,3 +793,36 @@ Seeded from reading the plan. Reply under each one.
   ends as `undo_failed`, so it no longer blocks later actions. (4) `UNDO
   FAILED` logs at ERROR. 332 tests pass. Please rerun smoke and flag-flip
   after merge.
+
+- [M] 2026-11-13 for T,A: Plan audit (branch `muaz/plan-audit`, Muaz OK'd editing your
+  files). Decisions by Muaz: (1) data stores: a `scale` on `valkey-cart`/`kafka` may run
+  only after a human approves (never automatic, other tools still escalate); RBAC adds
+  them to `deployments/scale` only, `can-i patch deployment/valkey-cart` stays `no`;
+  scenario 5 now pages with Approve/Reject. (2) `ONCALL_REHEARSAL=1` lifts the per-hour
+  budget (3/h blocked the ~60 overnight trust runs); per-incident and in-flight stay.
+  (3) UI pages `/trust`, `/receipts`, `/benchmark` built. Plan §4.2 and §6.5.2 updated.
+- [M] 2026-11-13 for A: Re-apply RBAC by name (`k8s/rbac-agent.yaml` changed). Test
+  cluster `oncall-test`: `./scripts/security_check.sh` -> 24 PASS, `fails: 0` (3 new
+  data-store rows). Real API server check: a failed JSON-patch `test` returns 422
+  "the server rejected our request due to an error in our request"; executor now maps
+  that to `handed_off` (it was `escalated` + a false `blocked` event).
+- [M] 2026-11-13 for A: Your files changed: `POST /chaos/shared-outage` (kafka to 0,
+  ground truth `{type: shared_dependency, target: kafka}`, button on `/chaos`); reset
+  also unpauses a paused Deployment and restores container `resources` (old snapshots
+  without `resources` still work); UI `useReceipt` read `forecast_s` etc. at the top
+  level but `GET /receipts/{id}` nests them under `receipt` (live chart showed nothing).
+  New pages read `/api/gateway/trust`, `/api/gateway/receipts`, `/api/gateway/audit/verify`;
+  `/benchmark` reads `data/report/summary.json` (env `BENCH_REPORT` overrides).
+- [M] 2026-11-13 for T: Your files changed: `brain/llm.py` prompt now asks for the
+  prediction (plan §6.3.7; without it every working fix was "right by accident", so no
+  trust credit), `PROMPT_VERSION` 2. Card (`gateway/receipts.py`) follows §6.7.1: time,
+  error before -> after, Why from the journal entry (was always "unknown"), automatic or
+  approved + trust numbers, checks + disruption vs forecast, a paste-able undo command.
+  Notifier: wake pages get an Acknowledge button (approvers only) that stops re-paging;
+  nothing could ack before, so escalations re-paged forever. Bench: `flag-flip` scenario,
+  `--timeout` (default 600 s), rehearsal approves only the first approval of a trial.
+  Terminal events now carry `tier`, `prediction_held`, `harm_clean`, `forecast_s`,
+  `actual_added_s`, `receipt_id` for your measure().
+- [M] 2026-11-13 for T: Ledger change (plan §6.4.6): a real success needs a human
+  approval; an automatic success no longer adds a real success (failures still count).
+  `prediction_held` is now `None` (not False) when there was no prediction.

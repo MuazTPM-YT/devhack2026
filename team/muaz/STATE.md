@@ -5,11 +5,28 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** live runs 2 (A, 2026-11-13): bad deploy and flag flip both early-aborted; 3 fixes on branch, rerun pending
-**Branches:** all merged up to PR #32. Now `muaz/verify-fixes` (not pushed)
+**Current phase:** plan audit done on `muaz/plan-audit` (not pushed); live shop rerun pending (A)
+**Branches:** all merged up to PR #33. Now `muaz/plan-audit` (not pushed)
 
 ## Done (with proof)
 
+- Plan audit (branch `muaz/plan-audit`), Muaz chose: edit teammates' files,
+  human-approved data-store scale, rehearsal lifts hour budget, build UI pages.
+  - Fixed: failed generation test -> `handed_off` (was escalated + false `blocked`);
+    freshness "entry not found" now really asks (returned awaiting_approval with no
+    approval); freshness asks named `freshness`; harm check spares the blast radius
+    (upstream callers), not only victims; verify fallback uses the flag window; tier
+    `ask` when a human approved; real success only with a human approval; brain
+    escalates MCP/schema refusals (incident stayed open forever, e.g. scenario 5);
+    freshness judges an unmeasured culprit (data store) by its victims.
+  - Added: protected scale via approval, rehearsal hour budget, `/trust`,
+    `/audit/verify`, `GET /receipts`, terminal-event bench fields, §6.7.1 card.
+  Proof: `uv run pytest` -> `349 passed`; `ruff check .` -> `All checks passed!`;
+  `mypy ... chaos` -> `no issues found in 62 source files`; UI `npm test` 12 pass,
+  typecheck OK, `npm run build` OK. New tests fail on old code (5 checked). Test k3d
+  cluster `oncall-test` (deleted after): security table 24 PASS, `fails: 0`; real
+  Gateway with agent identity: valkey-cart 0 -> ask -> approve -> 1 -> resolved;
+  payment rollback -> early abort -> pause/undo/unpause, 0 blocked events. Shop not run.
 - Fixes from live runs 2 (branch `muaz/verify-fixes`, 3 commits):
   - Early abort has a grace period: `verify.early_abort_grace_seconds: 60`
     (+ `flag_extra_seconds` for a flag). A victim that turns sick seconds
@@ -300,6 +317,8 @@ section. Only my own work here; cross-team facts go in
 ## Decisions made (Muaz)
 
 - `enable_degraded_mode`: stays refused (no feature-off flags in the shop).
+- Data stores: human-approved `scale` only (RBAC `deployments/scale`).
+- `ONCALL_REHEARSAL=1` lifts the per-hour action budget.
 - LLM: OpenCode Go, model `deepseek-v4.1-flash`, through T's
   `DiagnosisService`; my own `brain/llm.py` removed.
 - Approvals: allowlist only, gateway bound to 127.0.0.1, no shared secret.
@@ -309,7 +328,7 @@ section. Only my own work here; cross-team facts go in
 
 ## Next
 
-1. Push + merge `muaz/verify-fixes`.
+1. Push + merge `muaz/plan-audit`; A re-applies `k8s/rbac-agent.yaml`.
 2. A reruns `./scripts/smoke.sh` (bad deploy) and `/chaos/flag-flip`
    (scenario 3); expect `incident_resolved` for both.
 3. Tick the Phase 1 and 2 exits only with passing live output.
