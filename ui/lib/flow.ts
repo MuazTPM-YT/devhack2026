@@ -41,7 +41,7 @@ export const GATES = ["schema", "hands_off", "policy", "dry_run", "net_benefit",
 export const EVENT_NODE: Record<string, NodeId> = {
   incident_opened: "observer", alerts_grouped: "observer",
   culprit_found: "brain", major_incident: "brain", bundle_built: "brain", rule_matched: "brain",
-  diagnosis_ready: "brain", injection_quarantined: "brain",
+  diagnosis_ready: "brain", injection_quarantined: "brain", tool_called: "brain",
   llm_called: "llm",
   checklist_step: "gateway",
   approval_requested: "human", approval_decided: "human",

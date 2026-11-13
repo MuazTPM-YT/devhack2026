@@ -43,6 +43,30 @@ const num = (v: unknown): number | null => (typeof v === "number" && Number.isFi
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 const words = (s: string) => s.replace(/_/g, " ");
 
+// a read tool call in plain words: what was read, about which service
+export function readTitle(tool: string, args: Record<string, unknown>): string {
+  const svc = str(args.service) ?? str(args.target);
+  const of = svc ? ` of ${svc}` : "";
+  switch (tool) {
+    case "get_service_health": return "Read service health";
+    case "get_metric_history": return `Read ${str(args.metric) === "p95_ms" ? "latency" : "error"} history${of}`;
+    case "get_recent_changes": return `Read recent changes${str(args.object) ? ` to ${str(args.object)}` : ""}`;
+    case "get_dependencies": return `Read who calls whom${svc ? ` around ${svc}` : ""}`;
+    case "search_error_traces": return `Read error traces${of}`;
+    case "get_pods": return `Read pods${of}`;
+    case "get_k8s_events": return `Read Kubernetes events${of}`;
+    case "get_pod_logs": return `Read ${args.previous === true ? "crashed-container " : ""}logs${of}`;
+    case "get_fix_history": return `Read earlier runs of ${words(str(args.tool) ?? "this fix")}${svc ? ` on ${svc}` : ""}`;
+    default: return `Read ${words(tool)}`;
+  }
+}
+
+function readDetail(p: Record<string, unknown>): string | null {
+  const ids = Array.isArray(p.evidence_ids) ? p.evidence_ids.length : 0;
+  const ms = num(p.ms);
+  return [ms != null ? `${Math.round(ms)} ms` : null, `${ids} evidence item${ids === 1 ? "" : "s"}`].filter(Boolean).join(" · ");
+}
+
 // the components an event passed through, in order; one entry = work inside that component
 export function pathOf(ev: IncidentEvent, prev: IncidentEvent | null): NodeId[] {
   const p = ev.payload;
@@ -52,8 +76,11 @@ export function pathOf(ev: IncidentEvent, prev: IncidentEvent | null): NodeId[] 
       return ["shop", "observer", "brain"];
     case "culprit_found":
       return ["shop", "brain"];
+    case "tool_called":
+      return ["brain"];
     case "llm_called":
-      return p.cached === true ? ["brain"] : ["brain", "llm", "brain"];
+      // a read tool runs in the brain; only a real model request travels to the model
+      return p.cached === true || str(p.tool) ? ["brain"] : ["brain", "llm", "brain"];
     case "checklist_step":
       if (p.name === "dry_run") return ["gateway", "k8s", "gateway"];
       return prev?.type === "checklist_step" ? ["gateway"] : ["brain", "gateway"];
@@ -132,20 +159,37 @@ export function describe(ev: IncidentEvent, next: IncidentEvent | null = null): 
     }
     case "rule_matched": {
       const tools = list(p.tools);
-      return line(`Rule matched: ${words(str(p.pattern) ?? "unknown")}`, tools.length ? `proposes ${tools.join(", ")}` : "no safe action for this pattern", tools.length ? "info" : "warn");
+      const more = Array.isArray(p.candidates) && p.candidates.length > 1 ? ` · ${p.candidates.length} candidates for the agent` : "";
+      return line(`Rule matched: ${words(str(p.pattern) ?? "unknown")}`, tools.length ? `proposes ${tools.join(", ")}${more}` : "no safe action for this pattern", tools.length ? "info" : "warn");
     }
     case "injection_quarantined":
       return line("Log line quarantined", "looked like an instruction; kept out of the model prompt", "warn");
+    case "tool_called":
+      return line(readTitle(str(p.tool) ?? "?", (p.args ?? {}) as Record<string, unknown>), readDetail(p));
     case "llm_called": {
+      if (str(p.tool)) return line(readTitle(str(p.tool)!, (p.args ?? {}) as Record<string, unknown>), readDetail(p));
       if (str(p.error)) return line("Model call failed", words(str(p.error)!), "bad");
       if (p.cached === true) return line("Used cached diagnosis", "same evidence seen before");
       const usage = (p.usage ?? {}) as Record<string, unknown>;
-      const tokens = num(usage.total_tokens);
-      const bits = [str(p.model), num(p.attempt) != null ? `attempt ${num(p.attempt)}` : null, tokens != null ? `${tokens} tokens` : null];
+      const split = (num(usage.prompt_tokens) ?? 0) + (num(usage.completion_tokens) ?? 0);
+      const tokens = num(usage.total_tokens) ?? (split || null);
+      const requests = num(usage.requests);
+      const bits = [str(p.model), requests != null ? `${requests} model requests` : num(p.attempt) != null ? `attempt ${num(p.attempt)}` : null,
+        num(usage.tool_calls) != null ? `${num(usage.tool_calls)} reads` : null, tokens != null ? `${tokens} tokens` : null];
       return line("Model answered", bits.filter(Boolean).join(" · ") || null);
     }
-    case "diagnosis_ready":
-      return line(`Diagnosis: ${words(str(p.pattern) ?? "unknown")}`, str(p.culprit) ? `on ${str(p.culprit)}` : null);
+    case "diagnosis_ready": {
+      const chosen = p.chosen as { tool?: string; target?: string } | null | undefined;
+      const rule = p.rule_choice as { tool?: string; target?: string } | null | undefined;
+      const on = str(p.culprit) ? `on ${str(p.culprit)}` : null;
+      if (p.decision === "decline") return line("Agent declined to act", str(p.reason) ?? on, "warn");
+      if (chosen?.tool && p.origin === "model") {
+        return line(`Agent chose ${words(chosen.tool)} on ${chosen.target}`,
+          [rule?.tool ? `not the rule's ${words(rule.tool)}` : "no rule matched", str(p.reason)].filter(Boolean).join(" · "));
+      }
+      if (chosen?.tool && p.decision) return line(`Agent agreed with the rule: ${words(chosen.tool)} on ${chosen.target}`, str(p.reason) ?? on);
+      return line(`Diagnosis: ${words(str(p.pattern) ?? "unknown")}`, on);
+    }
     case "checklist_step": {
       const name = words(str(p.name) ?? "?");
       if (p.passed === true) return line(`Gate passed: ${name}`, str(p.reason), "ok");

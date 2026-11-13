@@ -114,3 +114,35 @@ test("stage times run from a stage's first event to the next stage", () => {
   assert.equal(t.act, undefined);
   assert.deepEqual(stageTimes(events.slice(0, 2), 30).diagnose, { start: 14, took: 16 });
 });
+
+test("a telemetry read stays in the brain and says what was read", () => {
+  const read = ev("tool_called", { tool: "get_pod_logs", args: { service: "payment", previous: true }, ms: 12.4, evidence_ids: ["log:1", "log:2", "log:3"] });
+  assert.deepEqual(pathOf(read, null), ["brain"]);
+  assert.deepEqual(describe(read), { title: "Read crashed-container logs of payment", detail: "12 ms · 3 evidence items", tone: "info" });
+  assert.equal(describe(ev("tool_called", { tool: "get_recent_changes", args: { object: "deployment/payment" }, evidence_ids: ["journal:41"] })).title,
+    "Read recent changes to deployment/payment");
+  assert.equal(describe(ev("tool_called", { tool: "get_metric_history", args: { service: "cart", metric: "p95_ms" }, evidence_ids: [] })).detail, "0 evidence items");
+  assert.equal(describe(ev("tool_called", { tool: "get_fix_history", args: { tool: "rollback_deploy", target: "payment" } })).title,
+    "Read earlier runs of rollback deploy on payment");
+  assert.equal(describe(ev("tool_called", { tool: "something_new", args: {} })).title, "Read something new");
+  // an old audit log: the read was published as llm_called, and must not be drawn as a trip to the model
+  const old = ev("llm_called", { tool: "get_pods", args: { service: "payment" }, ms: 5, evidence_ids: [] });
+  assert.deepEqual(pathOf(old, null), ["brain"]);
+  assert.equal(describe(old).title, "Read pods of payment");
+});
+
+test("an agent run reports requests, reads and tokens", () => {
+  const done = describe(ev("llm_called", { model: "m", attempt: 4, usage: { requests: 4, tool_calls: 6, prompt_tokens: 14500, completion_tokens: 900 } }));
+  assert.deepEqual([done.title, done.detail], ["Model answered", "m · 4 model requests · 6 reads · 15400 tokens"]);
+});
+
+test("the diagnosis says who chose the fix", () => {
+  const base = { pattern: "recent_change", culprit: "payment", rule_choice: { tool: "rollback_deploy", target: "payment" } };
+  assert.equal(describe(ev("diagnosis_ready", { pattern: "recent_change", culprit: "payment" })).title, "Diagnosis: recent change");
+  assert.equal(describe(ev("diagnosis_ready", { ...base, decision: "accept", origin: "rule", chosen: base.rule_choice, reason: "Image change fits." })).title,
+    "Agent agreed with the rule: rollback deploy on payment");
+  const own = describe(ev("diagnosis_ready", { ...base, decision: "accept", origin: "model", chosen: { tool: "revert_config", target: "payment" }, reason: "The flag fits." }));
+  assert.deepEqual([own.title, own.detail], ["Agent chose revert config on payment", "not the rule's rollback deploy · The flag fits."]);
+  const no = describe(ev("diagnosis_ready", { ...base, decision: "decline", origin: null, chosen: null, reason: "Evidence too thin." }));
+  assert.deepEqual([no.title, no.detail, no.tone], ["Agent declined to act", "Evidence too thin.", "warn"]);
+});

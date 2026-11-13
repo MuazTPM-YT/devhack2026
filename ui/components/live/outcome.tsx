@@ -1,4 +1,5 @@
 import { Tag, type Tone } from "@/components/ui/tag";
+import { words } from "@/lib/format";
 import type { Incident, Outcome as OutcomeKind } from "@/lib/live";
 import type { ReceiptView } from "@/lib/use-receipt";
 
@@ -22,6 +23,8 @@ export function Outcome({ incident, receipt }: { incident: Incident; receipt: Re
   const bound = receipt?.trust?.lower_bound;
   const tag = OUTCOME_TAG[incident.outcome ?? "open"];
   const briefing = incident.briefing && !incident.card?.text.includes(incident.briefing) ? incident.briefing : null;
+  const choice = incident.choice;
+  const rule = choice?.ruleChoice ?? null;
   return (
     <section className={s.sec} aria-labelledby="sec-outcome">
       <div className={s.head}>
@@ -34,6 +37,18 @@ export function Outcome({ incident, receipt }: { incident: Incident; receipt: Re
         <p className={s.note}>{action ? "Watching health after the fix." : "No action taken yet."}</p>
       )}
       {briefing && <p className={s.note}>{briefing}</p>}
+      {choice && (
+        <p className={s.note}>
+          <strong>
+            {choice.decision === "decline" ? "Agent declined to act."
+              : choice.origin === "model" ? `Agent chose ${words(choice.chosen?.tool ?? "its own fix")}${rule ? `, not the rule's ${words(rule.tool)}` : ""}; a human approves it.`
+                : "Agent agreed with the rule's pick."}
+          </strong>{" "}
+          {choice.reason}
+          {choice.decision === "decline" && rule && <> Rule suggested <span className="mono">{rule.tool} → {rule.target}</span>.</>}
+          {choice.alternative && <><br /><span className="muted">Also weighed: {choice.alternative}</span></>}
+        </p>
+      )}
       <dl className={s.facts}>
         <div><dt>Action</dt><dd className="mono">{action ? `${action.tool} → ${action.target}` : "–"}</dd></div>
         <div><dt>Harm check</dt><dd><Yes value={incident.harmClean} yes="clean" no="side effects" /></dd></div>
