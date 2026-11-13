@@ -9,11 +9,11 @@ Priority: P0 = minimum deliverable, P1 = to win, P2 = stretch.
 ## Phase 0: foundations
 
 - [x] P0 Agree shared schemas with T; `schemas/` imports cleanly (§5.2, C1) — proof: T replied `agreed` to Q11 in SHARED_CONTEXT; `uv run pytest` imports `schemas.models` (197 passed). C1 row in the contract table still says `proposed`.
-- [ ] P0 VERIFY list with A: metric names, flag storage, Jaeger API paths; write results to `team/SHARED_CONTEXT.md` and `config/` (§3.3) — partial: metric names and flag storage checked live by A; Jaeger paths from docs only, live curl pending (A).
+- [x] P0 VERIFY list with A: metric names, flag storage, Jaeger API paths; write results to `team/SHARED_CONTEXT.md` and `config/` (§3.3) — proof (A, live 2026-11-13): span metrics confirmed; flags now read from ConfigMap `flagd-config` (~60 s reload, no restart); Jaeger `/api/dependencies` HTTP 200 `{"data":[{"parent":..,"child":..,"callCount":..}]}` (shape my graph code expects), `/api/traces` with the error tag HTTP 200.
 - [x] P0 `config/policy.yaml`, `config/queries.yaml` (§4.2, §4.3) — proof: files on main; loaded by `tests/test_observer.py` and `tests/test_brain.py` (pass).
-- [ ] P0 `k8s/rbac-reader.yaml`, `k8s/rbac-agent.yaml`, `k8s/admission-policy.yaml`, `k8s/admission-binding.yaml` applied (§6.5) — partial: written and applied on a throwaway k3d cluster only; not applied on A's cluster yet.
+- [x] P0 `k8s/rbac-reader.yaml`, `k8s/rbac-agent.yaml`, `k8s/admission-policy.yaml`, `k8s/admission-binding.yaml` applied (§6.5) — proof (A, live): `kubectl apply` created all 10 RBAC/VAP objects on cluster `oncall`.
 - [x] P0 `scripts/make_kubeconfigs.sh` writes `agent.kubeconfig`, `reader.kubeconfig` (git-ignored) (§3.5) — proof: on the test cluster it wrote both with mode `-rw-------`; `git status` stayed clean (`*.kubeconfig` in `.gitignore`).
-- [ ] P0 Security acceptance table passes, every row (§6.5.5) — BLOCKED on A: his cluster is up; waiting for the output of `./scripts/security_check.sh` there. Local pre-test only: `fails: 0`, 19 PASS. The executor row needs `scripts/smoke.sh` on the cluster (gateway is built).
+- [x] P0 Security acceptance table passes, every row (§6.5.5) — proof (A, live): `./scripts/security_check.sh` -> 19 PASS, `fails: 0`; denies came from `oncall-agent-fields` / `oncall-agent-scale` with our messages; executor row: smoke receipt #1 `rollback_deploy` executed with the agent identity.
 
 ## Phase 1: the spine, one failure end to end
 
@@ -30,14 +30,14 @@ Priority: P0 = minimum deliverable, P1 = to win, P2 = stretch.
 
 Exit: `scripts/smoke.sh` (A) passes: bad deploy detected, rolled back on "ask" via curl approve, verified, receipt written.
 
-Exit status: NOT MET yet. All Phase 1 code is merged; the smoke run on A's cluster has not been done. The run needs one manual `curl` approval (`smoke.sh` waits for it).
+Exit status: NOT MET yet. Live smoke 2026-11-13 (A): detect 42.7 s, diagnose 72.9 s, approve -> rollback executed, then wrongly undone (`outcome=escalated`): verifier waited on `frontend-proxy`, which `/health/now` does not list. Fixed on branch `muaz/live-fixes` (`tests/test_verifier.py::VictimOutsideHealthTest`); needs a smoke rerun. The run needs one manual `curl` approval.
 
 ## Phase 2: the other failures and the checks
 
-- [ ] P0 Flag tracking in the journal (§6.2.5)
+- [ ] P0 Flag tracking in the journal (§6.2.5) — unblocked: flagd now reads ConfigMap `flagd-config` (A, live), so the ConfigMap watch journals flag changes; A added the flag -> service map. Linking flag changes to services in the rules is next.
 - [ ] P0 Executor: `revert_config`, `restart_service`, `scale`, `raise_limit`, `enable_degraded_mode` (§6.4.7) — partial: `revert_config` (env), `restart_service`, `scale`, `raise_limit` done (`tests/test_tools.py`, merged in PR #19); flag revert and `enable_degraded_mode` wait on the flag plan.
 - [x] P0 Rules: 3 special cases (resource, protected, unknown) (§6.3.6) — proof: `tests/test_rules.py` resource, protected and unknown cases (pass).
-- [ ] P0 Claude call: forced tool, Pydantic check, one retry, 30 s timeout, token log, demo cache (§6.3.7) — now OpenCode Go via T's `DiagnosisService`: Pydantic check, retry, 30 s, token log, cache done (T's tests). Forced tool not done; no real call made yet.
+- [ ] P0 Claude call: forced tool, Pydantic check, one retry, 30 s timeout, token log, demo cache (§6.3.7) — now OpenCode Go via T's `DiagnosisService`: Pydantic check, retry, 30 s, token log, cache done (T's tests). Live run: both calls hit `deadline_exceeded` at 30 s (deepseek-v4.1-flash); rules still gave the right action. Timeout/model is T's call. Forced tool not done.
 - [x] P0 Harm check (spec/data hashes), early abort with rollout pause (§6.4.9) — proof: `tests/test_verify_loop.py::test_early_abort_pauses_undoes_resumes`, `harm_check` in the success path (pass). Fake API server only.
 
 Exit: scenarios 1 to 6 in §7 behave as specified.
