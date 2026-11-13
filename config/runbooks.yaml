@@ -1,0 +1,84 @@
+# Company runbooks: how the agent must handle each kind of incident. SAMPLES, edit to your policy.
+# Code picks the runbook (brain/runbooks.py); the LLM only reads it. First match is shown on cards.
+#
+# match (every key given must hold; no match keys = applies to every incident):
+#   pattern:      recent_change | resource | protected | unknown (one or a list)
+#   services:     culprit / action target names from config/services.yaml
+#   tools:        the fix the rules picked (rollback_deploy, revert_config, restart_service, scale, ...)
+#   change_kinds: journal change behind the fix (image, env, resources, replicas, flag, configmap, other)
+#   evidence:     words in the evidence (e.g. OOMKilled). Advice only: the gateway never sees the
+#                 evidence, so a runbook matched on it may not carry hard rules.
+# hard rules (the gateway enforces them in code, every time, approval or not):
+#   require_approval: true     -> a human must approve the action, even when the trust gate is open
+#   forbid_tools: [tool, ...]  -> these tools are never run here; a human is woken instead
+runbooks:
+  - id: RB-01
+    title: Bad deploy
+    owner: service team on call
+    match: {pattern: recent_change, change_kinds: [image, other]}
+    steps:
+      - Roll back to the last good revision; never deploy forward during an incident.
+      - Confirm only the new pods fail (old revision healthy) before blaming the image.
+      - Block the bad image tag until the team ships a fix.
+
+  - id: RB-02
+    title: Broken config or env change
+    owner: service team on call
+    match: {pattern: recent_change, change_kinds: [env, resources]}
+    steps:
+      - Revert the config change; never edit env values by hand at night.
+      - Name the changed keys only. Never paste env values into chat or tickets.
+
+  - id: RB-03
+    title: Feature flag flipped
+    owner: feature owner of the flag
+    match: {change_kinds: [flag]}
+    steps:
+      - Revert only the flipped flag in flagd-config; leave other flags as they are.
+      - flagd reloads about 60 s after the patch; wait before judging recovery.
+      - Tell the flag owner which flag was reverted and why.
+
+  - id: RB-04
+    title: Memory exhaustion
+    owner: service team (morning ticket)
+    match: {pattern: resource}
+    steps:
+      - A restart only buys time; it is MITIGATED, NOT FIXED until the leak is found.
+      - Raising the memory limit always needs a human; never above the policy cap (1Gi).
+      - Open a morning ticket with the memory graph and the restart count.
+
+  - id: RB-05
+    title: Payment restart
+    owner: payments team
+    match: {services: [payment], tools: [restart_service]}
+    require_approval: true
+    steps:
+      - A payment restart drops in-flight card charges; a human approves every one.
+      - Check the payment provider status page before restarting.
+
+  - id: RB-06
+    title: Data store down
+    owner: platform team
+    match: {pattern: protected, services: [valkey-cart]}
+    steps:
+      - valkey-cart holds live carts. Only scaling it back to its last replica count is allowed.
+      - Never restart or roll back a data store from the agent.
+
+  - id: RB-07
+    title: Kafka outage
+    owner: platform team
+    match: {services: [kafka]}
+    forbid_tools: [restart_service, rollback_deploy, raise_limit]
+    steps:
+      - Kafka down sickens checkout, accounting and fraud-detection; fix kafka, not its consumers.
+      - Restarting kafka can lose consumer offsets; only a human-approved scale back is allowed.
+      - After kafka is back, restart checkout, accounting and fraud-detection if they hang.
+
+  - id: RB-99
+    title: Unknown cause
+    owner: on-call engineer
+    match: {pattern: unknown}
+    steps:
+      - Do not guess a fix. Read the evidence list and the trace path first.
+      - Check the change journal for anything in the last 10 minutes, including flags.
+      - Escalate to the service owner if nothing explains it within 15 minutes.

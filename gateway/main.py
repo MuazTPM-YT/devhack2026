@@ -49,6 +49,7 @@ def build_from_env() -> Gateway:
     from kubernetes import client
     from kubernetes import config as kube_config
 
+    from brain import runbooks
     from brain.graph import DependencyGraph
 
     kubeconfig, observer, jaeger = require_env("AGENT_KUBECONFIG", "OBSERVER_URL", "JAEGER_URL")
@@ -58,7 +59,7 @@ def build_from_env() -> Gateway:
                    http, observer, config.load("services")["services"], config.load("policy"),
                    events.publish, ReceiptStore(Path(DEFAULT_PATH)), approvers_from_env(),
                    graph=DependencyGraph(http, jaeger), flag_map=config.load("services").get("flags") or {},
-                   rehearsal=os.environ.get("ONCALL_REHEARSAL") == "1")
+                   rehearsal=os.environ.get("ONCALL_REHEARSAL") == "1", books=runbooks.load())
 
 
 def create_app(gateway: Gateway | None = None) -> FastAPI:
