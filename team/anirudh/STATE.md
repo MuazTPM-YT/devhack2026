@@ -5,10 +5,33 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** spec audit fixes on `anirudh/spec-fixes` (not pushed).
-Phases 0-4 merged.
+**Current phase:** UI redesign + chaos CLI on `anirudh/ui-redesign`
+(cut from `anirudh/spec-fixes`; neither pushed). Phases 0-4 merged.
 
 ## Done (with proof)
+
+- UI redesign + judges' chaos CLI, 2026-11-13, branch `anirudh/ui-redesign`
+  (4 commits: a6eaeb9, 94647fb, 63a43d2, 2ccd8d7). Decisions by Anirudh:
+  hybrid style (same palette, denser), real events only, approvals stay
+  read-only, faults from a CLI not the UI, `/chaos` read-only, brand
+  "Akira", event-log card removed.
+  - `chaos/cli.py`: `uv run python -m chaos.cli list|inject|reset|kubectl|
+    status|truth`, wraps the chaos API so ground truth is still logged.
+    Live: `list`, `status`, `truth`, `kubectl get` OK against :7004/:7001.
+    Inject/reset **not run live** (would page Discord).
+  - Fix: `chaos/main.py` judged read-only kubectl by `args[0]`, so
+    `-n shop get ...` was logged as ground truth. Now `verb()` skips
+    global flags. Test fails before, passes after.
+  - UI: left sidebar (nav, incident history, gateway/observer status;
+    rail at <=1100 px, drawer at <=720 px); one SSE stream in the layout
+    (`ui/lib/live-context.tsx`); live page has a request-flow map
+    (`ui/lib/flow.ts` maps each event to a path between services) and a
+    per-incident timeline with payloads. `/chaos` shows health, ground
+    truth, copyable CLI commands; Next proxies only
+    `GET /chaos/ground-truth`.
+  - Checks: UI `npm test` 23 pass, `tsc` clean, `next build` OK; pytest
+    400 passed; ruff, mypy clean. Screenshots 1440/900/390 px with live
+    bus data and the `?demo=1` replay (scratchpad only).
 
 - Spec audit (IMPLEMENTATION.md vs code) and fixes, 2026-11-13, branch
   `anirudh/spec-fixes`: details and open items in `team/SHARED_CONTEXT.md`
@@ -142,6 +165,12 @@ Phases 0-4 merged.
 
 ## Next
 
+- **Bad ground-truth line** written by my live CLI check before the
+  fix: `data/ground_truth.jsonl` last line `judge_kubectl` args
+  `["-n","shop","get","deploy","cart"]` (ts 1794560746.68). Asked
+  Anirudh whether to delete it.
+- Restart the chaos panel (:7004) to load the `verb()` fix; the running
+  process still has the old read-only check.
 0. **REMINDER for Anirudh: remove the `?demo=1` replay before submission**
    (`ui/lib/demo.ts`, the demo branch in `ui/lib/use-live.ts` and
    `ui/lib/use-receipt.ts`, the Replay button in
