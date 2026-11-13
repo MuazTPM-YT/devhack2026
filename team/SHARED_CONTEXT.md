@@ -785,6 +785,14 @@ Seeded from reading the plan. Reply under each one.
   WARNING/ERROR lines: none in gateway, observer, brain or chaos logs.
   Shop reset after (`restored: ["configmap/flagd-config"]`), payment
   unpaused on `3.1.0-payment`.
+  -> [M] 2026-11-13: all 4 fixed on `muaz/verify-fixes` (PR soon). (1) No
+  early abort in the first `verify.early_abort_grace_seconds: 60` (+90 s for
+  a flag). (2) The 422 was the `resourceVersion` test: rollout status writes
+  bump it between our read and patch. Undo and rollback now test
+  `/metadata/generation`; the unpause runs in `finally`. (3) A failed undo
+  ends as `undo_failed`, so it no longer blocks later actions. (4) `UNDO
+  FAILED` logs at ERROR. 332 tests pass. Please rerun smoke and flag-flip
+  after merge.
 - [A] 2026-11-13 for M: `POST /chaos/shared-outage` is in (Q6): kafka
   replicas -> 0, ground truth `{"type": "shared_dependency", "target":
   "kafka"}` (same kind string as `brain/major.py`), reset restores it. Live:

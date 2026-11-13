@@ -352,10 +352,11 @@ class Gateway:
     async def verify(self, receipt_id: int, action: ActionRequest, row: dict, plan: dict, receipt: Receipt) -> str:
         victims = json.loads(row.get("victims_json") or "[]")
         cfg = self.policy["verify"]
+        extra = cfg["flag_extra_seconds"] if plan["patch"]["kind"] == "configmap" else 0  # flagd reload ~60 s
         v = Verification(self.clock(), plan["health"], action.target, victims,
                          action.prediction.model_dump() if action.prediction else None,
-                         cfg["window_seconds"] + (cfg["flag_extra_seconds"] if plan["patch"]["kind"] == "configmap" else 0),
-                         cfg["early_abort"])  # flagd needs ~60 s to reload the ConfigMap
+                         cfg["window_seconds"] + extra, cfg["early_abort"],
+                         grace_s=cfg["early_abort_grace_seconds"] + extra)
         health, human, result = plan["health"], [], None
         while result is None:
             await asyncio.sleep(self.verify_every)
@@ -399,6 +400,14 @@ class Gateway:
         try:
             await asyncio.to_thread(self.undo, action.target, receipt.inverse, pause)
         except WriteRefused as e:
+            # terminal, else the pending receipt counts as in flight and blocks every later action
+            log.error("receipt #%s: UNDO FAILED (%s)", receipt_id, e.reason)
+            with self.lock:
+                self.conn.execute("UPDATE receipts SET outcome='undo_failed' WHERE id=?", (receipt_id,))
+                self.conn.commit()
+            self.receipts.update(receipt_id, receipt.model_copy(update={"outcome": "undo_failed"}))
+            self.heartbeats.pop(receipt_id, None)
+            self.verifying.pop(receipt_id, None)
             await self.publish({"type": "escalated", "incident_id": action.incident_id, "payload": {
                 "card": build_incident_card(self.card_incident(row, action.target)).model_dump(mode="json"),
                 "briefing": f"UNDO FAILED ({e.reason}); receipt #{receipt_id} needs a human now"}})
@@ -408,10 +417,14 @@ class Gateway:
                             "payload": {"receipt_id": receipt_id, "reason": reason}})
         return await self.close(receipt_id, action, row, receipt, v, "undone", harm, reason, hash_after)
 
-    # pause an in-progress rollout first so the inverse lands on a still object (§6.4.9 Undo)
+    # pause an in-progress rollout first so the inverse lands on a still object (§6.4.9 Undo);
+    # always unpause, a failed undo must not leave the Deployment paused
     def undo(self, target: str, inverse: dict, pause: bool) -> None:
         def rv() -> str:
             return read_deployment(self.apps, target)["metadata"]["resourceVersion"]
+
+        def gen() -> int:
+            return read_deployment(self.apps, target)["metadata"]["generation"]
 
         if inverse["op"] == "restore_configmap":
             cm = read_configmap(self.core, inverse["name"])
@@ -424,14 +437,16 @@ class Gateway:
             return
         template = inverse["template"]
 
-        test = {"op": "test", "path": "/metadata/resourceVersion"}
+        test = {"op": "test", "path": "/metadata/generation"}
         if pause:
-            patch_deployment(self.apps, target, [{**test, "value": rv()},
+            patch_deployment(self.apps, target, [{**test, "value": gen()},
                                                  {"op": "add", "path": "/spec/paused", "value": True}], False)
-        patch_deployment(self.apps, target, rollback_patch(rv(), template), False)
-        if pause:
-            patch_deployment(self.apps, target, [{**test, "value": rv()},
-                                                 {"op": "replace", "path": "/spec/paused", "value": False}], False)
+        try:
+            patch_deployment(self.apps, target, rollback_patch(gen(), template), False)
+        finally:
+            if pause:
+                patch_deployment(self.apps, target, [{**test, "value": gen()},
+                                                     {"op": "replace", "path": "/spec/paused", "value": False}], False)
 
     async def close(self, receipt_id: int, action: ActionRequest, row: dict, receipt: Receipt, v: Verification,
                     outcome: str, harm: dict | None, reason: str | None, hash_after: str | None = None) -> str:
@@ -521,6 +536,7 @@ class Gateway:
                 outcome = "undone"
             except WriteRefused as e:
                 reason, outcome = f"{reason}; UNDO FAILED ({e.reason})", "pending"
+                log.error("receipt #%s: %s", r["id"], reason)
             with self.lock:
                 self.conn.execute("UPDATE receipts SET outcome=? WHERE id=?",
                                   ("undone" if outcome == "undone" else "watchdog_failed", r["id"]))

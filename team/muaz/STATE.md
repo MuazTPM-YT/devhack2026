@@ -5,11 +5,27 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** first live run done (A, 2026-11-13); smoke failed on a verifier bug, now fixed; rerun pending
-**Branches:** all merged up to PR #29. Now `muaz/flag-revert` (not pushed)
+**Current phase:** live runs 2 (A, 2026-11-13): bad deploy and flag flip both early-aborted; 3 fixes on branch, rerun pending
+**Branches:** all merged up to PR #32. Now `muaz/verify-fixes` (not pushed)
 
 ## Done (with proof)
 
+- Fixes from live runs 2 (branch `muaz/verify-fixes`, 3 commits):
+  - Early abort has a grace period: `verify.early_abort_grace_seconds: 60`
+    (+ `flag_extra_seconds` for a flag). A victim that turns sick seconds
+    after a right fix no longer undoes it.
+  - Undo tests `/metadata/generation`, not `resourceVersion` (rollout
+    status writes bump resourceVersion; that gave the live 422). The
+    forward rollback patch uses the same test. Unpause runs in `finally`.
+  - A failed undo ends as `undo_failed` (no longer `pending`, so it does
+    not block later actions) and logs `UNDO FAILED` at ERROR.
+  Proof: 3 new tests in `tests/test_verify_loop.py` fail on old code (churn
+  test -> `'undo_failed' == 'undone'`, as live) and pass after; `uv run
+  pytest` -> `332 passed`; `ruff check .` -> `All checks passed!`; `mypy ...
+  chaos` -> `no issues found in 62 source files`. Fakes only; the 422 cause
+  is not proven live yet.
+  Not changed: `watchdog_failed` still blocks new actions (by design); the
+  scale undo still pins `resourceVersion` in a merge patch.
 - Flag revert, scenario 3 (branch `muaz/flag-revert`): journal names the
   flipped flag in the flagd JSON (`flags[<name>].defaultVariant`, per-flag
   inverse; non-flagd text falls back to the whole key); rules treat a flag
@@ -270,8 +286,8 @@ section. Only my own work here; cross-team facts go in
 
 ## Blocked / waiting on
 
-- **Smoke rerun (A):** PR #29 merged; waiting for the rerun. Expect
-  `outcome=incident_resolved`.
+- **Live rerun (A):** after `muaz/verify-fixes` merges: `./scripts/smoke.sh`
+  and `/chaos/flag-flip`. Expect `incident_resolved` for both.
 - **LLM timeout (T):** both live calls ended `deadline_exceeded` at 30 s
   (deepseek-v4.1-flash). Rules still decide, so not blocking; T to pick a
   longer timeout, lower reasoning effort or another model.
@@ -293,10 +309,10 @@ section. Only my own work here; cross-team facts go in
 
 ## Next
 
-1. Push + merge `muaz/flag-revert`.
-2. A reruns `./scripts/smoke.sh` (bad deploy) and tries `/chaos/flag-flip`
+1. Push + merge `muaz/verify-fixes`.
+2. A reruns `./scripts/smoke.sh` (bad deploy) and `/chaos/flag-flip`
    (scenario 3); expect `incident_resolved` for both.
-3. Tick the Phase 1 exit only with a passing smoke output.
+3. Tick the Phase 1 and 2 exits only with passing live output.
 4. Stretch (Phase 6) only after the Phase 4 exit works live.
 
 ## Notes for my next session
