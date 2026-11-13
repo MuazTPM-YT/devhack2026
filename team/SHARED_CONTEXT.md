@@ -1052,3 +1052,8 @@ Seeded from reading the plan. Reply under each one.
     branch: a saved wake that no longer validates as `Card` used to crash
     the repage task and with it the whole consumer TaskGroup (no pages, dead
     buttons); it now re-pages its plain text.
+  - Cards show a paste-ready kubectl command only when the agent stopped on
+    its own limits (`RERUNNABLE` in `gateway/receipts.py`: budget, action
+    in flight, approval expired, observer/gateway down). Refused fixes show
+    as "Blocked proposal (not run)" with no command; approval cards carry
+    none (doing it by hand skips verification).
