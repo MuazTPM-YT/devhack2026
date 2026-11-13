@@ -2,10 +2,36 @@
 
 **Last updated:** 2026-11-14
 **Current phase:** UI shows the orchestrator (Agents band) on `twaha/ui-agents`, checked in the browser
-**Branch:** `twaha/ui-agents` off `origin/main` `5fa827d`, 8 commits, not pushed
+**Branch:** `twaha/ui-agents` off `origin/main` `5fa827d`, 16 commits, not pushed
 **Implementation:** PRs #8, #12, #15, #43 merged
 
 ## Done (with proof)
+
+- Calmer UI pass (`twaha/ui-agents`, 2026-11-14, Twaha asked: fewer words, fix obvious AI-design tells, motion,
+  a little personality, folding side panels, balanced layout). UI only.
+  - Tells removed: kicker above page titles (facts now under the title, `PageHead meta`), `01`-`06` on stage
+    tiles, uppercase letter-spaced micro-labels (card titles, tags, table heads now sentence case), Geist ->
+    Atkinson Hyperlegible Next + Mono (Twaha picked it over Schibsted Grotesk from two screenshots). Kept:
+    paper/oxblood palette (Twaha's call: structure + typeface only).
+  - Fewer words: sheet sections fold (`components/live/sheet-section.tsx`, native `<details>`), outcome shows the
+    card's first line (`lead()` in `lib/format.ts`) with "Full card" and "Why" behind a click
+    (`components/ui/more.tsx`), incident rows two lines, timeline detail only for picked or warn/bad rows, live
+    figures without small print (now tooltips), healthy service cards without a sentence.
+  - Folding: left nav to the icon rail, incident list and details sheet to 44 px tabs; remembered in
+    localStorage `akira.panels` (`lib/prefs.ts`, `lib/use-prefs.ts`). Live sides are both 300 px; content pages
+    centred, max 1320 px.
+  - Motion: working stage and open lane spans breathe, changed figures slide in, folds open by height, mark
+    beats while an incident is open. Wording: "All quiet" when no incident.
+  - Proof: `tsc --noEmit` clean; 84 `node:test` pass (was 81); `next build` OK with 2 warnings ("Failed to find
+    font override values for font Atkinson Hyperlegible ..., skipping fallback font"; `adjustFontFallback: false`
+    did not silence it under Turbopack, harmless). Browser: live (real incident and demo), overview, receipts,
+    chaos at 1440-1680 px and live at 375 px, panels open and folded: no console errors, no sideways scroll.
+    impeccable page scan: 1 finding left (cream background).
+  - NOT done: Python checks not rerun after this pass (no Python file touched; last run 897 passed, 1 known
+    fail). Reduced motion checked in CSS only. Receipts and Chaos Lab got the shared changes only (head, labels,
+    tags, centring), no page-specific word cutting. Overview keeps 11 cards in rows of 4, 4, 3.
+  - ASSUMED: sections open by default = Outcome, Severity, Approval while pending; closed = Scope, Checklist
+    (opens itself when a gate fails), Blast radius, Evidence. Selected-row side stripes kept.
 
 - Agents band (`twaha/ui-agents`, 2026-11-14). Plan: `~/.claude/plans/ok-everything-works-well-velvet-snowflake.md`.
   UI only, no backend change, no new dependency.
