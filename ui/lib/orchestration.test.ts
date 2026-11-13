@@ -43,3 +43,20 @@ test("reason codes read as words", () => {
   assert.equal(reasonText("change:journal:41"), "change: journal:41");
   assert.equal(reasonText("shared_dependency"), "shared dependency");
 });
+
+test("overview sees every open incident and which one blames a service", async () => {
+  const { openIncidentIds, culpritIncident } = await import("./orchestration.ts");
+  const s = [
+    rec("incident_opened", { opened_at: 100, unhealthy: ["payment"] }, "inc-pay"),
+    rec("culprit_found", { culprit: "payment", victims: [] }, "inc-pay"),
+    rec("incident_opened", { opened_at: 101, unhealthy: ["ad"] }, "inc-ad"),
+    rec("culprit_found", { culprit: "ad", victims: [] }, "inc-ad"),
+    rec("incident_opened", { opened_at: 90, unhealthy: ["cart"] }, "inc-old"),
+    rec("incident_resolved", { card: { incident_id: "inc-old", status: "FIXED", text: "x", evidence_ids: [] } }, "inc-old"),
+  ].reduce(reduce, initialState);
+  const open = openIncidentIds(s, 120, 1200);
+  assert.deepEqual([...open].sort(), ["inc-ad", "inc-pay"]);
+  assert.equal(culpritIncident(s, open, "ad"), "inc-ad");
+  assert.equal(culpritIncident(s, open, "payment"), "inc-pay");
+  assert.equal(culpritIncident(s, open, "cart"), null);  // its incident is closed
+});

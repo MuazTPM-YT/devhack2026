@@ -11,8 +11,9 @@ import type { ServiceHealth } from "@/lib/chaos-api";
 import { clock, duration, plural } from "@/lib/format";
 import { telemetry } from "@/lib/lab";
 import { useLiveContext } from "@/lib/live-context";
+import { culpritIncident, openIncidentIds } from "@/lib/orchestration";
 import {
-  incidentStats, incidentStatus, latencyLimit, type Policy, serviceSentence, type ServiceInfo, serviceStatus,
+  incidentStats, latencyLimit, type Policy, serviceSentence, type ServiceInfo, serviceStatus,
   type ServiceStatus,
 } from "@/lib/overview";
 import { useNow } from "@/lib/use-now";
@@ -107,7 +108,9 @@ export function OverviewView({ services }: { services: Record<string, ServiceInf
   const breaching = names.filter((n) => status(n) === "breaching");
   const unmeasured = names.filter((n) => status(n) === "nodata");
   const stats = incidentStats(state, now, policy.maxAgeS);
-  const openId = state.order.find((id) => incidentStatus(state.incidents[id], now, policy.maxAgeS) === "open") ?? null;
+  // orchestration can hold several open incidents at once; with one, everything below reads as before
+  const openIds = openIncidentIds(state, now, policy.maxAgeS);
+  const openId = openIds[0] ?? null;
   const openInc = openId ? state.incidents[openId] : null;
 
   return (
@@ -115,7 +118,9 @@ export function OverviewView({ services }: { services: Record<string, ServiceInf
       <PageHead
         eyebrow={`namespace shop${health ? ` · numbers from ${clock(health.last_ok_ts ?? health.ts)}` : ""}`}
         title="Overview"
-        aside={openInc && <Link className="btn btn-dark" href={`/live?incident=${encodeURIComponent(openInc.id)}`}>Open live incident →</Link>}
+        aside={openIds.length > 1
+          ? <Link className="btn btn-dark" href="/live">{openIds.length} open incidents →</Link>
+          : openInc && <Link className="btn btn-dark" href={`/live?incident=${encodeURIComponent(openInc.id)}`}>Open live incident →</Link>}
       />
 
       <Kpis label="Shop and agent figures" items={[
@@ -135,7 +140,11 @@ export function OverviewView({ services }: { services: Record<string, ServiceInf
           <p className={styles.alert} role="alert">{tele.text}. The cards below show the last numbers, not the shop now.</p>
         ) : bad.length ? (
           <p><b>{bad.length} of {names.length} services are unhealthy:</b> {bad.join(", ")}.{" "}
-            {openInc ? <>Akira is on it in incident <Link href={`/live?incident=${encodeURIComponent(openInc.id)}`} className="mono">{openInc.id}</Link>.</> : "No incident is open yet."}</p>
+            {openIds.length > 1
+              ? <>Akira is on {openIds.length} incidents: {openIds.map((id, i) => (
+                <span key={id}>{i > 0 && ", "}<Link href={`/live?incident=${encodeURIComponent(id)}`} className="mono">{id}</Link></span>
+              ))}.</>
+              : openInc ? <>Akira is on it in incident <Link href={`/live?incident=${encodeURIComponent(openInc.id)}`} className="mono">{openInc.id}</Link>.</> : "No incident is open yet."}</p>
         ) : (
           <p>{!health ? "Waiting for the first reading…"
             : breaching.length ? `${plural(breaching.length, "service")} over a limit, not yet unhealthy: ${breaching.join(", ")}.`
@@ -162,7 +171,7 @@ export function OverviewView({ services }: { services: Record<string, ServiceInf
         <div className={styles.grid}>
           {names.map((n) => (
             <ServiceCard key={n} name={n} health={health?.services[n]} info={services[n]} policy={policy}
-              blind={blind} culprit={openInc?.culprit === n} incidentId={openInc?.id ?? null} />
+              blind={blind} culprit={culpritIncident(state, openIds, n) != null} incidentId={culpritIncident(state, openIds, n)} />
           ))}
         </div>
       )}

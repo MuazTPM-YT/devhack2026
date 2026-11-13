@@ -1,5 +1,6 @@
 // orchestration run mode for the UI (gateway GET /orchestration/status); pure helpers, tested in node
-import type { Incident } from "./live.ts";
+import type { Incident, LiveState } from "./live.ts";
+import { incidentStatus } from "./overview.ts";
 
 export interface OrchestrationStatus {
   mode: "disabled" | "shadow" | "coordinated";
@@ -54,5 +55,15 @@ export function reasonText(reason: string): string {
   const rest = at < 0 ? "" : reason.slice(at + 1);
   if (rest && (kind === "dependency" || kind === "change")) return `${kind === "dependency" ? "cause" : "change"}: ${rest}`;
   return reason.replace(/_/g, " ");
+}
+
+// every incident still open, newest first (coordinated mode can hold several; the classic path one)
+export function openIncidentIds(state: LiveState, now: number, maxAgeS: number | null): string[] {
+  return state.order.filter((id) => incidentStatus(state.incidents[id], now, maxAgeS) === "open");
+}
+
+// the open incident that names this service as its culprit, if any
+export function culpritIncident(state: LiveState, openIds: string[], service: string): string | null {
+  return openIds.find((id) => state.incidents[id].culprit === service) ?? null;
 }
 
