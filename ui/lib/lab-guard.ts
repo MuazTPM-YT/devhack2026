@@ -34,15 +34,32 @@ export function refusal(caller: Caller, token: string): { status: number; detail
   return { status: 401, detail: "locked: enter the judge passcode to use the lab from this address" };
 }
 
-// wrong passcodes, counted for everyone together: a guesser gets a handful of tries a minute, not thousands
+// passcode tries. Per client, so one guesser cannot lock the judge out; a looser cap for everyone together,
+// so many addresses cannot guess in parallel. take() checks and records in one step (nothing awaited between).
 export class Attempts {
-  private failed: number[] = [];
-  constructor(private max = 5, private windowMs = 60_000) {}
+  private tries = new Map<string, number[]>();
+  constructor(private max = 5, private globalMax = 60, private windowMs = 60_000) {}
 
-  blocked(now: number): boolean {
-    this.failed = this.failed.filter((t) => now - t < this.windowMs);
-    return this.failed.length >= this.max;
+  private recent(key: string, now: number): number[] {
+    const kept = (this.tries.get(key) ?? []).filter((t) => now - t < this.windowMs);
+    if (kept.length) this.tries.set(key, kept); else this.tries.delete(key);
+    return kept;
   }
 
-  fail(now: number): void { this.failed.push(now); }
+  // false = over the limit, do not even compare the passcode
+  take(client: string, now: number): boolean {
+    if (this.recent(client, now).length >= this.max || this.recent("*", now).length >= this.globalMax) return false;
+    for (const key of [client, "*"]) this.tries.set(key, [...this.recent(key, now), now]);
+    return true;
+  }
+
+  // the passcode was right: that try does not count
+  forgive(client: string, now: number): void {
+    for (const key of [client, "*"]) {
+      const kept = this.recent(key, now);
+      const i = kept.lastIndexOf(now);
+      if (i >= 0) kept.splice(i, 1);
+      if (kept.length) this.tries.set(key, kept); else this.tries.delete(key);
+    }
+  }
 }
