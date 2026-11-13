@@ -170,6 +170,8 @@ class ToolBox:
                                  "ms": round((time.monotonic() - started) * 1000), "evidence_ids": [e.id for e in shown]}
         if self.cache is not None:
             event["cached"] = bool(reads) and all(r.cached for r in reads)
+        if self.question is not None:  # a specialist's read: the UI draws it on the specialist, not the brain
+            event["task_id"] = self.run_id
         await self.publish("tool_called", self.incident.id, event)
         for r in reads:
             if r.cached:

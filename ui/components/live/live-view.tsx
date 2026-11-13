@@ -19,6 +19,7 @@ import { Checklist } from "./checklist";
 import { Evidence } from "./evidence";
 import { FlowMap } from "./flow-map";
 import { IncidentList, IncidentSelect, statusTag, who } from "./incident-list";
+import { Investigation } from "./investigation";
 import { Outcome } from "./outcome";
 import { Severity } from "./severity";
 import sheet from "./sheet.module.css";
@@ -88,6 +89,7 @@ function IncidentBody({ incident, demo, list, picker }: {
           <aside className={`${sheet.sheet} ${styles.sheet}`} aria-label="Incident details">
             <Outcome incident={incident} receipt={receipt} />
             <Approval incident={incident} now={now} />
+            <Investigation incident={incident} />
             <Severity incident={incident} receipt={receipt} />
             <Checklist incident={incident} />
             <Blast incident={incident} />

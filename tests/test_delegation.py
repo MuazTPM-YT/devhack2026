@@ -232,6 +232,7 @@ async def test_specialist_cannot_read_outside_scope_or_cite_unseen_ids(tmp_path)
     assert result.finding is None and ws.task(result.task_id)["state"] == "failed"
     reads = [p for k, p in box.published if k == "tool_called"]
     assert reads[-1]["tool"] == "get_pods" and reads[-1]["evidence_ids"] == []  # "unknown service cart"
+    assert reads[-1]["task_id"] == result.task_id and "task_id" not in reads[0]  # UI draws it on the specialist
     offered = {t.name for t in script.seen[0][1].function_tools}
     assert "request_investigation" not in offered and "get_service_health" not in offered
 

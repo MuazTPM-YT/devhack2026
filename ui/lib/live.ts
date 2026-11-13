@@ -13,6 +13,9 @@ export const EVENT_TYPES = [
   "approval_decided", "action_executed", "verify_tick", "early_abort", "action_undone",
   "harm_check", "incident_resolved", "escalated", "handed_off", "injection_quarantined", "blocked",
   "tool_called",
+  // orchestration (coordinated mode only)
+  "incident_scope_changed", "delegation_decided", "investigation_task_changed", "finding_recorded",
+  "evidence_reused", "orchestration_budget_changed", "action_intent_changed",
 ] as const;
 
 // one SSE data line from gateway /events
@@ -38,6 +41,22 @@ export interface Choice {
   ruleChoice: { tool: string; target: string } | null;
   reason: string | null;
   alternative: string | null;
+}
+
+// coordinated mode: who owns what, whether a specialist ran and why, what it cost, where each fix stands.
+// null on incidents from the single-agent path
+export interface Orchestration {
+  scopeRevision: number;
+  services: string[];
+  reasons: string[];
+  delegation: { status: string; explanation: string; ts: number }[];
+  tasks: Record<string, { questionId: string; state: string; attempt: number }>;
+  findings: { verdict: string; summary: string }[];
+  reusedReads: number;
+  modelCalls: number;
+  tokensIn: number;
+  tokensOut: number;
+  intents: Record<string, { status: string; reason: string | null; planRevision: number }>;
 }
 
 export interface Incident {
@@ -71,6 +90,7 @@ export interface Incident {
   blocked: number;
   stages: Record<Stage, StageState>;
   events: IncidentEvent[];
+  orch: Orchestration | null;
 }
 
 export interface LiveState {
@@ -106,6 +126,12 @@ export const STAGE_OF: Record<string, Stage> = {
   early_abort: "verify",
   action_undone: "verify",
   harm_check: "verify",
+  incident_scope_changed: "group",
+  delegation_decided: "diagnose",
+  investigation_task_changed: "diagnose",
+  finding_recorded: "diagnose",
+  evidence_reused: "diagnose",
+  action_intent_changed: "act",
 };
 
 const TERMINAL: Record<string, Outcome> = {
@@ -137,6 +163,14 @@ function blank(id: string, ts: number): Incident {
     closedAt: null, predictionHeld: null, card: null, briefing: "", quarantined: 0, blocked: 0,
     stages: { detect: "idle", group: "idle", diagnose: "idle", check: "idle", act: "idle", verify: "idle" },
     events: [],
+    orch: null,
+  };
+}
+
+function emptyOrch(): Orchestration {
+  return {
+    scopeRevision: 0, services: [], reasons: [], delegation: [], tasks: {}, findings: [], reusedReads: 0,
+    modelCalls: 0, tokensIn: 0, tokensOut: 0, intents: {},
   };
 }
 
@@ -197,8 +231,18 @@ function apply(inc: Incident, type: string, p: Record<string, unknown>, ts: numb
     case "llm_called": {
       // audit logs from before tool_called carry reads as llm_called with a tool name
       if (str(p.tool)) { next.reads = [...next.reads, read(p, ts)].slice(-READS_PER_INCIDENT); break; }
+      // orchestration sends one event per provider call, then a run summary that must not count twice
+      if (p.kind === "summary") break;
+      const usage = (p.usage ?? {}) as Record<string, unknown>;
+      if (p.kind === "call") {
+        const o = next.orch ?? emptyOrch();
+        next.orch = { ...o, modelCalls: o.modelCalls + 1, tokensIn: o.tokensIn + (num(usage.prompt_tokens) ?? 0),
+          tokensOut: o.tokensOut + (num(usage.completion_tokens) ?? 0) };
+        next.llmCalls += 1;
+        break;
+      }
       // an agent run reports all its requests in one event
-      const requests = (p.usage as Record<string, unknown> | undefined)?.requests;
+      const requests = usage.requests;
       next.llmCalls += typeof requests === "number" && requests > 0 ? requests : 1;
       break;
     }
@@ -247,6 +291,40 @@ function apply(inc: Incident, type: string, p: Record<string, unknown>, ts: numb
     case "blocked":
       next.blocked += 1;
       break;
+    case "incident_scope_changed":
+      next.orch = { ...(next.orch ?? emptyOrch()), scopeRevision: num(p.scope_revision) ?? 0,
+        services: strs(p.services), reasons: strs(p.reasons) };
+      break;
+    case "delegation_decided": {
+      const o = next.orch ?? emptyOrch();
+      next.orch = { ...o, delegation: [...o.delegation,
+        { status: str(p.status) ?? "?", explanation: str(p.explanation) ?? "", ts }] };
+      break;
+    }
+    case "investigation_task_changed": {
+      const o = next.orch ?? emptyOrch();
+      const id = str(p.task_id) ?? "?";
+      next.orch = { ...o, tasks: { ...o.tasks, [id]: {
+        questionId: str(p.question_id) ?? "?", state: str(p.state) ?? "?", attempt: num(p.attempt) ?? 0 } } };
+      break;
+    }
+    case "finding_recorded": {
+      const o = next.orch ?? emptyOrch();
+      next.orch = { ...o, findings: [...o.findings, { verdict: str(p.verdict) ?? "?", summary: str(p.summary) ?? "" }] };
+      break;
+    }
+    case "evidence_reused": {
+      const o = next.orch ?? emptyOrch();
+      next.orch = { ...o, reusedReads: o.reusedReads + 1 };
+      break;
+    }
+    case "action_intent_changed": {
+      const o = next.orch ?? emptyOrch();
+      const id = str(p.intent_id) ?? "?";
+      next.orch = { ...o, intents: { ...o.intents, [id]: {
+        status: str(p.status) ?? "?", reason: str(p.reason), planRevision: num(p.plan_revision) ?? 0 } } };
+      break;
+    }
   }
   const outcome = TERMINAL[type];
   if (outcome) {
