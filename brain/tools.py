@@ -23,6 +23,7 @@ from brain.culprit import fetch_error_traces, from_traces, is_error
 from brain.graph import DependencyGraph
 from brain.redact import quarantine, redact_value
 from observer.kube_watch import service_of
+from schemas import auth
 from schemas.models import Evidence, EvidenceBundle, Incident, Tool as FixTool
 
 log = logging.getLogger("brain.tools")
@@ -88,8 +89,10 @@ class ToolBox:
         bad = [n for n in names if n not in self.services]
         return {"error": f"unknown service {', '.join(bad)}", "known": self.services} if bad else None
 
+    # the API token goes to our observer only (GET /journal needs it), never to Prometheus or Jaeger
     async def get_json(self, url: str, **params: Any) -> Any:
-        r = await self.http.get(url, params=params, timeout=10)
+        headers = auth.headers() if url.startswith(self.observer_url) else None
+        r = await self.http.get(url, params=params, timeout=10, headers=headers)
         r.raise_for_status()
         return r.json()
 
