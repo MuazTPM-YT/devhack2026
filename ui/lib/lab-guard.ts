@@ -33,3 +33,16 @@ export function refusal(caller: Caller, token: string): { status: number; detail
   if (caller.cookie && same(caller.cookie, sessionValue(token))) return null;
   return { status: 401, detail: "locked: enter the judge passcode to use the lab from this address" };
 }
+
+// wrong passcodes, counted for everyone together: a guesser gets a handful of tries a minute, not thousands
+export class Attempts {
+  private failed: number[] = [];
+  constructor(private max = 5, private windowMs = 60_000) {}
+
+  blocked(now: number): boolean {
+    this.failed = this.failed.filter((t) => now - t < this.windowMs);
+    return this.failed.length >= this.max;
+  }
+
+  fail(now: number): void { this.failed.push(now); }
+}

@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { COOKIE, refusal, same, sessionValue } from "@/lib/lab-guard";
+import { Attempts, COOKIE, refusal, same, sessionValue } from "@/lib/lab-guard";
 
 const CHAOS = process.env.CHAOS_URL ?? "http://127.0.0.1:7004";
 const EXP = "experiments/exp-[0-9a-f]{10}";
@@ -12,11 +12,17 @@ const ALLOWED: Record<string, RegExp> = {
 };
 
 const deny = (status: number, detail: string) => Response.json({ detail }, { status });
+const attempts = new Attempts();
 
 // the passcode is the judge token; a right answer sets an HttpOnly session cookie for this address
 async function unlock(req: NextRequest, token: string): Promise<Response> {
+  const now = Date.now();
+  if (attempts.blocked(now)) return deny(429, "too many wrong passcodes; wait a minute");
   const body = await req.json().catch(() => null);
-  if (typeof body?.passcode !== "string" || !same(body.passcode.trim(), token)) return deny(401, "wrong passcode");
+  if (typeof body?.passcode !== "string" || !same(body.passcode.trim(), token)) {
+    attempts.fail(now);
+    return deny(401, "wrong passcode");
+  }
   const secure = req.nextUrl.protocol === "https:" || req.headers.get("x-forwarded-proto") === "https";
   return new Response(JSON.stringify({ unlocked: true }), {
     headers: {

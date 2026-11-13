@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { refusal, same, sessionValue } from "./lab-guard.ts";
+import { Attempts, refusal, same, sessionValue } from "./lab-guard.ts";
 
 const TOKEN = "judge-token-0123456789";
 const cookie = sessionValue(TOKEN);
@@ -32,4 +32,12 @@ test("the cookie is not the passcode", () => {
   assert.notEqual(cookie, TOKEN);
   assert.equal(cookie.length, 64);
   assert.ok(same(cookie, sessionValue(TOKEN)) && !same(cookie, cookie.slice(1)));
+});
+
+test("a handful of wrong passcodes locks the unlock for a minute", () => {
+  const tries = new Attempts(3, 60_000);
+  for (const t of [0, 1000, 2000]) { assert.equal(tries.blocked(t), false); tries.fail(t); }
+  assert.equal(tries.blocked(3000), true);
+  assert.equal(tries.blocked(59_999), true);
+  assert.equal(tries.blocked(62_001), false);  // the oldest failures aged out
 });
