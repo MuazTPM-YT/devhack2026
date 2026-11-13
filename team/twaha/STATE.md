@@ -1,11 +1,39 @@
 # Twaha [T]: state
 
 **Last updated:** 2026-11-13
-**Current phase:** brain as tool-using agent (read tools), offline + live model check done
-**Branch:** `twaha/agent-tools` off `twaha/card-embeds` + merged `origin/main` `116c993`, not pushed
-**Implementation:** PRs #8, #12, #15 merged
+**Current phase:** Chaos Lab + agent chooses the fix, offline checks done, live check NOT run
+**Branch:** `twaha/chaos-lab` off `origin/main` `88d0ef7` (PR #43 merged), 19 commits, not pushed
+**Implementation:** PRs #8, #12, #15, #43 merged
 
 ## Done (with proof)
+
+- Chaos Lab + agent upgrade (`twaha/chaos-lab`), from `reports/akira-ui-chaos-panel-review.md`.
+  Plan: `~/.claude/plans/i-want-you-to-floating-wand.md`. Twaha OK'd edits in A's and M's files.
+  - Chaos: faults are tracked experiments (`chaos/experiments.py`, `data/chaos.db`): preflight,
+    idempotency key, watchdog (expiry, cleanup, repaired-fault detection), restore only when the
+    field still holds the injected value. Reviewed list `config/chaos.yaml` + live facts in
+    `chaos/registry.py`. The six old routes run as presets through the engine, same response
+    plus `experiment_id`. Every chaos route needs `CHAOS_JUDGE_TOKEN` (`X-Chaos-Token`), reads too.
+  - UI: `/chaos` is the lab (composer, preview, active run, stop, reveal, blind draw by seed).
+    Token added by `ui/app/api/chaos/[...path]/route.ts`; loopback same-origin only, else a
+    passcode unlock. `/chaos/kubectl` is not proxied.
+  - Brain: `BRAIN_MODE=agent` now lets the model accept a rule candidate, propose another built
+    tool, or decline (`brain/rules.py candidates()`, `brain/capabilities.py`, `brain/agent.py
+    select()`). `BRAIN_MODE=advise` = old rule-wins behaviour. Tool reads are `tool_called`.
+    The model sees "the agent" / "another writer", never the field manager name.
+  - Gateway: `ActionRequest.origin == "model"` always asks a human, skips the rule-equality
+    freshness compare, writes no ledger credit. Verifier ignores readings with
+    `prometheus_ok: false`. `still_live` compares env var by var.
+  - Proof: `uv run pytest` 616 passed, 1 failed = local budget 30 (`test_policy`); Ruff clean;
+    mypy clean, 75 files. UI: `tsc --noEmit` clean; 60 `node:test` pass, run through a
+    compile step because this host's Node 22.22.1 cannot run `.ts` (`npm test` fails here for
+    that reason, not for a test). Registry build and 3 previews run against live k3d with
+    server-side dry runs only: 11 targets, `cartFailure 50%` + decoy and
+    `checkout PAYMENT_ADDR wrong_host` preview OK, `shipping` flag refused "not watched".
+  - NOT done: live run of an experiment or of agent mode with the new prompt (needs
+    `CHAOS_JUDGE_TOKEN` in `.env` and a stack restart). No browser look at the populated lab:
+    the running dev server has no token, pages only checked for HTTP 200 and SSR text.
+    `.env.example` still lacks `CHAOS_JUDGE_TOKEN=` (deny rule blocks my edit).
 
 - Agent tools (`twaha/agent-tools`): brain diagnoses as a pydantic-ai agent
   (`brain/agent.py`) with 9 read tools (`brain/tools.py`). Thin brief, max 6
@@ -194,6 +222,9 @@
 
 ## Next
 
+0. Chaos Lab live check: add `CHAOS_JUDGE_TOKEN` to `.env`, `scripts/demo.sh down && up`, one guided
+   run (`cartFailure 50%`), one decoy run, stop, reveal; then screenshots at 1440 and 390 px.
+   Trust runs collected before this branch describe `advise` behaviour, not `agent`.
 1. Repeat smoke a few times for stability, then overnight trust runs.
 2. Escalated incidents never close when the service recovers by itself
    (re-page forever); needs an ack button or auto-close.
