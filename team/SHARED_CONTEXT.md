@@ -561,6 +561,12 @@ Seeded from reading the plan. Reply under each one.
   flag -> service map; proposal: `config/services.yaml` gets
   `flags: {paymentFailure: payment, recommendationCacheFailure:
   recommendation, ...}` (your file, C7). Reply `agreed` and I wire it.
+  -> [A] 2026-11-13: agreed. Added `flags:` to `config/services.yaml`: 15 failure
+  flags -> service (from each flag's description; all 15 exist in flagd and all
+  targets are real Deployments). Left out: `emitRawPii` (not a failure),
+  `aiRunawayAgent`, `aiSlowResponse` (agent disabled). `paymentUnreachable` maps
+  to `checkout` (checkout's call to payment fails); change it if your culprit
+  logic lands on `payment` instead.
 
 - [T] 2026-11-13 for M,A: Live checks without cluster: OpenCode Go real call OK
   (`deepseek-v4.1-flash`, 16.6 s, 2209 tokens, valid diagnosis; JSON-only prompt
@@ -601,3 +607,70 @@ Seeded from reading the plan. Reply under each one.
   read-only are logged to ground truth as
   `{type: "judge_kubectl", args: [...], ok}`; the bench can treat these as
   "unknown break" trials.
+- [A] 2026-11-13 for M: Live run step 1, security table (branch
+  `anirudh/live-run`). `kubectl apply -f k8s/` created all 10 RBAC/VAP
+  objects; the only error is `error validating "k8s/values.yaml": error
+  validating data: [apiVersion not set, kind not set]` (Helm values, not a
+  k8s object; harmless). `make_kubeconfigs.sh` wrote `agent.kubeconfig` and
+  `reader.kubeconfig` (mode 600, gitignored). `security_check.sh`: 19 PASS,
+  `fails: 0`, plus MANUAL "real rollback_deploy through the executor after a
+  bad deploy: needs gateway executor (Phase 1)" (now covered by step 6:
+  receipt #1 executed). Denies seen: `ValidatingAdmissionPolicy
+  'oncall-agent-fields' with binding 'oncall-agent-fields' denied request:
+  agent may not change the service account`, `... denied request: image must
+  come from an approved source`, `ValidatingAdmissionPolicy
+  'oncall-agent-scale' with binding 'oncall-agent-scale' denied request:
+  replicas must stay between 1 and 3`.
+- [A] 2026-11-13 for M: Live run step 2, load. `k8s/values.yaml` now sets
+  load-generator `LOCUST_USERS=250`, `LOCUST_SPAWN_RATE=10`,
+  `LOCUST_BROWSER_TRAFFIC_ENABLED=false` (headless browsers cost too much
+  RAM). `sum(rate(traces_span_metrics_calls_total{service_name="payment"}[1m]))`
+  went 0.164 (5 users) -> 5.636 (server spans only: 2.818/s); locust 51.5
+  rps, checkout 3.0/s. Locust's 7.5% failures are all `POST /prompt`
+  `gaierror(-2, 'Name or service not known')` (agent disabled), not the
+  shop. Side effect found later: ad (300Mi) OOMKilled 33x and jaeger (600Mi)
+  21x, which held severity at 3. Fixed: ad 450Mi, jaeger
+  `MEMORY_MAX_TRACES` 25000 -> 5000 (commit 8bc049e). Free RAM ~2 GB.
+- [A] 2026-11-13 for M: Live run step 3, Jaeger API. Dependencies: HTTP
+  200, 1718 bytes, starts
+  `{"data":[{"parent":"frontend","child":"frontend","callCount":1574},{"parent":"payment","child":"payment","callCount":36},...`.
+  30 edges: 14 are self-loops (drop them in graph code), 16 real incl.
+  checkout -> payment; no edge to `valkey-cart` or `kafka`. Error traces:
+  HTTP 200, `{"data":[],"total":0,"limit":0,"offset":0,"errors":null}`
+  (payment healthy then; same query without the error tag returns traces).
+- [A] 2026-11-13 for M: Live run step 4, flagd on the ConfigMap. flagd now
+  mounts `flagd-config` as a whole dir at `/etc/flagd` (log: `starting sync
+  from ./etc/flagd/demo.flagd.json`). Patched `adFailure` on: reloaded
+  without restart after 65.7 s (same pod, `restarts=0`); off again: 54.6 s.
+  So flag faults take ~60 s to bite (kubelet sync). flagd-ui edits no
+  longer reach flagd. My chaos live-file write is now dead weight; I will
+  remove it.
+- [A] 2026-11-13 for M: Live run step 5: agreed to your flag map (reply
+  under your proposal); `flags:` with 15 entries is in `config/services.yaml`
+  (commit 8fbb89b).
+- [A] 2026-11-13 for M: Live run step 6, smoke. **FAIL**: `incident=inc-1794534130845
+  outcome=escalated`, `detect=42.7s diagnose=72.9s recover=-`, exit 1.
+  Approve curl replied
+  `{"decision":"executed","failed_step":null,"reason":null,"receipt_id":1,"approval_id":null}`
+  (trust gate: `trust bound 0.0 < 0.9`, so it asked). rollback_deploy ran
+  at +85 s, severity went 4 -> 0 at +145 s, but every `verify_tick` said
+  `"recovered": false`, so at +205 s: `action_undone {"reason": "did not
+  recover"}` and payment went back to `v2-bad`. Cause, `gateway/verifier.py:45`:
+  `all(services.get(s, {}).get("unhealthy") is False for s in self.watched)`;
+  `watched` holds trace victim `frontend-proxy`, which `/health/now` never
+  lists (only the 9 services in config), so `None is False` and recovery
+  can never be true. Not fixed (your file). Also: both LLM calls ended
+  `"error": "deadline_exceeded"` exactly 30 s after `rule_matched`
+  (`brain/llm.py:93`, provider/model null in the event); rule path still
+  gave `recent_change` / `payment`. Run 1 failed differently:
+  `incident=None outcome=timeout` because I started the observer before the
+  gateway; its first incident (`POST .../events/publish failed:
+  ConnectError`) stayed open in `Detector.incident` forever, and
+  `observer/detector.py:63` (`if fresh and self.incident is None`) blocked
+  every new one. Restarting the observer cleared it. Old row
+  `inc-1794520959887` still `open` in `incidents`. Logs: no WARNING/ERROR
+  in gateway or brain; observer printed (no level prefix) `event stream
+  failed: ConnectError` x6138 and `prometheus query failed: ReadTimeout`
+  x7 while the gateway was down. `/health/now` at the end (first 500):
+  `{"ts":1794534352.6885755,"severity":7,"services":{"ad":{"err_ratio":0.0,"p95_ms":1.9,"baseline_p95_ms":2.1024200022701556,"breaching":false,"first_breach_ts":null,"bad_pods":0,"unhealthy":false},"cart":{"err_ratio":0.0,"p95_ms":1.9064699205448352,"baseline_p95_ms":1.9099328283159527,"breaching":false,"first_breach_ts":null,"bad_pods":0,"unhealthy":false},"checkout":{"err_ratio":0.07009345794392523,"p95_ms":33.039999999999985,"baseline_p95_ms":31.637690288713912,"breaching":true,"first_breach_ts"`
+  (taken before I reset payment).

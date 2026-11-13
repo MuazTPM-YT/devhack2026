@@ -5,11 +5,22 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** 3 done (branch `anirudh/phase3-ui`, not pushed).
-Phases 0-2 merged (PRs #9, #10, #16, #21). Real smoke run still waits on
-M's spine.
+**Current phase:** live run on branch `anirudh/live-run` (not pushed).
+Phases 0-3 merged. Real smoke ran: escalated, cause in M's verifier (below).
 
 ## Done (with proof)
+
+- Live run 2026-11-13 (full report in `team/SHARED_CONTEXT.md`, steps 1-6):
+  security_check 19 PASS / 0 fails; payment 5.6 spans/s at 250 users;
+  flagd reloads ConfigMap in 55-66 s with no restart; flag map added.
+  Smoke: `outcome=escalated`, `detect=42.7s diagnose=72.9s recover=-`.
+  Rollback executed after approval and severity hit 0, but
+  `gateway/verifier.py:45` never sees `frontend-proxy` in `/health/now`, so
+  it undid the rollback. LLM call `deadline_exceeded` (30 s). ad and
+  jaeger OOM at 250 users fixed in `k8s/values.yaml` (8bc049e).
+- Todo: drop the flagd-ui live-file write from `chaos/faults.py` /
+  `chaos/reset.py` (flagd reads the ConfigMap now). Remove UI `?demo=1`
+  before submission. Start the observer after the gateway.
 
 - Phase 3 UI (`ui/`, Next 16.4.3, React 19.2.9, TypeScript 6.0.3; no other
   deps): `/` live incident page (six stage tiles, blast radius, severity
