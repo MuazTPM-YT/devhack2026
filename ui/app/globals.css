@@ -121,7 +121,7 @@ h1, h2, h3 { font-weight: 600; letter-spacing: -0.01em; }
   text-decoration: none;
 }
 
-.pill { padding: 3px 8px; }
+.pill { min-height: 28px; padding: 3px 8px; } /* 28px: tap target */
 
 .btn {
   min-height: 32px;

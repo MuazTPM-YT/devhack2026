@@ -11,6 +11,7 @@ import { telemetry } from "@/lib/lab";
 import { useLiveContext } from "@/lib/live-context";
 import { incidentStatus, type ServiceInfo, type ServiceStatus } from "@/lib/overview";
 import { type Call, callersOf, carriesFailure, impact, layout, needsOf, parseCalls } from "@/lib/service-map";
+import { useMoreRight } from "@/lib/use-more-right";
 import { useNow } from "@/lib/use-now";
 
 import styles from "./service-map.module.css";
@@ -60,6 +61,7 @@ export function ServiceMap({ services }: { services: Record<string, ServiceInfo>
   const [picked, setPicked] = useState<string | null>(null);
   // set by keyboard picks and Escape, cleared by pointer picks
   const [instant, setInstant] = useState(false);
+  const [scrollRef, moreRight] = useMoreRight();
 
   useEffect(() => {
     let live = true;
@@ -73,7 +75,12 @@ export function ServiceMap({ services }: { services: Record<string, ServiceInfo>
 
   useEffect(() => {
     if (!picked) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setInstant(true); setPicked(null); } };
+    const onKey = (e: KeyboardEvent) => {
+      // on a phone the same Escape closes the open drawer; leave the pick alone then
+      if (e.key !== "Escape" || document.querySelector('#sidebar[data-open="true"]')) return;
+      setInstant(true);
+      setPicked(null);
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [picked]);
@@ -114,7 +121,7 @@ export function ServiceMap({ services }: { services: Record<string, ServiceInfo>
           ) : list.length === 0 ? (
             <p className="empty">Jaeger saw no calls in the last hour. Is the load generator running?</p>
           ) : (
-            <div className={styles.scroll}>
+            <div className={styles.scroll} ref={scrollRef} data-more={moreRight}>
               <svg viewBox={`0 0 ${box.width} ${box.height}`} className={styles.map} style={{ minWidth: Math.min(box.width, 720), maxWidth: box.width }}
                 data-instant={instant} role="group" aria-label="Service call graph; callers on the left, the services they call on the right">
                 <defs>

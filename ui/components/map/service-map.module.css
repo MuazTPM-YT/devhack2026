@@ -7,6 +7,11 @@
 
 /* narrow screens scroll the map sideways rather than shrink its text */
 .scroll { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+/* content hidden past the right edge: fade it out so the box reads as scrollable */
+.scroll[data-more="true"] {
+  -webkit-mask-image: linear-gradient(to right, #000 85%, transparent);
+  mask-image: linear-gradient(to right, #000 85%, transparent);
+}
 .map { display: block; width: 100%; height: auto; margin: 0 auto; }
 
 .edge, .edgeHot, .edgeLit { fill: none; transition: opacity 150ms var(--ease-out); }
@@ -52,6 +57,7 @@
 .names { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .nameBtn {
   font: 12px var(--mono);
+  min-height: 28px; /* tap target */
   padding: 3px 8px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);

@@ -7,6 +7,11 @@
 
 /* narrow screens scroll the map sideways rather than shrink its text */
 .scroll { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+/* content hidden past the right edge: fade it out so the box reads as scrollable */
+.scroll[data-more="true"] {
+  -webkit-mask-image: linear-gradient(to right, #000 85%, transparent);
+  mask-image: linear-gradient(to right, #000 85%, transparent);
+}
 .map { display: block; width: 100%; min-width: 560px; height: auto; }
 
 .edge, .edgeUsed, .edgeNow { fill: none; stroke-linejoin: round; }

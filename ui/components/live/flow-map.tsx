@@ -3,6 +3,7 @@
 import { useLayoutEffect, useRef } from "react";
 
 import { since } from "@/lib/format";
+import { useMoreRight } from "@/lib/use-more-right";
 import { EDGE_LABEL, flowAt, NODES, type NodeId } from "@/lib/request-flow";
 import type { Incident } from "@/lib/live";
 
@@ -83,6 +84,7 @@ export function FlowMap({ incident, upto }: { incident: Incident | null; upto: n
     ? view.path.slice(1).map((id, i) => `${NODES[view.path[i]].title} → ${NODES[id].title}: ${EDGE_LABEL[`${view.path[i]}>${id}`] ?? ""}`).join("   ·   ")
     : view.path.length === 1 ? `inside ${NODES[view.path[0]].title}` : "";
   const focusLine = view.focus ? view.nodes[view.path.at(-1) ?? "brain"].last : null;
+  const [scrollRef, moreRight] = useMoreRight();
 
   return (
     <article className="card">
@@ -95,7 +97,7 @@ export function FlowMap({ incident, upto }: { incident: Incident | null; upto: n
         </div>
       </div>
 
-      <div className={styles.scroll}>
+      <div className={styles.scroll} ref={scrollRef} data-more={moreRight}>
         <svg viewBox={`0 0 ${W} ${H}`} className={styles.map} role="img"
           aria-label={view.focus && focusLine ? `${focusLine.title}. ${caption}` : "No incident yet; every service idle"}>
           {Object.entries(EDGES).map(([key, pts]) => {
