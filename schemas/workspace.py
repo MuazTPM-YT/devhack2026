@@ -213,6 +213,12 @@ class Workspace:
                           "delivered_at) VALUES (?, ?, ?, ?, ?)",
                           [(run_id, incident_id, eid, sid, now) for eid, sid in items])
 
+    # commander and specialist reads share one count per incident (cache hits included)
+    def count_tool_call(self, incident_id: str) -> None:
+        with self.tx() as c:
+            c.execute("UPDATE orchestration_workspaces SET tool_calls_used=tool_calls_used+1 WHERE incident_id=?",
+                      (incident_id,))
+
     def delivered(self, run_id: str) -> set[str]:
         return {r[0] for r in self.rows("SELECT evidence_id FROM task_evidence WHERE run_id=?", (run_id,))}
 

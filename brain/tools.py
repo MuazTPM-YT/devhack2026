@@ -164,6 +164,7 @@ class ToolBox:
         shown = [e for e in shown if e.id in text]
         self.ledger.update((e.id, e) for e in shown)
         if self.workspace is not None and self.run_id:
+            self.workspace.count_tool_call(self.incident.id)
             joined = ",".join(snapshots) or None
             self.workspace.deliver(self.run_id, self.incident.id, [(e.id, joined) for e in shown])
         event: dict[str, Any] = {"tool": name, "args": redact_value(args),

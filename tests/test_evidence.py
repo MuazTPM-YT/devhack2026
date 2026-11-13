@@ -198,3 +198,15 @@ async def test_db_existence_alone_does_not_make_an_id_citable(tmp_path):
                                    explanation="payment errors jumped right after the change")], confidence=0.5)
     with pytest.raises(ValueError):
         check(diag, fresh.bundle())
+
+
+# live: the snapshot showed 0 tool calls after a full diagnosis; every read now counts for its incident
+async def test_tool_calls_count_durably_per_incident(tmp_path):
+    clock = Clock()
+    box, ws = cached_box(tmp_path, clock)
+    ws.conn.execute("INSERT INTO orchestration_workspaces (incident_id, phase, created_at, requests_limit, "
+                    "tool_calls_limit, specialists_limit) VALUES ('inc-1', 'investigating', 990, 9, 24, 2)")
+    ws.conn.commit()
+    await box.call("get_service_health", {}, box.health(None))
+    await box.call("get_service_health", {}, box.health(None))  # a cache hit still counts
+    assert ws.budget("inc-1").tool_calls_used == 2
