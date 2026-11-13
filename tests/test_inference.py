@@ -50,6 +50,21 @@ async def test_adapter_headers_and_wire_shape():
     assert seen[0].headers["x-opencode-session"] == seen[1].headers["x-opencode-session"]
 
 
+# live: a 1500-token budget truncated the reasoning model's answer (finish_reason=length -> invalid_response)
+async def test_adapter_sends_a_budget_big_enough_for_reasoning():
+    sent = []
+
+    def handle(request):
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}, "finish_reason": "stop"}],
+                                         "usage": {}})
+
+    from brain.providers.base import InferenceRequest
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        await OpenCodeGoAdapter(client, "fake-key", "m").generate(InferenceRequest("i", [], {}))
+    assert sent[0]["max_tokens"] >= 4096
+
+
 @pytest.mark.parametrize("status,retryable", [(401, False), (403, False), (429, True), (503, True)])
 async def test_provider_errors_are_sanitized(status, retryable):
     async with httpx.AsyncClient(transport=httpx.MockTransport(

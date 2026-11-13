@@ -7,7 +7,9 @@ class InferenceRequest:
     incident_id: str
     messages: list[dict[str, str]]
     schema: dict[str, Any]
-    max_tokens: int = 1500
+    # reasoning models (deepseek-v4.1-flash) spend hidden reasoning tokens from this budget: live answers
+    # used 1444-1739 tokens, so 1500 (the plan's figure for a non-reasoning model) cut most of them off
+    max_tokens: int = 4096
 
 
 @dataclass(frozen=True)
