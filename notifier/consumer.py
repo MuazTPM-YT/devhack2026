@@ -5,12 +5,23 @@ from typing import Any
 import discord
 import httpx
 
+from pydantic import ValidationError
+
 from gateway.client import read_events
 from notifier.discord_bot import DiscordNotifier
 from notifier.state import NotifierState
 from schemas.models import Card
 
 TERMINAL = {"incident_resolved", "handed_off"}
+
+
+# a wake saved by an older notifier may not fit today's Card; page its text rather than crash all paging
+def stored_card(incident_id: str, raw: dict) -> Card:
+    try:
+        return Card.model_validate(raw)
+    except ValidationError:
+        return Card(incident_id=incident_id, status=str(raw.get("status", "")), text=str(raw.get("text", "")),
+                    evidence_ids=[])
 
 
 class NotificationConsumer:
@@ -72,7 +83,7 @@ class NotificationConsumer:
             if self.state.get(f"ack:{incident_id}") or time.time() - row["last_page"] < self.repage_s:
                 continue
             try:
-                message_id = await self.notifier.wake(Card.model_validate(row["card"]), row["briefing"])
+                message_id = await self.notifier.wake(stored_card(incident_id, row["card"]), row["briefing"])
             except (discord.HTTPException, httpx.HTTPError):
                 continue
             sent[incident_id] = (time.time(), message_id)
