@@ -135,7 +135,10 @@ async def run_case(tmp_path, rng: random.Random) -> list[str]:
     for dec, via_approval in executed:
         row = w.conn.execute("SELECT * FROM receipts WHERE id=?", (dec.receipt_id,)).fetchone()
         svc = SERVICES.get(row["target"], {})
-        if not svc.get("actable") or svc.get("protected"):
+        # a data store may only be scaled back, and only after a human said yes (Muaz's call on scenario 5)
+        if svc.get("protected") and not (row["tool"] == "scale" and via_approval):
+            violations.append(f"2: protected {row['target']} touched without a human-approved scale")
+        elif not svc.get("actable") and not svc.get("protected"):
             violations.append(f"2: executed on {row['target']}")
         view = w.gw.receipts.get(dec.receipt_id)
         if view is None or not view.inverse or not json.loads(row["inverse_json"]):

@@ -42,9 +42,9 @@ class NotificationConsumer:
                 else:
                     await self.notifier.fyi(card, self.link(payload.get("receipt_url", "")))
             elif kind == "escalated":
-                await self.notifier.wake(card, payload.get("briefing", ""))
+                message_id = await self.notifier.wake(card, payload.get("briefing", ""))
                 pending[incident_id] = {"card": card.model_dump(), "briefing": payload.get("briefing", ""),
-                                        "last_page": time.time()}
+                                        "last_page": time.time(), "message_id": message_id}
             else:
                 await self.notifier.fyi(card, self.link(payload.get("receipt_url", "")))
         if kind == "approval_decided":
@@ -68,13 +68,15 @@ class NotificationConsumer:
 
     async def repage_once(self):
         pending = self.state.get("wakes", {})
+        for incident_id in [i for i in pending if self.state.get(f"ack:{i}")]:
+            pending.pop(incident_id)  # a human acknowledged it: stop paging
         for row in pending.values():
             if time.time() - row["last_page"] >= self.repage_s:
                 try:
-                    await self.notifier.wake(Card.model_validate(row["card"]), row["briefing"])
+                    message_id = await self.notifier.wake(Card.model_validate(row["card"]), row["briefing"])
                 except (discord.HTTPException, httpx.HTTPError):
                     continue
-                row["last_page"] = time.time()
+                row["last_page"], row["message_id"] = time.time(), message_id or row.get("message_id")
         self.state.set("wakes", pending)
 
     async def repage(self):

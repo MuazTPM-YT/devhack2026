@@ -23,6 +23,16 @@ class FreshnessTest(unittest.TestCase):
         self.assertEqual(check(healthy, "payment", RULE, RULE, None, None)[0], "refused")
         self.assertEqual(check({"services": {}}, "payment", RULE, RULE, None, None)[0], "refused")
 
+    # valkey-cart scaled to 0 has no spans and no pods: only its sick caller shows the problem
+    def test_unmeasured_culprit_judged_by_its_victims(self):
+        store = {"err_ratio": None, "p95_ms": None, "bad_pods": 0, "unhealthy": False}
+        cart = {"services": {"valkey-cart": store, "cart": {"unhealthy": True, "err_ratio": 1.0}}}
+        self.assertEqual(check(cart, "valkey-cart", RULE, RULE, None, None, ["cart"])[0], "ok")
+        cart["services"]["cart"]["unhealthy"] = False
+        self.assertEqual(check(cart, "valkey-cart", RULE, RULE, None, None, ["cart"])[0], "refused")
+        measured = {"services": {"payment": {"unhealthy": False, "err_ratio": 0.0}, "cart": {"unhealthy": True}}}
+        self.assertEqual(check(measured, "payment", RULE, RULE, None, None, ["cart"])[0], "refused")
+
     def test_rule_changed_goes_to_approval(self):
         self.assertEqual(check(SICK, "payment", RULE, ("recent_change", 42), None, None)[0], "awaiting_approval")
 

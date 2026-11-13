@@ -29,8 +29,9 @@ verify:
   window_seconds: 120
   flag_extra_seconds: 90          # flagd reloads a ConfigMap edit after ~60 s (A, live)
   early_abort: true
+  early_abort_grace_seconds: 60   # checkout turns sick seconds after payment (A, live)
 major_incident:
-  min_services: 4
+  min_services: 3                  # kafka down sickens checkout, accounting, fraud-detection (Muaz)
   min_fraction: 0.30
   within_seconds: 120
 approval:

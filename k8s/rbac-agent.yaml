@@ -1,6 +1,8 @@
 # The only write identity, used by the gateway (IMPLEMENTATION.md §6.5.2).
 # Patch only, only named objects. No delete/create/update/exec/secrets, nothing outside shop.
-# Protected data stores (valkey-cart, kafka) are absent from resourceNames on purpose.
+# Protected data stores (valkey-cart, kafka) are absent from the deployments patch rule on purpose.
+# They appear only under deployments/scale: the gateway scales one back only after a human approves
+# (policy step 3 + trust gate), and the oncall-agent-scale admission policy keeps replicas in 1..3.
 # VERIFY: resourceNames must match actable names in config/services.yaml (C7) and real Deployment names.
 apiVersion: v1
 kind: ServiceAccount
@@ -25,7 +27,7 @@ rules:
   verbs: [patch]
 - apiGroups: [apps]
   resources: [deployments/scale]
-  resourceNames: [payment, checkout, cart, frontend, recommendation, ad, email]
+  resourceNames: [payment, checkout, cart, frontend, recommendation, ad, email, valkey-cart, kafka]
   verbs: [get, patch]   # kubectl and clients read scale before patching it
 - apiGroups: [""]
   resources: [configmaps]

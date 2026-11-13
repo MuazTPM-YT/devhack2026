@@ -1,0 +1,31 @@
+.cap { text-transform: capitalize; }
+
+.bound { display: inline-flex; align-items: center; gap: 10px; }
+
+.meter {
+  position: relative;
+  display: inline-block;
+  width: 120px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--card-sunk);
+  border: 1px solid var(--line);
+}
+
+.fill, .fillOk {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: var(--rose);
+}
+
+.fillOk { background: var(--ok); }
+
+.tick {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--ox-deep);
+}

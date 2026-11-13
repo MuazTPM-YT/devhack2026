@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from chaos import ground_truth
 from chaos.faults import (BAD_PAYMENT_IMAGE, BROKEN_PAYMENT_ADDR, FLAG_CONFIGMAP, FLAG_FILE,
                           FLIP_FLAG, LEAK_FLAG, LIVE_FLAG_PATH, KubectlError, bad_deploy,
-                          broken_config, datastore_down, flag_flip, memory_leak)
+                          broken_config, datastore_down, flag_flip, memory_leak, shared_outage)
 from chaos.main import FAULTS, create_app
 from chaos.reset import TARGETS, diff_ops, ensure_snapshot, reset
 
@@ -224,6 +224,13 @@ def test_datastore_down_scales_valkey_cart_to_zero():
     assert "--field-manager=chaos-panel" in fake.calls[-1]
 
 
+def test_shared_outage_scales_kafka_to_zero():
+    fake = FakeKubectl()
+    assert shared_outage(fake) == {"type": "shared_dependency", "target": "kafka"}
+    assert fake.replicas("kafka") == 0
+    assert "--field-manager=chaos-panel" in fake.calls[-1]
+
+
 def test_memory_leak_flips_flag_in_configmap_and_live_file_without_restart():
     fake = FakeKubectl()
     assert memory_leak(fake) == {"type": "resource_exhaustion", "target": "recommendation"}
@@ -251,7 +258,8 @@ def test_reset_undoes_every_fault_at_once(tmp_path):
     for fault in FAULTS.values():
         fault(fake)
     restored = reset(snapshot, fake)
-    assert sorted(restored) == ["checkout", f"configmap/{FLAG_CONFIGMAP}", "payment", "valkey-cart"]
+    assert sorted(restored) == ["checkout", f"configmap/{FLAG_CONFIGMAP}", "kafka", "payment", "valkey-cart"]
+    assert fake.replicas("kafka") == 1
     assert fake.image("payment") == GOOD_IMAGE
     assert fake.env("checkout")["PAYMENT_ADDR"] == "payment:8080"
     assert fake.replicas("valkey-cart") == 1
@@ -265,6 +273,7 @@ def test_reset_undoes_every_fault_at_once(tmp_path):
     ("memory-leak", "resource_exhaustion", "recommendation"),
     ("datastore-down", "failing_dependency", "valkey-cart"),
     ("flag-flip", "broken_config", "payment"),
+    ("shared-outage", "shared_dependency", "kafka"),
 ])
 def test_http_each_fault_records_ground_truth(tmp_path, path, kind, target):
     with TestClient(create_app(tmp_path, FakeKubectl())) as client:
@@ -338,3 +347,30 @@ def test_judge_kubectl_rejects_bad_input(tmp_path, command, status):
     with TestClient(create_app(tmp_path, FakeKubectl(), raw)) as client:
         assert client.post("/chaos/kubectl", json={"command": command}).status_code == status
         assert raw.calls == []
+
+
+# a failed undo left payment paused, and raise_limit leaves a bigger memory limit: reset undoes both
+def test_reset_unpauses_and_restores_memory_limits(tmp_path):
+    fake = FakeKubectl()
+    fake.deployments["recommendation"]["spec"]["template"]["spec"]["containers"][0]["resources"] = {
+        "limits": {"memory": "200Mi"}}
+    snapshot = ensure_snapshot(tmp_path / "s.json", fake)
+    fake.deployments["payment"]["spec"]["paused"] = True
+    fake.deployments["recommendation"]["spec"]["template"]["spec"]["containers"][0]["resources"] = {
+        "limits": {"memory": "400Mi"}}
+    assert reset(snapshot, fake) == ["payment", "recommendation"]
+    assert fake.deployments["payment"]["spec"]["paused"] is False
+    assert fake.deployments["recommendation"]["spec"]["template"]["spec"]["containers"][0]["resources"] == {
+        "limits": {"memory": "200Mi"}}
+    assert reset(snapshot, fake) == []
+
+
+def test_reset_with_old_snapshot_without_resources_still_works(tmp_path):
+    fake = FakeKubectl()
+    snapshot = ensure_snapshot(tmp_path / "s.json", fake)
+    for state in snapshot["deployments"].values():
+        state.pop("paused")
+        for c in state["containers"]:
+            c.pop("resources")
+    shared_outage(fake)
+    assert reset(snapshot, fake) == ["kafka"] and fake.replicas("kafka") == 1

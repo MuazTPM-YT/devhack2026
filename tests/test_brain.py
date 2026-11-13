@@ -101,7 +101,7 @@ INC = Incident(id="inc-1", opened_at=990, onset_at=960, unhealthy=["checkout", "
 
 
 def brain_why(world):
-    return world.brain.conn.execute("SELECT why FROM incidents WHERE id='inc-1'").fetchone()[0]
+    return world.brain.conn.execute("SELECT llm_why FROM incidents WHERE id='inc-1'").fetchone()[0]
 
 
 async def test_bad_deploy_end_to_end(tmp_path):
@@ -240,3 +240,19 @@ async def test_datastore_scaled_to_zero_moves_culprit_to_protected_dependency(tm
     own = [{"id": 1, "object": "deployment/cart", "kind": "image", "ts": 940.0, "by_agent": False}]
     assert dependency_change(own + [{"id": 12, "object": "deployment/valkey-cart", "kind": "replicas", "ts": 950.0,
                                      "by_agent": False}], "cart", [], SERVICES, 960, 600) is None  # own change wins
+
+
+# MCP/schema refused it before the checklist ran: no one else would end the incident (it stayed open forever)
+async def test_schema_refusal_escalates_with_why(tmp_path):
+    world = World()
+    brain = make(world, [diagnosis_json()], tmp_path)
+
+    async def refuse(action):
+        return GatewayDecision(decision="refused", failed_step="schema", reason="target not allowed")
+
+    brain.submit = refuse
+    record = await brain.handle(INC)
+    assert record["gateway"]["decision"] == "refused" and world.published[-1]["type"] == "escalated"
+    text = world.published[-1]["payload"]["card"]["text"]
+    assert text.startswith("WOKE YOU BECAUSE") and "deployment/payment image change" in text
+    assert brain.conn.execute("SELECT state FROM incidents").fetchone()[0] == "escalated"

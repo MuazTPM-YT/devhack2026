@@ -84,7 +84,7 @@ Keep it simple: each process POSTs events to the gateway's `/events/publish`, an
 ```
 oncall-agent/
   README.md
-  IMPLEMENTATION_PLAN.md
+  IMPLEMENTATION.md
   CLAUDE.md  AGENTS.md            # same content, for both coding agents
   .gitignore  .env.example
   config/
@@ -225,7 +225,7 @@ detection:
 change_window_minutes: 10          # "recent change" window before onset
 budgets:
   max_actions_per_incident: 3
-  max_actions_per_hour: 3
+  max_actions_per_hour: 3          # lifted only when ONCALL_REHEARSAL=1 (overnight trust runs)
   max_in_flight: 1
   max_retries: 1
 tools:
@@ -246,7 +246,7 @@ verify:
   window_seconds: 120
   early_abort: true
 major_incident:
-  min_services: 4
+  min_services: 3                  # was 4; kafka has only 3 measured consumers
   min_fraction: 0.30
   within_seconds: 120
 approval:
@@ -776,7 +776,7 @@ Same read rules as the reader, plus:
   verbs: [patch]
 ```
 
-No `delete`, `create`, `update`, `exec`, `secrets`, or anything outside `shop`. Protected data stores are simply absent from `resourceNames`.
+No `delete`, `create`, `update`, `exec`, `secrets`, or anything outside `shop`. Protected data stores are absent from the `deployments` patch rule. They appear only under `deployments/scale`, so scenario 5 can work: the gateway lets a `scale` on a protected target run only after a human approves (never automatic, any other tool escalates), and the scale admission policy keeps replicas in 1 to 3.
 
 #### 6.5.3 `admission-policy.yaml`
 
@@ -1190,7 +1190,7 @@ Never cut: RBAC + admission policy, the verifier's auto-undo, the audit log, the
 - [ ] Public GitHub repo; commit history starting at the hackathon start
 - [ ] No secrets in history
 - [ ] README: what it is, architecture, how to run, safety model, results, limits, credits to prior work
-- [ ] `IMPLEMENTATION_PLAN.md` and the Miro export in the repo
+- [ ] `IMPLEMENTATION.md` and the Miro export in the repo
 - [ ] Working demo runnable from `scripts/`
 - [ ] Deck (PDF) and backup video
 - [ ] Benchmark results (`bench/results.jsonl` and the report)

@@ -10,6 +10,9 @@ services:
   email:          {kind: stateless, critical: false, actable: true}
   valkey-cart:    {kind: stateful,  critical: true,  protected: true}
   kafka:          {kind: stateful,  critical: true,  protected: true}
+  # kafka's other consumers: watched so a kafka outage shows its spread (scenario 10), never acted on
+  accounting:      {kind: stateless, critical: false}
+  fraud-detection: {kind: stateless, critical: false}
 flag_config:
   # flagd reads this ConfigMap directly (k8s/values.yaml) and reloads ~60 s after a patch;
   # flagd-ui edits do not reach flagd

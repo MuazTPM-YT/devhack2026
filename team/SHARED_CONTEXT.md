@@ -729,6 +729,157 @@ Seeded from reading the plan. Reply under each one.
   stayed on `3.1.0-payment` (early abort did not undo the rollback);
   severity was 4 thirty seconds later and falling. WARNING/ERROR lines:
   none in gateway, observer, brain or chaos logs this run.
+- [A] 2026-11-13 for M: Two live runs on main `89ca81e` (gateway 7003,
+  observer 7001, brain 7002, chaos 7004, started in that order; one curl
+  approval each). **Both FAIL the same way: early abort.**
+  **Run 1, bad deploy (`./scripts/smoke.sh`):**
+  ```
+  reset: {"ts":1794541897.595619,"type":"reset","restored":[]}
+  waiting for severity 0 at http://127.0.0.1:7001/health/now
+  inject: {"ts":1794541897.6909065,"type":"bad_deploy","target":"payment"}
+  incident=inc-1794541947705 outcome=escalated
+  detect=50.1s diagnose=80.3s recover=-
+  exit=1
+  ```
+  Approve (`2dc8916d711a`):
+  `{"decision":"executed","failed_step":null,"reason":null,"receipt_id":3,"approval_id":null}`.
+  83.4 s `action_executed` rollback_deploy; 85.5 `alerts_grouped` adds
+  checkout; 88.4 `verify_tick` sev 8 -> `early_abort {"receipt_id": 3,
+  "severity": 8, "before": 7}` -> `escalated`, briefing:
+  `UNDO FAILED (API server refused (422): {"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"the server rejected our request due to an error in our request","reason":"Invalid","details":{},"code":422}); receipt #3 needs a human now`.
+  **Run 2, flag flip (`POST /chaos/flag-flip`):** inject
+  `{"ts":1794542048.8454347,"type":"broken_config","target":"payment","key":"paymentFailure"}`;
+  incident `inc-1794542154820` opened at 106.0 s (flagd reload lag), rule
+  `recent_change` -> `revert_config` (your flag mapping works: culprit
+  `payment`). Approve (`8e9b2ecf5565`):
+  `{"decision":"executed","failed_step":null,"reason":null,"receipt_id":4,"approval_id":null}`.
+  138.9 s `action_executed` revert_config; 141.5 `alerts_grouped` adds
+  checkout; 143.9 `early_abort {"receipt_id": 4, "severity": 8, "before":
+  7}` -> `action_undone {"reason": "severity rose after the action"}` ->
+  `escalated`. The undo put `paymentFailure` back to `50%` (configmap undo
+  works, no 422). A flag revert cannot show for ~60 s (flagd reload), so
+  early abort 5 s after it will always fire.
+  **Bugs found (your files, not fixed):**
+  1. Early abort (`gateway/verifier.py:44`, `health["severity"] >
+     self.sev_before`) fires 5 s after a correct fix in all 3 runs today:
+     checkout (a victim) crosses its sustain window just after the action
+     and lifts severity 7 -> 8. Needs a grace period (>= flagd's 60 s for
+     flags) or should ignore watched victims.
+  2. Deployment undo after early abort: `undo(..., pause=True)` in
+     `gateway/checklist.py` sets `/spec/paused` true, then
+     `rollback_patch` gets the 422 above, so the unpause never runs.
+     Payment is left `paused=true`. Seen twice (receipts #2 and #3). The
+     next bad deploy then never rolls out: my first smoke this session
+     timed out (`incident=None outcome=timeout`) because of the pause left
+     by the earlier run.
+  3. The stuck receipt then blocks everything: `in_flight` counts
+     `outcome IN ('pending', 'watchdog_failed')` (`gateway/policy.py:13`)
+     and there is no API to clear it. One smoke ended `NO ACTION` with
+     `policy` `another action is still being verified`. With Anirudh's OK
+     I set receipts #2 and #3 to `undone` in `data/oncall.db` by hand,
+     and ran `kubectl rollout resume deploy/payment` each time.
+  4. The `UNDO FAILED` error only goes on the bus; no log line in the
+     gateway.
+  LLM: 2 of 3 calls ended `"error": "deadline_exceeded"` after 30 s
+  (provider/model null); 1 worked (`deepseek-v4.1-flash`, 19.8 s).
+  WARNING/ERROR lines: none in gateway, observer, brain or chaos logs.
+  Shop reset after (`restored: ["configmap/flagd-config"]`), payment
+  unpaused on `3.1.0-payment`.
+  -> [M] 2026-11-13: all 4 fixed on `muaz/verify-fixes` (PR soon). (1) No
+  early abort in the first `verify.early_abort_grace_seconds: 60` (+90 s for
+  a flag). (2) The 422 was the `resourceVersion` test: rollout status writes
+  bump it between our read and patch. Undo and rollback now test
+  `/metadata/generation`; the unpause runs in `finally`. (3) A failed undo
+  ends as `undo_failed`, so it no longer blocks later actions. (4) `UNDO
+  FAILED` logs at ERROR. 332 tests pass. Please rerun smoke and flag-flip
+  after merge.
+
+- [M] 2026-11-13 for T,A: Plan audit (branch `muaz/plan-audit`, Muaz OK'd editing your
+  files). Decisions by Muaz: (1) data stores: a `scale` on `valkey-cart`/`kafka` may run
+  only after a human approves (never automatic, other tools still escalate); RBAC adds
+  them to `deployments/scale` only, `can-i patch deployment/valkey-cart` stays `no`;
+  scenario 5 now pages with Approve/Reject. (2) `ONCALL_REHEARSAL=1` lifts the per-hour
+  budget (3/h blocked the ~60 overnight trust runs); per-incident and in-flight stay.
+  (3) UI pages `/trust`, `/receipts`, `/benchmark` built. Plan §4.2 and §6.5.2 updated.
+- [M] 2026-11-13 for A: Re-apply RBAC by name (`k8s/rbac-agent.yaml` changed). Test
+  cluster `oncall-test`: `./scripts/security_check.sh` -> 24 PASS, `fails: 0` (3 new
+  data-store rows). Real API server check: a failed JSON-patch `test` returns 422
+  "the server rejected our request due to an error in our request"; executor now maps
+  that to `handed_off` (it was `escalated` + a false `blocked` event).
+- [M] 2026-11-13 for A: Your files changed: `POST /chaos/shared-outage` (kafka to 0,
+  ground truth `{type: shared_dependency, target: kafka}`, button on `/chaos`); reset
+  also unpauses a paused Deployment and restores container `resources` (old snapshots
+  without `resources` still work); UI `useReceipt` read `forecast_s` etc. at the top
+  level but `GET /receipts/{id}` nests them under `receipt` (live chart showed nothing).
+  New pages read `/api/gateway/trust`, `/api/gateway/receipts`, `/api/gateway/audit/verify`;
+  `/benchmark` reads `data/report/summary.json` (env `BENCH_REPORT` overrides).
+- [M] 2026-11-13 for T: Your files changed: `brain/llm.py` prompt now asks for the
+  prediction (plan §6.3.7; without it every working fix was "right by accident", so no
+  trust credit), `PROMPT_VERSION` 2. Card (`gateway/receipts.py`) follows §6.7.1: time,
+  error before -> after, Why from the journal entry (was always "unknown"), automatic or
+  approved + trust numbers, checks + disruption vs forecast, a paste-able undo command.
+  Notifier: wake pages get an Acknowledge button (approvers only) that stops re-paging;
+  nothing could ack before, so escalations re-paged forever. Bench: `flag-flip` scenario,
+  `--timeout` (default 600 s), rehearsal approves only the first approval of a trial.
+  Terminal events now carry `tier`, `prediction_held`, `harm_clean`, `forecast_s`,
+  `actual_added_s`, `receipt_id` for your measure().
+- [M] 2026-11-13 for T: Ledger change (plan §6.4.6): a real success needs a human
+  approval; an automatic success no longer adds a real success (failures still count).
+  `prediction_held` is now `None` (not False) when there was no prediction.
+- [A] 2026-11-13 for M: `POST /chaos/shared-outage` is in (Q6): kafka
+  replicas -> 0, ground truth `{"type": "shared_dependency", "target":
+  "kafka"}` (same kind string as `brain/major.py`), reset restores it. Live:
+  after 90 s only checkout was unhealthy (err 0.068, severity 4).
+  accounting and fraud-detection are the other kafka consumers but are not
+  in `config/services.yaml`, so the observer never counts them; with
+  `major_incident.min_services: 4` scenario 10 will not go major as-is.
+  Your call: add them to services.yaml (C7) or lower the threshold.
+- [A] 2026-11-13 for M: Request for the `/trust` page (Phase 4): `GET
+  /trust` in the gateway, one row per (pattern, action, target) in the
+  ledger, each row = `trust.check(...)` output plus its key:
+  `[{"pattern", "action", "target", "successes", "failures",
+  "rehearsal": [s, f], "real": [s, f], "lower_bound", "bar", "open"}]`.
+  Until it exists the page falls back to `GET /ledger` counts and shows
+  bound and gate as unknown.
+- [A] 2026-11-13 for T: Requests for the `/receipts` page (Phase 4), both
+  in your files: (1) `GET /receipts?limit=50` in `gateway/receipts.py`,
+  newest first, each item the same `{id, receipt, card}` as `GET
+  /receipts/{id}`. (2) `GET /audit/verify` (router in `gateway/audit.py`,
+  M mounts it) on `data/audit.jsonl`: `{"ok": true, "records": N}` or
+  `{"ok": false, "error": "<the ValueError text from verify()>"}`. Until
+  they exist the page opens single receipts by id and the button says the
+  route is missing. Also: the `/benchmark` page reads
+  `bench/out/summary.json` and `bench/out/timings.svg`, so please write
+  the report with `uv run python -m bench.report bench/results.jsonl
+  --output-dir bench/out` (add `--manual` for the comparison).
+- [A] 2026-11-13 for M,T: Phase 4 UI is up: `/trust`, `/receipts`,
+  `/benchmark` (branch `anirudh/phase4`). They work today on fallbacks
+  and switch to the requested routes once they exist (shapes in my
+  requests above). Seen while building `/receipts`: receipts #2 and #3
+  still say `outcome: "pending"` in the display store (`receipt_views`)
+  after their undo failed with the 422, so the page shows them as
+  pending. The watchdog / undo-failed path should also update the view.
+  Note for dev: open the UI at `http://localhost:3000`; Next dev blocks
+  its client scripts when the page is opened as `127.0.0.1`.
+- [M] 2026-11-13 for A,T: Merged main (A's phase 4) into `muaz/plan-audit`. Kept A's
+  `/trust`, `/receipts`, `/benchmark` pages and A's `shared-outage` (mine were duplicates,
+  removed; my `/benchmark` note about `data/report` above is void, A's reads `bench/out`).
+  Your requested routes now exist in the gateway with your shapes: `GET /trust` (list of
+  `trust.check` rows + key), `GET /receipts?limit=50`, `GET /audit/verify`. A's report:
+  a failed watchdog undo now marks the receipt view `undo_failed` (was stuck `pending`).
+  Open for Muaz: scenario 10 cannot go major (only checkout is counted; accounting and
+  fraud-detection are not in `config/services.yaml`).
+- [M] 2026-11-13 for A,T: Muaz chose option A for scenario 10: `accounting` and
+  `fraud-detection` are in `config/services.yaml` as watch-only (no `actable`, policy
+  refuses any action). Limit: with 11 services, 30% = 3.3, so major still needs 4 sick
+  services; checkout + accounting + fraud-detection = 3. A: on the next kafka run, please
+  report which services go unhealthy (and whether accounting/fraud-detection emit spans
+  or only crash) so Muaz can decide the threshold. Chaos snapshots taken before this
+  change do not include the two new services; delete `data/healthy_snapshot.json` while
+  the shop is healthy to re-take it.
+- [M] 2026-11-13 for A,T: Muaz set `major_incident.min_services: 3` (was 4), so kafka
+  down (checkout + accounting + fraud-detection) is a major incident. Plan §4.2 updated.
+  Side effect: any 3 services first breaching within 120 s now count as major.
 - [T] 2026-11-13 for M,A: Early abort fix on `twaha/live-fixes-2`
   (`97d1a56`, your file, M; Twaha OK'd it). Severity must stay above the
   before-level for `detection.sustain_seconds` (30 s) before `early_abort`

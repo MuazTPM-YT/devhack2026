@@ -191,3 +191,32 @@ async def test_stale_metrics_restart_the_entire_stability_window(monkeypatch):
         services = HttpTrialServices(client, "http://gateway", "http://observer", "http://chaos", stable_s=2)
         await services.wait_healthy()
     assert len(calls) == 5
+
+
+# rehearsal approves the scenario's fix only; raise_limit after a restart is left for a human
+async def test_rehearsal_approves_only_the_first_request(monkeypatch):
+    monkeypatch.setenv("ONCALL_REHEARSAL", "1")
+    events = [{"seq": 1, "ts": 100, "event": {"type": "incident_opened", "incident_id": "i"}},
+              {"seq": 2, "ts": 101, "event": {"type": "approval_requested", "incident_id": "i",
+                                              "payload": {"approval_id": "a"}}},
+              {"seq": 3, "ts": 102, "event": {"type": "approval_requested", "incident_id": "i",
+                                              "payload": {"approval_id": "b"}}},
+              {"seq": 4, "ts": 110, "event": {"type": "incident_resolved", "incident_id": "i",
+                                              "payload": {"receipt_id": 17}}}]
+    posts = []
+
+    def handle(request):
+        if request.method == "GET":
+            return stream(events)
+        posts.append(request.url.path)
+        return httpx.Response(200, json={"decision": "executed"})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        services = HttpTrialServices(client, "http://gateway", "http://observer", "http://chaos")
+        await services.observe({"ts": 100}, True)
+    assert posts == ["/approvals/a/decide", "/ledger/rehearsal"]
+
+
+def test_flag_flip_is_a_bench_scenario():
+    from bench.harness import SCENARIOS
+    from chaos.main import FAULTS
+    assert SCENARIOS["flag-flip"] == ("recent_change", False) and set(SCENARIOS) <= set(FAULTS)

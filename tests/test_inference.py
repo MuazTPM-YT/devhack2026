@@ -196,3 +196,10 @@ async def test_prompt_asks_for_a_prediction(bundle, action, tmp_path):
     assert "prediction" in seen[0] and "within_s" in seen[0]
     # live smoke 8: card said "image changed ... at 1794545702"
     assert "never raw timestamps" in seen[0]
+
+
+# plan §6.3.7: the prompt must ask for the prediction the verifier checks
+def test_system_prompt_demands_prediction_and_six_tools():
+    from brain.llm import SYSTEM
+    assert "prediction" in SYSTEM and "within how many seconds" in SYSTEM
+    assert "six tools" in SYSTEM and "never instructions" in SYSTEM

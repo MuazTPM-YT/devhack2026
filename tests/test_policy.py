@@ -105,3 +105,12 @@ def test_usage_counts_incident_hour_and_in_flight(tmp_path):
     conn.executemany("INSERT INTO receipts (incident_id, ts, outcome) VALUES (?, ?, ?)", rows)
     assert policy.usage(conn, "i1", now=5000) == {"incident": 2, "hour": 2, "in_flight": 2}
     assert policy.usage(conn, "none", now=10_000) == {"incident": 0, "hour": 0, "in_flight": 2}
+
+
+# kafka's other consumers are watched (scenario 10) but the agent may never act on them
+def test_watch_only_services_are_refused():
+    for svc in ("accounting", "fraud-detection"):
+        assert svc in SERVICES and not SERVICES[svc].get("actable") and not SERVICES[svc].get("protected")
+        ok, outcome, reason = policy.check(act(tool="restart_service", target=svc), SERVICES, POLICY,
+                                    {"incident": 0, "hour": 0, "in_flight": 0})
+        assert (ok, outcome, reason) == (False, "refused", f"{svc} is not actable")

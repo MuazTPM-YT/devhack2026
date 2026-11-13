@@ -21,7 +21,7 @@ def _action(incident: dict, tool: str, target: str, pattern: str, evidence: list
             "pattern": pattern, "evidence_ids": evidence, "prediction": None, "journal_entry": journal_entry}
 
 
-# THE GENERAL RULE input: newest non-restart change on the culprit's Deployment inside the window
+# services a flag journal entry touches, via config/services.yaml `flags:`
 def _flag_targets(entry: dict, flag_map: dict) -> set[str]:
     names = [p[len("flags["):].split("]", 1)[0] for p in entry.get("diff", {}) if p.startswith("flags[")]
     return {flag_map[n] for n in names if n in flag_map}

@@ -5,11 +5,44 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** first live run done (A, 2026-11-13); smoke failed on a verifier bug, now fixed; rerun pending
-**Branches:** all merged up to PR #29. Now `muaz/flag-revert` (not pushed)
+**Current phase:** plan audit done on `muaz/plan-audit` (not pushed); live shop rerun pending (A)
+**Branches:** all merged up to PR #33. Now `muaz/plan-audit` (not pushed)
 
 ## Done (with proof)
 
+- Plan audit (branch `muaz/plan-audit`), Muaz chose: edit teammates' files,
+  human-approved data-store scale, rehearsal lifts hour budget, build UI pages.
+  - Fixed: failed generation test -> `handed_off` (was escalated + false `blocked`);
+    freshness "entry not found" now really asks (returned awaiting_approval with no
+    approval); freshness asks named `freshness`; harm check spares the blast radius
+    (upstream callers), not only victims; verify fallback uses the flag window; tier
+    `ask` when a human approved; real success only with a human approval; brain
+    escalates MCP/schema refusals (incident stayed open forever, e.g. scenario 5);
+    freshness judges an unmeasured culprit (data store) by its victims.
+  - Added: protected scale via approval, rehearsal hour budget, `/trust`,
+    `/audit/verify`, `GET /receipts`, terminal-event bench fields, §6.7.1 card.
+  Proof: `uv run pytest` -> `349 passed`; `ruff check .` -> `All checks passed!`;
+  `mypy ... chaos` -> `no issues found in 62 source files`; UI `npm test` 12 pass,
+  typecheck OK, `npm run build` OK. New tests fail on old code (5 checked). Test k3d
+  cluster `oncall-test` (deleted after): security table 24 PASS, `fails: 0`; real
+  Gateway with agent identity: valkey-cart 0 -> ask -> approve -> 1 -> resolved;
+  payment rollback -> early abort -> pause/undo/unpause, 0 blocked events. Shop not run.
+- Fixes from live runs 2 (branch `muaz/verify-fixes`, 3 commits):
+  - Early abort has a grace period: `verify.early_abort_grace_seconds: 60`
+    (+ `flag_extra_seconds` for a flag). A victim that turns sick seconds
+    after a right fix no longer undoes it.
+  - Undo tests `/metadata/generation`, not `resourceVersion` (rollout
+    status writes bump resourceVersion; that gave the live 422). The
+    forward rollback patch uses the same test. Unpause runs in `finally`.
+  - A failed undo ends as `undo_failed` (no longer `pending`, so it does
+    not block later actions) and logs `UNDO FAILED` at ERROR.
+  Proof: 3 new tests in `tests/test_verify_loop.py` fail on old code (churn
+  test -> `'undo_failed' == 'undone'`, as live) and pass after; `uv run
+  pytest` -> `332 passed`; `ruff check .` -> `All checks passed!`; `mypy ...
+  chaos` -> `no issues found in 62 source files`. Fakes only; the 422 cause
+  is not proven live yet.
+  Not changed: `watchdog_failed` still blocks new actions (by design); the
+  scale undo still pins `resourceVersion` in a merge patch.
 - Flag revert, scenario 3 (branch `muaz/flag-revert`): journal names the
   flipped flag in the flagd JSON (`flags[<name>].defaultVariant`, per-flag
   inverse; non-flagd text falls back to the whole key); rules treat a flag
@@ -270,8 +303,8 @@ section. Only my own work here; cross-team facts go in
 
 ## Blocked / waiting on
 
-- **Smoke rerun (A):** PR #29 merged; waiting for the rerun. Expect
-  `outcome=incident_resolved`.
+- **Live rerun (A):** after `muaz/verify-fixes` merges: `./scripts/smoke.sh`
+  and `/chaos/flag-flip`. Expect `incident_resolved` for both.
 - **LLM timeout (T):** both live calls ended `deadline_exceeded` at 30 s
   (deepseek-v4.1-flash). Rules still decide, so not blocking; T to pick a
   longer timeout, lower reasoning effort or another model.
@@ -284,6 +317,8 @@ section. Only my own work here; cross-team facts go in
 ## Decisions made (Muaz)
 
 - `enable_degraded_mode`: stays refused (no feature-off flags in the shop).
+- Data stores: human-approved `scale` only (RBAC `deployments/scale`).
+- `ONCALL_REHEARSAL=1` lifts the per-hour action budget.
 - LLM: OpenCode Go, model `deepseek-v4.1-flash`, through T's
   `DiagnosisService`; my own `brain/llm.py` removed.
 - Approvals: allowlist only, gateway bound to 127.0.0.1, no shared secret.
@@ -293,10 +328,10 @@ section. Only my own work here; cross-team facts go in
 
 ## Next
 
-1. Push + merge `muaz/flag-revert`.
-2. A reruns `./scripts/smoke.sh` (bad deploy) and tries `/chaos/flag-flip`
+1. Push + merge `muaz/plan-audit`; A re-applies `k8s/rbac-agent.yaml`.
+2. A reruns `./scripts/smoke.sh` (bad deploy) and `/chaos/flag-flip`
    (scenario 3); expect `incident_resolved` for both.
-3. Tick the Phase 1 exit only with a passing smoke output.
+3. Tick the Phase 1 and 2 exits only with passing live output.
 4. Stretch (Phase 6) only after the Phase 4 exit works live.
 
 ## Notes for my next session

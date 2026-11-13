@@ -17,6 +17,16 @@ SERVICES = config.load("services")["services"]
 POLICY = config.load("policy")
 GOOD = "ghcr.io/open-telemetry/demo:3.1.0-payment"
 BAD = "payment:v2-bad"
+# the Status body a real API server (k3s v1.31) returns when one JSON Patch op, our `test`, fails
+PATCH_FAILED = json.dumps({"kind": "Status", "apiVersion": "v1", "metadata": {}, "status": "Failure",
+                           "message": "the server rejected our request due to an error in our request",
+                           "reason": "Invalid", "details": {}, "code": 422})
+
+
+def patch_failed() -> ApiException:
+    e = ApiException(status=422, reason="Unprocessable Entity")
+    e.body = PATCH_FAILED
+    return e
 
 
 class Resp:
@@ -55,13 +65,14 @@ def merge(dst, src):
 
 class FakeApps:
     def __init__(self):
-        self.dep = {"metadata": {"name": "payment", "resourceVersion": "100",
+        self.dep = {"metadata": {"name": "payment", "resourceVersion": "100", "generation": 7,
                                  "annotations": {"deployment.kubernetes.io/revision": "2"}},
                     "spec": {"replicas": 2, "template": template(BAD),  # strategy as scripts/install_shop.sh sets it
                              "strategy": {"type": "RollingUpdate",
                                           "rollingUpdate": {"maxUnavailable": 0, "maxSurge": 1}}}}
         self.rss = [rs(1, GOOD), rs(2, BAD)]
         self.patches, self.fail_real, self.fail_dry, self.dry_extra = [], None, None, False
+        self.status_churn, self.fail_template = False, None
 
     def read_namespaced_deployment(self, name, ns, **kw):
         return Resp(self.dep)
@@ -89,13 +100,22 @@ class FakeApps:
         fail = self.fail_dry if dry_run else self.fail_real
         if fail:
             raise fail
+        if self.status_churn:  # rollout controller wrote status between our read and this patch, as live
+            self.dep["metadata"]["resourceVersion"] = str(int(self.dep["metadata"]["resourceVersion"]) + 1)
         new = copy.deepcopy(self.dep)
         if isinstance(patch, dict):  # strategic merge: maps merge, containers merge by name
             assert patch["metadata"]["resourceVersion"] == self.dep["metadata"]["resourceVersion"]
             merge(new, {k: v for k, v in patch.items() if k != "metadata"})
         else:
+            key = patch[0]["path"].rsplit("/", 1)[1]
+            if patch[0]["op"] == "test" and self.dep["metadata"].get(key) != patch[0]["value"]:
+                raise patch_failed()
+            if self.fail_template and not dry_run and any(op["path"] == "/spec/template" for op in patch):
+                raise self.fail_template
             for op in patch[1:]:
                 new["spec"][op["path"].rsplit("/", 1)[1]] = op["value"]
+            if not dry_run:
+                new["metadata"]["generation"] += 1
         if self.dry_extra:
             new["spec"]["replicas"] = 9
         if not dry_run:
@@ -167,7 +187,7 @@ async def test_bad_deploy_asks_then_rolls_back_on_approval(tmp_path):
     real = w.apps.patches[-1]
     assert real["dry_run"] is None and real["field_manager"] == "oncall-agent"
     assert real["content_type"] == "application/json-patch+json"
-    assert real["patch"][0] == {"op": "test", "path": "/metadata/resourceVersion", "value": "100"}
+    assert real["patch"][0] == {"op": "test", "path": "/metadata/generation", "value": 7}
     assert real["patch"][1]["value"]["spec"]["containers"][0]["image"] == GOOD
     assert "pod-template-hash" not in real["patch"][1]["value"]["metadata"]["labels"]
     row = w.conn.execute("SELECT outcome, inverse_json, pods_touched_json FROM receipts WHERE id=?",
@@ -222,6 +242,55 @@ async def test_conflict_on_execute_hands_off_and_admission_denial_escalates(tmp_
     assert (d2.decision, d2.failed_step) == ("escalated", "dry_run") and "approved source" in d2.reason
 
 
+# scenario 5: valkey-cart scaled to 0. The agent may scale a data store back, never alone (Muaz chose)
+async def test_protected_data_store_scale_needs_a_human_then_runs(tmp_path):
+    w = World(tmp_path)
+    w.conn.execute("UPDATE incidents SET culprit='valkey-cart', victims_json='[\"cart\"]'")
+    w.apps.dep["spec"]["replicas"] = 0
+    w.obs.journal = [{"id": 50, "object": "deployment/valkey-cart", "kind": "replicas", "ts": 950.0,
+                      "field_manager": "chaos-panel", "by_agent": False, "diff": {"replicas": {"old": 1, "new": 0}}}]
+
+    def health(request):
+        if request.url.path == "/journal":
+            return w.obs(request)
+        # a data store emits no spans: no readings, looks "fine"; its caller cart is the sick one
+        return httpx.Response(200, json={"ts": 1000.0, "severity": 4, "services": {
+            "valkey-cart": {"unhealthy": False, "err_ratio": None, "p95_ms": None, "bad_pods": 0},
+            "cart": {"unhealthy": True, "err_ratio": 1.0, "p95_ms": 5.0, "bad_pods": 0}}})
+
+    w.gw.http = httpx.AsyncClient(transport=httpx.MockTransport(health))
+    # 30 clean rehearsals still never open the gate for a data store
+    w.conn.execute("INSERT INTO ledger VALUES ('protected', 'scale', 'valkey-cart', 'rehearsal', 60, 0, NULL)")
+    a = action(tool="scale", target="valkey-cart", pattern="protected", journal_entry=50,
+               evidence_ids=["journal:50"], params={"replicas": 1}, prediction=None)
+    d = await w.gw.submit(a)
+    assert (d.decision, d.failed_step) == ("awaiting_approval", "trust_gate") and "protected" in d.reason
+    assert not [p for p in w.apps.patches if not p["dry_run"]]
+    req = next(e for e in w.events if e["type"] == "approval_requested")["payload"]
+    assert "valkey-cart" in req["card"]["text"] and "replicas" in req["card"]["text"]
+
+    d = await w.gw.decide(d.approval_id, "approved", "u1")
+    assert d.decision == "executed"
+    real = w.apps.patches[-1]
+    assert real.get("scale") and real["dry_run"] is None and real["patch"]["spec"]["replicas"] == 1
+    for t in list(w.gw.tasks):
+        t.cancel()
+
+    other = World(tmp_path)  # anything but a scale on a data store is still a straight escalation
+    d = await other.gw.submit(action(tool="restart_service", target="valkey-cart", pattern="protected"))
+    assert (d.decision, d.failed_step) == ("escalated", "policy")
+
+
+# generation moved between our read and the write: someone else changed it, not an RBAC/admission block
+async def test_failed_generation_test_hands_off_and_is_not_blocked(tmp_path):
+    w = World(tmp_path)
+    d = await w.gw.submit(action())
+    w.apps.fail_real = patch_failed()
+    d = await w.gw.decide(d.approval_id, "approved", "u1")
+    assert (d.decision, d.failed_step) == ("handed_off", "execute")
+    assert "blocked" not in w.types() and w.types()[-1] == "handed_off"
+
+
 async def test_problem_gone_resolves_without_acting(tmp_path):
     w = World(tmp_path)
     w.obs.unhealthy = False
@@ -242,6 +311,20 @@ async def test_budget_and_in_flight(tmp_path):
     await w.gw.decide(d.approval_id, "approved", "u1")
     again = await w.gw.submit(action())
     assert (again.decision, again.failed_step) == ("refused", "policy") and "still being verified" in again.reason
+
+
+# overnight trust runs need ~15 actions an hour; only ONCALL_REHEARSAL=1 lifts the 3/hour cap
+async def test_hour_budget_lifted_only_in_rehearsal_mode(tmp_path):
+    for rehearsal, decision in ((False, "escalated"), (True, "awaiting_approval")):
+        w = World(tmp_path)
+        w.gw.rehearsal = rehearsal
+        for i in range(POLICY["budgets"]["max_actions_per_hour"]):
+            w.conn.execute("INSERT INTO receipts (id, incident_id, ts, tool, target, outcome) VALUES "
+                           "(?, 'old', 900, 'rollback_deploy', 'payment', 'success')", (500 + i,))
+        d = await w.gw.submit(action())
+        assert d.decision == decision, (rehearsal, d)
+        if not rehearsal:
+            assert d.reason == "action budget used up"
 
 
 def test_previous_template_and_diff_helpers():
@@ -289,3 +372,33 @@ def test_http_app_routes(tmp_path):
         init = client.post("/mcp", headers={"accept": "application/json, text/event-stream"},
                            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
         assert init.status_code == 200 and len(init.json()["result"]["tools"]) == 6
+
+
+# UI pages (plan §6.8): /trust table, receipt list, "verify audit log" button
+def test_trust_receipts_and_audit_routes(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from gateway.main import create_app
+    from schemas.models import Receipt
+
+    w = World(tmp_path)
+    w.conn.execute("INSERT INTO ledger VALUES ('recent_change', 'rollback_deploy', 'payment', 'rehearsal', 30, 0, NULL)")
+    w.conn.execute("INSERT INTO ledger VALUES ('recent_change', 'rollback_deploy', 'payment', 'real', 1, 0, NULL)")
+    w.conn.execute("INSERT INTO ledger VALUES ('resource', 'raise_limit', 'recommendation', 'real', 40, 0, NULL)")
+    w.gw.receipts.save(Receipt(incident_id="inc-1", tool="scale", target="payment", diff={}, inverse={"op": "scale"},
+                               evidence_ids=[]))
+    app = create_app(w.gw)
+    app.state.audit_path = str(tmp_path / "audit.jsonl")
+    with TestClient(app, base_url="http://127.0.0.1:7003") as client:
+        rows = {(r["pattern"], r["action"]): r for r in client.get("/trust").json()}
+        assert rows[("recent_change", "rollback_deploy")]["bar"] == 0.9
+        assert rows[("recent_change", "rollback_deploy")]["open"] is True
+        assert rows[("recent_change", "rollback_deploy")]["rehearsal"] == [30, 0]
+        assert rows[("resource", "raise_limit")]["open"] is False  # never auto-eligible
+        listed = client.get("/receipts?limit=50").json()
+        assert [r["id"] for r in listed] == [1] and listed[0]["receipt"]["tool"] == "scale"
+        assert client.get("/audit/verify").json() == {"ok": True, "records": 0}
+        client.post("/events/publish", json={"type": "blocked", "payload": {"step": "x"}})
+        path = tmp_path / "audit.jsonl"
+        path.write_text(path.read_text().replace('"x"', '"y"'))  # someone edits the log while we run
+        assert client.get("/audit/verify").json() == {"ok": False, "error": "Audit chain broken at seq 1"}

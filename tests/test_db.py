@@ -33,5 +33,5 @@ def test_old_incidents_table_gains_why_column(tmp_path):
     old.commit()
     old.close()
     conn = connect(path)
-    assert conn.execute("SELECT id, why FROM incidents").fetchone()[:] == ("inc-old", None)
+    assert conn.execute("SELECT id, llm_why FROM incidents").fetchone()[:] == ("inc-old", None)
     connect(path).close()  # second open must not try to add it again

@@ -30,7 +30,7 @@ Priority: P0 = minimum deliverable, P1 = to win, P2 = stretch.
 
 Exit: `scripts/smoke.sh` (A) passes: bad deploy detected, rolled back on "ask" via curl approve, verified, receipt written.
 
-Exit status: NOT MET yet. Live smoke 2026-11-13 (A): detect 42.7 s, diagnose 72.9 s, approve -> rollback executed, then wrongly undone (`outcome=escalated`): verifier waited on `frontend-proxy`, which `/health/now` does not list. Fixed on branch `muaz/live-fixes` (`tests/test_verifier.py::VictimOutsideHealthTest`); needs a smoke rerun. The run needs one manual `curl` approval.
+Plan audit 2026-11-13: failed generation test now hands off (checked on a real API server). Exit status: NOT MET yet. Live run 2 (A, 2026-11-13): rollback executed, then early abort undid it 5 s later (checkout lagged), and the undo got 422 and left payment paused. Fixed on branch `muaz/verify-fixes` (grace period, generation test, `finally` unpause, `undo_failed`; 3 tests in `tests/test_verify_loop.py`). Needs a smoke rerun. The run needs one manual `curl` approval.
 
 ## Phase 2: the other failures and the checks
 
@@ -42,7 +42,7 @@ Exit status: NOT MET yet. Live smoke 2026-11-13 (A): detect 42.7 s, diagnose 72.
 
 Exit: scenarios 1 to 6 in §7 behave as specified.
 
-Exit status: NOT MET. Needs live runs. Scenario 3 (flag flipped) now built: `tests/test_flags.py::test_brain_flag_flip_proposes_flag_revert` + gateway flag revert tests. Scenario 5 (datastore down -> protected) fixed in code: `tests/test_brain.py::test_datastore_scaled_to_zero_moves_culprit_to_protected_dependency`.
+Scenario 5 now pages with Approve; approved scale-back works on a real API server (test cluster, `muaz/plan-audit`). Exit status: NOT MET. Needs live runs. Scenario 3 (flag flipped) now built: `tests/test_flags.py::test_brain_flag_flip_proposes_flag_revert` + gateway flag revert tests. Scenario 5 (datastore down -> protected) fixed in code: `tests/test_brain.py::test_datastore_scaled_to_zero_moves_culprit_to_protected_dependency`. Live flag flip 2026-11-13 (A): culprit payment, `revert_config` executed, then early abort undid it; grace fix on `muaz/verify-fixes`, needs rerun.
 
 ## Phase 3: trust, humans, proof
 

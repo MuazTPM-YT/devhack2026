@@ -34,7 +34,7 @@ def test_verified_outcome_controls_persisted_trust_and_card(
             trust.record(db, *KEY, "rehearsal", True, 1)
         prediction = {"metric": "err_ratio", "target": "payment", "below": 0.05,
                       "within_s": 1 if case == "late_prediction" else 60}
-        verifier = Verification(0, health(True, 4, 0.4), "payment", [], prediction, 120, True, abort_after_s=0)
+        verifier = Verification(0, health(True, 4, 0.4), "payment", [], prediction, 120, True)
         verifier.step(5, health(False), False)
         reading = (health(True, 9, 0.8) if case in {"early_abort", "human_edit"}
                    else {"severity": 0, "services": {}} if case == "missing_service" else health(False))

@@ -29,6 +29,14 @@ def change_evidence(row: dict) -> Evidence:
                     summary=f"{row['object']} {row['kind']} change by {who}: {'; '.join(parts)}"[:600])
 
 
+# the card's "Why" line from the journal entry a fix reverts (env values never shown)
+def why_text(entry: dict | None, onset: float | None) -> str | None:
+    if entry is None:
+        return None
+    lag = f"; errors began {onset - entry['ts']:.0f} s later" if onset and onset >= entry["ts"] else ""
+    return change_evidence(entry).summary + lag
+
+
 def metric_evidence(health: dict, services: list[str]) -> list[Evidence]:
     out = []
     for s in services:

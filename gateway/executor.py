@@ -9,9 +9,14 @@ __all__ = ["WriteRefused", "classify", "patch_deployment", "patch_scale", "patch
            "read_configmap", "list_json"]
 
 
-# 409 or a failed resourceVersion test -> someone else changed it: hand off; RBAC/admission -> escalate
+# what the API server says when a JSON Patch fails to apply; ours only fail on the generation `test`.
+# Admission denials ("denied request: ...") and field errors ("... is invalid: ...") read differently
+PATCH_NOT_APPLIED = "the server rejected our request due to an error in our request"
+
+
+# 409 or a failed precondition test -> someone else changed it: hand off; RBAC/admission -> escalate
 def classify(status: int, body: str) -> WriteRefused:
-    if status == 409 or (status == 422 and "test" in body and "resourceVersion" in body):
+    if status == 409 or (status == 422 and PATCH_NOT_APPLIED in body):
         return WriteRefused("handed_off", f"object changed under us ({status})")
     if status in (403, 422):
         return WriteRefused("escalated", f"API server refused ({status}): {body[:300]}")

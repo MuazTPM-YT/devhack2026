@@ -23,9 +23,10 @@ def check(action: dict, services: dict, policy: dict, used: dict[str, int],
     svc = services.get(action["target"])
     if svc is None:
         return False, "refused", f"unknown service {action['target']}"
-    if svc.get("protected"):
+    # a data store may only be scaled back, and the checklist always asks a human first (Muaz chose)
+    if svc.get("protected") and action["tool"] != "scale":
         return False, "escalated", f"{action['target']} is protected; a human must act"
-    if not svc.get("actable"):
+    if not svc.get("actable") and not svc.get("protected"):
         return False, "refused", f"{action['target']} is not actable"
     bad = bounds(action, policy["tools"][action["tool"]])
     if bad:
