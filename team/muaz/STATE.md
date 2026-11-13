@@ -5,10 +5,31 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** agent polish on `muaz/agent-polish` (from `muaz/flow-ui`, not pushed); live shop rerun pending (A)
+**Current phase:** audit fixes on `muaz/agent-polish` (not pushed); live shop rerun pending (A)
 **Branches:** all merged up to PR #38. Now `muaz/agent-polish` (not pushed)
 
 ## Done (with proof)
+
+- Full audit + local end-to-end run (branch `muaz/agent-polish`, 15 commits from `20ea15c` to `48c2194`):
+  - Harness (not in git, job scratch dir): k3d `oncall-test` (k3s v1.31.5) with tiny Deployments named like the
+    shop + real RBAC/VAP; real observer, brain, gateway, chaos processes; a fake Prometheus + Jaeger whose numbers
+    follow the live cluster state (agent writes change them); only the LLM network call faked. 25 scenarios: plan
+    §7 rows 1-10 and 12, approval expiry, stale metrics, gateway/brain/observer restarts, back-to-back faults,
+    bad model output, `scripts/smoke.sh`, one `bench.harness` rehearsal trial.
+  - Bugs fixed (Muaz chose each behaviour; each has a test that failed first): k8s read errors on an approved
+    re-run gave HTTP 500 and no page; a lost connection on a real write paged nobody (now "check by hand", no
+    receipt); two checklists could both execute (global run lock); relist kept deleted pods as bad; one DB error
+    killed the detector loop; major flag incident blamed `flagd-config`; expired follow-up flipped resolved ->
+    escalated (now a ticket); major "no scale up" blocked restoring kafka (now approved restore of the journaled
+    count); gateway acted on and judged fixes with stale health (now asks; blind verify keeps the fix); watchdog
+    on a no-undo fix blocked all actions; observer restart opened a duplicate incident.
+  - Security fixed: `GET /journal` needs the token (env values); chaos POSTs need the token (UI server adds it,
+    route `ui/app/api/chaos`); UI binds 127.0.0.1; admission denies exec probes/hooks, envFrom/secretKeyRef,
+    memory > 1Gi, label/scheduling/strategy/history changes, other ghcr.io/open-telemetry images, new keys in
+    flagd-config (new policy `oncall-agent-flags`).
+  Proof: `uv run pytest` -> `492 passed`; `ruff check .` -> `All checks passed!`; `mypy ... chaos` -> `no issues
+  found in 67 source files`; UI 19 pass, typecheck OK, build OK; `security_check.sh` on `oncall-test` -> 35 PASS,
+  `fails: 0`; e2e: all 25 scenarios pass (23/25 on the second run; P4, P5 fixed then rerun 5/5 with R3, R4, S1). Real shop, real LLM and Discord NOT run.
 
 - Agent polish (branch `muaz/agent-polish`), Muaz chose 1a 2a 3 samples 4a 5a 6a:
   - Shared token `ONCALL_API_TOKEN` (`schemas/auth.py`, header `X-Oncall-Token`): gateway,
@@ -321,6 +342,9 @@ section. Only my own work here; cross-team facts go in
 
 ## Blocked / waiting on
 
+- **Live cluster (A):** re-apply `k8s/admission-policy.yaml` and `k8s/admission-binding.yaml` (new
+  policy `oncall-agent-flags`), then `./scripts/security_check.sh` (35 rows). Every `.env` needs
+  `ONCALL_API_TOKEN` (chaos now refuses POSTs without it).
 - **Live rerun (A):** after `muaz/verify-fixes` merges: `./scripts/smoke.sh`
   and `/chaos/flag-flip`. Expect `incident_resolved` for both.
 - **LLM timeout (T):** both live calls ended `deadline_exceeded` at 30 s

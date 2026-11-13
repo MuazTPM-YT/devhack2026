@@ -57,6 +57,20 @@ check "[dry-run] valkey-cart scale to 1: allowed" 'patched' "${A[@]}" patch depl
 check "[dry-run] valkey-cart scale to 0: denied" 'replicas must stay between 1 and 3' "${A[@]}" patch deploy valkey-cart --dry-run=server --subresource=scale --type=merge -p '{"spec":{"replicas":0}}'
 check "[dry-run] valkey-cart image patch: forbidden" 'forbidden' "${A[@]}" patch deploy valkey-cart --dry-run=server --type=merge -p '{"spec":{"template":{"metadata":{"annotations":{"x":"y"}}}}}'
 
+# agent token must not reach code or secrets through pod settings (server dry run only)
+deny() { check "[dry-run] $1: denied" "$2" "${A[@]}" patch deploy payment --dry-run=server --type=strategic -p "$3"; }
+deny "exec liveness probe" 'agent may not change probes' '{"spec":{"template":{"spec":{"containers":[{"name":"payment","livenessProbe":{"exec":{"command":["id"]}}}]}}}}'
+deny "postStart hook" 'agent may not change probes' '{"spec":{"template":{"spec":{"containers":[{"name":"payment","lifecycle":{"postStart":{"exec":{"command":["id"]}}}}]}}}}'
+deny "envFrom secretRef" 'agent may not change probes' '{"spec":{"template":{"spec":{"containers":[{"name":"payment","envFrom":[{"secretRef":{"name":"s"}}]}]}}}}'
+deny "env from secretKeyRef" 'env values read from secrets' '{"spec":{"template":{"spec":{"containers":[{"name":"payment","env":[{"name":"S","valueFrom":{"secretKeyRef":{"name":"x","key":"y"}}}]}]}}}}'
+deny "memory 64Gi" 'memory limit above 1Gi' '{"spec":{"template":{"spec":{"containers":[{"name":"payment","resources":{"limits":{"memory":"64Gi"}}}]}}}}'
+deny "automountServiceAccountToken" 'other pod settings' '{"spec":{"template":{"spec":{"automountServiceAccountToken":true}}}}'
+deny "pod label" 'agent may not change pod labels' '{"spec":{"template":{"metadata":{"labels":{"evil":"1"}}}}}'
+deny "revisionHistoryLimit 0" 'rollout strategy or revision history' '{"spec":{"revisionHistoryLimit":0}}'
+check "[dry-run] other ghcr.io/open-telemetry image: denied" 'image must come from an approved source' "${A[@]}" patch deploy payment --dry-run=server --type=json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"ghcr.io/open-telemetry/evil:1"}]'
+check "[dry-run] new key in flagd-config: denied" 'only existing keys' "${A[@]}" patch configmap flagd-config --dry-run=server --type=merge -p '{"data":{"evil.json":"{}"}}'
+check "[dry-run] raise memory to 400Mi: allowed" 'patched' "${A[@]}" patch deploy payment --dry-run=server --type=strategic -p '{"spec":{"template":{"spec":{"containers":[{"name":"payment","resources":{"limits":{"memory":"400Mi"}}}]}}}}'
+
 echo "MANUAL | real rollback_deploy through the executor after a bad deploy: needs gateway executor (Phase 1)"
 echo "fails: $fails"
 [ "$fails" -eq 0 ]

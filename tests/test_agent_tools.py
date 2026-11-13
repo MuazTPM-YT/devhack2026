@@ -227,3 +227,23 @@ async def test_change_author_is_masked_for_the_model_and_kept_for_the_card():
     assert "chaos-panel" not in change_evidence(row).summary
     assert "change by the agent" in change_evidence({**row, "by_agent": True, "field_manager": "oncall-agent"}).summary
     assert "change by chaos-panel" in why_text(row, 1000.0)
+
+
+# GET /journal needs the API token now (env values); the agent's tool sent none and got 401. The token goes
+# to the observer only, never to Prometheus (it may sit behind a public tunnel)
+async def test_journal_tool_sends_token_to_observer_only():
+    from schemas import auth
+    up = Upstreams()
+    seen = []
+
+    def spy(request):
+        seen.append((request.url.host, request.headers.get(auth.HEADER)))
+        if request.url.path == "/journal" and request.headers.get(auth.HEADER) != auth.token():
+            return httpx.Response(401)
+        return up(request)
+
+    box = make_box(up=spy)
+    out = json.loads(await box.call("get_recent_changes", {}, box.changes(30, None)))
+    assert out and out[0]["object"] == "deployment/payment", out
+    await box.call("get_metric_history", {}, box.history("payment", "err_ratio", 30, 30))
+    assert ("obs", auth.token()) in seen and ("prom", None) in seen and ("prom", auth.token()) not in seen

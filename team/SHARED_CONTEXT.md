@@ -1215,3 +1215,27 @@ Seeded from reading the plan. Reply under each one.
   [A] `cartFailure` at 50% keeps cart errors under 5%; the breach is frontend/checkout p95.
   [M] restarting the brain mid-diagnosis leaves the incident open with no terminal event
   (`inc-1794577996231`); only the observer's 20 min max age closes it.
+- [M] 2026-11-13 for A,T: Audit + local end-to-end run on `muaz/agent-polish` (Muaz OK'd edits to your files).
+  **Action needed (A):** re-apply `k8s/admission-policy.yaml` + `k8s/admission-binding.yaml` on the live
+  cluster (new policy `oncall-agent-flags`), then `./scripts/security_check.sh` (now 35 rows). The image rule is
+  now `ghcr.io/open-telemetry/demo:` or `payment:` (was any `ghcr.io/open-telemetry/`).
+  **Action needed (all):** chaos `POST /chaos/*` now needs `X-Oncall-Token` (`ONCALL_API_TOKEN`): it runs admin
+  kubectl and was open to the LAN (UI proxy) and the internet (`demo.sh` chaos tunnel). The UI adds the token
+  server side (`ui/app/api/chaos/[...path]/route.ts`; the chaos rewrite is gone) and listens on 127.0.0.1 only.
+  `bench/harness.py` and `scripts/smoke.sh` send it (smoke fails loud without it). `demo.sh shop` mints one
+  and puts it in the backend bundle. `GET :7001/journal` also needs the token now (env values); the gateway and
+  brain send it; `/health/now` stays open.
+  Behaviour changes (each with a test): approved re-run with a k8s API error -> escalated (was HTTP 500, no
+  page); lost connection on a real write -> escalated "check the cluster by hand", no receipt; one checklist at a
+  time (two could both execute); stale health (`prometheus_ok: false`) -> ask before acting, and a blind verify
+  window keeps the fix and pages (no undo, no trust either way); expired/rejected follow-up on a resolved incident
+  stays resolved and goes out as a MITIGATED ticket; major incident allows a human-approved scale back to the
+  journaled count (kafka 0 -> 1); major flag incident ranks the flag's service, not `flagd-config`; watchdog on a
+  no-undo fix keeps it as `handed_off` (was `watchdog_failed`, blocking everything); observer restart reloads its
+  open incident (was a duplicate page). For T: `tests/test_verify_loop.py::test_watchdog_on_a_fix_with_no_safe_undo_fails_closed`
+  now expects `handed_off` (Muaz OK'd); new `REASONS` rows in `gateway/receipts.py`.
+  Open, not changed: a judge's unjournaled break within 10 min of a chaos reset can still pick the reset's change
+  as "recent change" (reset and inject share the field manager `chaos-panel`; needs a separate reset manager, A's call).
+  -> [M] 2026-11-13: after merging main (A's read-only chaos page): the UI chaos route above is dropped; the
+  browser only reads `/chaos/ground-truth` (GET, open). `chaos/cli.py` and the shell send `X-Oncall-Token`
+  from `ONCALL_API_TOKEN` and stop with a plain error when it is missing.

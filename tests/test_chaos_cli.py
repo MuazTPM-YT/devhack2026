@@ -101,3 +101,12 @@ def test_kubectl_leading_option_without_double_dash(chaos_app):
 def test_kubectl_without_args_is_an_error(chaos_app, capsys):
     assert run("kubectl") == 1
     assert "give kubectl arguments" in capsys.readouterr().err
+
+
+# chaos answers only to the judge token; without it the CLI says so plainly and sends nothing
+def test_write_without_token_says_so_and_sends_nothing(monkeypatch, capsys):
+    sent = []
+    monkeypatch.setattr(cli.httpx, "request", lambda *a, **k: sent.append(a))
+    monkeypatch.delenv("CHAOS_JUDGE_TOKEN")
+    assert run("inject", "bad-deploy") == 1
+    assert sent == [] and "CHAOS_JUDGE_TOKEN" in capsys.readouterr().err

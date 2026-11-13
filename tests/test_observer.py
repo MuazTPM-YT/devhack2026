@@ -193,3 +193,46 @@ async def test_stuck_incident_is_closed_and_escalated_after_max_age():
     assert obs.conn.execute("SELECT state FROM incidents WHERE id=?", (inc["id"],)).fetchone()[0] == "escalated"
     # payment is still sick: suppressed until it recovers once, so no re-page loop
     assert obs.detector.incident is None
+
+
+# one unexpected error (here a locked DB, three processes share it) ended the detector task for good:
+# no log line, nothing detected ever again
+async def test_detector_loop_survives_a_failed_poll(caplog):
+    import asyncio
+    import sqlite3
+    obs = make(Backend({}, {}), [0])
+    obs.poll_s = 0
+    calls = []
+
+    async def step():
+        calls.append(1)
+        if len(calls) == 1:
+            raise sqlite3.OperationalError("database is locked")
+        raise asyncio.CancelledError
+
+    obs.step = step
+    try:
+        await obs.run()
+    except asyncio.CancelledError:
+        pass
+    assert len(calls) == 2 and "database is locked" in caplog.text
+
+
+# e2e: observer restarted while an approval waited; it forgot its open incident and opened a second one for
+# the same fault (second approval page, later an expiry page). Now it takes the open incident back from the DB
+async def test_restart_takes_back_the_open_incident():
+    clock = [5000.0]
+    backend = Backend({"payment": 0.4}, {"payment": 120.0, "cart": 30.0})
+    conn = connect(":memory:", shared=True)
+    conn.execute("INSERT INTO incidents (id, opened_at, onset_at, culprit, victims_json, state, severity_at_open) "
+                 "VALUES ('inc-old', 4000, 3990, 'payment', '[\"frontend-proxy\"]', 'escalated', 4)")
+    conn.execute("INSERT INTO incidents (id, opened_at, onset_at, culprit, victims_json, state, severity_at_open) "
+                 "VALUES ('inc-1', 4900, 4890, 'payment', '[\"frontend-proxy\"]', 'awaiting_approval', 4)")
+    http = httpx.AsyncClient(transport=httpx.MockTransport(backend))
+    obs = Observer(conn, Tracker(conn, "flagd-config"), http, "http://prom", "http://brain", "http://gw",
+                   POLICY, QUERIES, ["payment", "cart"], clock=lambda: clock[0])
+    assert obs.detector.incident["id"] == "inc-1" and obs.detector.incident["unhealthy"] == ["payment"]
+    for _ in range(12):  # payment still sick for a minute: same incident, no new page
+        await obs.step()
+        clock[0] += 5
+    assert not [p for p in backend.posts if p[0] == "/events/publish" and p[1]["type"] == "incident_opened"]

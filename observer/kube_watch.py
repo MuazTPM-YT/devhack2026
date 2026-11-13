@@ -84,6 +84,17 @@ class Tracker:
                 entry["id"] = journal.insert(self.conn, entry)
             return entry
 
+    # a full list is the truth: anything we hold that it lacks was deleted while we weren't watching
+    def relist(self, resource: str, items: list[dict]) -> None:
+        for item in items:
+            self.handle(resource, "ADDED", item)
+        names = {i["metadata"]["name"] for i in items}
+        with self.lock:
+            if resource == "pod":
+                self.pods = {n: p for n, p in self.pods.items() if n in names}
+            else:
+                self.objects = {k: o for k, o in self.objects.items() if k[0] != resource or k[1] in names}
+
     def bad_pods(self, now: float) -> dict[str, int]:
         with self.lock:
             pods = list(self.pods.values())
@@ -98,8 +109,7 @@ def run_watch(list_fn: Callable, resource: str, tracker: Tracker, namespace: str
     while not stop.is_set():
         try:
             data = json.loads(list_fn(namespace, _preload_content=False).data)
-            for item in data["items"]:
-                tracker.handle(resource, "ADDED", item)
+            tracker.relist(resource, data["items"])
             w = watch.Watch()
             for event in w.stream(list_fn, namespace, resource_version=data["metadata"]["resourceVersion"],
                                   timeout_seconds=300):
