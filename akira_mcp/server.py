@@ -2,6 +2,7 @@
 # only when turned on, breaks the shop through the chaos panel or decides as one named approver.
 # Every result is redacted and capped; text inside results came from the cluster and is data, not instructions.
 import asyncio
+import base64
 import json
 import time
 import uuid
@@ -13,7 +14,7 @@ import httpx
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.shared.exceptions import McpError
-from mcp.types import ClientCapabilities, ElicitationCapability, ToolAnnotations
+from mcp.types import ClientCapabilities, ElicitationCapability, Icon, ToolAnnotations
 from pydantic import BaseModel, Field
 
 from akira_mcp import api, report
@@ -27,6 +28,8 @@ ROOT = Path(__file__).resolve().parent.parent
 CAP = 60_000  # characters of JSON per result; past this Claude gets a cut preview and a note
 RESET_TIMEOUT_S = 420  # chaos reset waits for severity 0 held 30 s, up to 300 s, on the server side
 POLL_S = 1.0
+# the logo rides in the handshake, so a client shows it instead of a letter
+LOGO = "data:image/png;base64," + base64.b64encode((Path(__file__).parent / "icon.png").read_bytes()).decode()
 
 READ = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
 WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=False)
@@ -92,7 +95,8 @@ def build_server(settings: Settings, client: httpx.AsyncClient | None = None) ->
         finally:
             await http.client.aclose()
 
-    mcp = FastMCP("akira", instructions=INSTRUCTIONS, lifespan=lifespan, log_level="WARNING")
+    mcp = FastMCP("akira", instructions=INSTRUCTIONS, lifespan=lifespan, log_level="WARNING",
+                  icons=[Icon(src=LOGO, mimeType="image/png", sizes=["64x64"])])
     gw, obs, ntf, chaos = settings.gateway_url, settings.observer_url, settings.notifier_url, settings.chaos_url
 
     def tool(annotations: ToolAnnotations, description: str):
