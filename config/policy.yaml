@@ -4,6 +4,9 @@ detection:
   latency_multiplier: 2.0
   sustain_seconds: 30
   poll_seconds: 5
+  # an incident nobody ended (lost terminal event, crashed process) is closed and escalated after this;
+  # above the longest real path: diagnose + 2 approvals (300 s each) + verify (120 + 90 s for a flag)
+  incident_max_age_seconds: 1200
 change_window_minutes: 10          # "recent change" window before onset
 budgets:
   max_actions_per_incident: 3

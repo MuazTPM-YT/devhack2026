@@ -152,3 +152,24 @@ async def test_undelivered_incident_is_resent_until_brain_takes_it():
     clock[0] = 1045.0
     await obs.step()
     assert calls["incidents"] == 3  # delivered once, then no more resends
+
+
+# an incident nobody ended (live: a refused action sent no terminal event) blocked every later incident
+async def test_stuck_incident_is_closed_and_escalated_after_max_age():
+    clock = [1000.0]
+    backend = Backend({"payment": 0.4}, {"payment": 120.0, "cart": 30.0})
+    obs = make(backend, clock)
+    await obs.step()
+    clock[0] = 1030.0
+    _, inc = await obs.step()
+    clock[0] = 1030.0 + POLICY["detection"]["incident_max_age_seconds"] - 1
+    await obs.step()
+    assert obs.detector.incident is not None  # not yet
+    clock[0] += 2
+    backend.posts.clear()
+    await obs.step()
+    esc = [b for p, b in backend.posts if p == "/events/publish" and b["type"] == "escalated"]
+    assert esc and esc[0]["incident_id"] == inc["id"] and "lost track" in esc[0]["payload"]["briefing"]
+    assert obs.conn.execute("SELECT state FROM incidents WHERE id=?", (inc["id"],)).fetchone()[0] == "escalated"
+    # payment is still sick: suppressed until it recovers once, so no re-page loop
+    assert obs.detector.incident is None
