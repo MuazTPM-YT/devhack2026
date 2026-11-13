@@ -2,11 +2,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from chaos.faults import (FIELD_MANAGER, FLAG_CONFIGMAP, Kubectl, kubectl, read_flags,
-                          read_live_flags, write_flags)
+from chaos.faults import FIELD_MANAGER, FLAG_CONFIGMAP, Kubectl, kubectl, read_flags, write_flags
 from schemas import config
 
 TARGETS = list(config.load("services")["services"])
+# clients that hang on to a dead broker: live, checkout's p95 stayed ~8.8 s for 85 min after kafka came
+# back, until it was restarted. Restart them whenever reset brings the data store back.
+RESTART_AFTER = {"kafka": ["checkout", "accounting", "fraud-detection"]}
 
 # {"deployments": {name: state}, "flags": flagd-config file text}
 Snapshot = dict[str, Any]
@@ -66,7 +68,7 @@ def diff_ops(healthy: dict[str, Any], current: dict[str, Any]) -> list[dict[str,
     return ops
 
 
-# shortcut: waits for rollouts, not observer severity 0 (C4 /health/now not wired); switch when it is
+# rollouts only; waiting for observer severity 0 is the HTTP route's job (chaos/main.py)
 def reset(snapshot: Snapshot, run: Kubectl = kubectl) -> list[str]:
     current = read_cluster(run)
     restored = []
@@ -76,11 +78,15 @@ def reset(snapshot: Snapshot, run: Kubectl = kubectl) -> list[str]:
             run("patch", "deployment", name, "--type=json", "-p", json.dumps(ops),
                 f"--field-manager={FIELD_MANAGER}")
             restored.append(name)
-    # live file too: a judge may have flipped a flag in the flagd UI
-    if snapshot["flags"] != read_flags(run) or snapshot["flags"] != read_live_flags(run):
+    if snapshot["flags"] != read_flags(run):
         write_flags(snapshot["flags"], run)
         restored.append(f"configmap/{FLAG_CONFIGMAP}")
     for name in restored:
         if not name.startswith("configmap/"):
             run("rollout", "status", f"deployment/{name}", "--timeout=5m")
-    return restored
+    restarted = [c for store in restored for c in RESTART_AFTER.get(store, []) if c in current]
+    for name in restarted:
+        run("rollout", "restart", f"deployment/{name}", f"--field-manager={FIELD_MANAGER}")
+    for name in restarted:
+        run("rollout", "status", f"deployment/{name}", "--timeout=5m")
+    return restored + [f"{name} (restarted)" for name in restarted]
