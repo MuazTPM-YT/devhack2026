@@ -303,3 +303,15 @@ async def test_fix_with_no_safe_undo_that_never_recovers_is_kept_and_pages(tmp_p
     assert "UNDO FAILED" not in json.dumps(last) and "configmap/None" not in json.dumps(last)
     assert "Undo: none is safe" in last["payload"]["card"]["text"]
     assert w.gw.receipts.get(d.receipt_id).outcome == "handed_off"
+    assert ledger(w) == [("real", 0, 1)]  # an unproven fix counts against trust, kept or not
+
+
+# the watchdog undoes a silent verifier's fix; a receipt with no safe undo must not crash it (KeyError)
+async def test_watchdog_on_a_fix_with_no_safe_undo_fails_closed(tmp_path):
+    from test_phase3 import executed_and_parked
+    w, d = await executed_and_parked(tmp_path)
+    w.conn.execute("UPDATE receipts SET inverse_json=?", (json.dumps({"op": "none", "why": "would scale to 0"}),))
+    w.now[0] += 200
+    assert await w.gw.watchdog() == 1
+    assert w.conn.execute("SELECT outcome FROM receipts").fetchone()[0] == "watchdog_failed"
+    assert w.apps.dep["spec"]["template"]["spec"]["containers"][0]["image"] == GOOD  # fix left in place

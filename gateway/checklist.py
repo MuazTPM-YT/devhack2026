@@ -479,6 +479,9 @@ class Gateway:
                             reason: str) -> str:
         with self.lock:
             self.conn.execute("UPDATE receipts SET outcome='handed_off' WHERE id=?", (receipt_id,))
+            # unproven is a failure for trust, same as close() books an undo; the bench credits rehearsals
+            if receipt.trust.get("approved_by") != approvals.REHEARSAL_APPROVER:
+                trust.record(self.conn, action.pattern, action.tool, action.target, "real", False, self.clock())
             self.conn.commit()
         kept = receipt.model_copy(update={"outcome": "handed_off"})
         self.receipts.update(receipt_id, kept)
@@ -500,6 +503,8 @@ class Gateway:
         def gen() -> int:
             return read_deployment(self.apps, target)["metadata"]["generation"]
 
+        if inverse["op"] not in ("restore_configmap", "scale", "restore_template"):
+            raise WriteRefused("refused", f"no safe undo ({inverse.get('why', inverse['op'])})")
         if inverse["op"] == "restore_configmap":
             cm = read_configmap(self.core, inverse["name"])
             patch_configmap(self.core, inverse["name"], {"metadata": {"resourceVersion": cm["metadata"]["resourceVersion"]},
