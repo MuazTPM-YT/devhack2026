@@ -5,10 +5,23 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** UI service map + debloat on `anirudh/service-map` (off main 912b88c,
-not pushed). Phases 0-4 merged.
+**Current phase:** UI audit fixes on `anirudh/ui-audit` (off main 6325928, not pushed).
+Phases 0-4 merged.
 
 ## Done (with proof)
+
+- emil-design-eng audit applied, 2026-11-14, `anirudh/ui-audit` (e726c58, 291a1c3,
+  36ef29d). P0: evidence reads used the 3-col `.step` grid with 2 children (title in
+  the 16 px slot, every width); lab inputs 13 -> 16 px (iOS zoom); map keeps last
+  graph across Cards/Map. P1: press easing on name/switch buttons, keyboard map picks
+  skip the fade, pulse only on live events, reduced motion on every press scale,
+  row :active, hold-to-recover (1.5 s, replaces `window.confirm`), badge and copy
+  entrances, scroll edge fade, sheet first when stacked, outcome reason said once,
+  long KPI values 17 px, 28 px tap targets, map Escape ignores open drawer.
+  Checks: UI 59 pass, tsc clean, ruff clean; playwright on a prod build at
+  1440/390 px against the live stack, reset intercepted (short press 0 sends, full
+  hold 1, keyboard hold 1), no console errors. No unit test for the hold timer or
+  CSS fixes (UI tests are node-only on lib/).
 
 - Map into Overview + benchmark page removed, 2026-11-14, `anirudh/service-map`
   (26650e1, 14bc1fd). Decisions by Anirudh: no `/map` page, Overview gets a
