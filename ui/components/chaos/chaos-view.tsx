@@ -76,7 +76,7 @@ export function ChaosView() {
 
   return (
     <div className={page.page}>
-      <PageHead eyebrow="judge controls · Akira has no path here" title="Chaos Lab"
+      <PageHead title="Chaos Lab" meta="Judge controls. Akira has no path here."
         aside={mode ? <Tag tone={mode.tone} title={mode.title}>{mode.label}</Tag> : undefined} />
       {!tele.ok && tele.state !== "waiting" && <p className={styles.banner} role="alert">{tele.text}. An experiment started now cannot be read.</p>}
       <EnvStrip telemetry={tele} registry={reg} run={openRun} error={error} busy={busy === "reset"}

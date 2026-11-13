@@ -4,10 +4,8 @@
   gap: 5px;
   padding: 2px 6px;
   border-radius: var(--radius-sm);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   white-space: nowrap;
   flex: none;
   line-height: 1.4;
@@ -20,3 +18,7 @@
 .idle { color: var(--ink-mute); background: var(--card-sunk); }
 .dark { color: var(--frame); background: var(--ink); }
 .accent { color: var(--ox); background: var(--rose-soft); }
+
+/* status words come from data in any case; they read as a sentence start */
+.text { display: inline-block; }
+.text::first-letter { text-transform: uppercase; }

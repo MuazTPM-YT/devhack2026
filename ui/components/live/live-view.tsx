@@ -66,8 +66,8 @@ function IncidentBody({ incident, demo, list, picker }: {
   return (
     <>
       <PageHead
-        eyebrow={incident ? <>Live incident · <span className="mono">{incident.id}</span> · opened {clock(incident.openedAt)}</> : "Live incident"}
         title={headline(incident, elapsed)}
+        meta={incident ? <><span className="mono">{incident.id}</span> · opened {clock(incident.openedAt)}</> : undefined}
         aside={<>
           <span className={styles.picker}>{picker}</span>
           {mode && <Tag tone={mode.tone} title={mode.title}>{mode.label}</Tag>}

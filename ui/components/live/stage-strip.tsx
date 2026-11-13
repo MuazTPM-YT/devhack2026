@@ -22,19 +22,17 @@ export function StageStrip({ incident, now }: { incident: Incident | null; now: 
   const times = stageTimes(incident?.events ?? [], incident?.closedAt ?? now);
   return (
     <ol className={styles.strip} aria-label="Pipeline stages">
-      {STAGES.map((stage, i) => {
+      {STAGES.map((stage) => {
         const state = incident?.stages[stage] ?? "idle";
         const t = times[stage];
         return (
-          <li key={stage} className={`${styles.step} ${styles[state] ?? ""}`} title={COPY[stage].hint}>
-            <div className={styles.top}>
-              <span className={styles.num}>{String(i + 1).padStart(2, "0")}</span>
-              <span className={styles.title}>{COPY[stage].title}</span>
-            </div>
-            <span className={styles.state}>{STATE_LABEL[state]}</span>
-            <div className={styles.time}>
-              {t && incident ? `${since(t.start, incident.openedAt)} · ${duration(t.took)}` : COPY[stage].hint}
-            </div>
+          <li key={stage} className={`${styles.step} ${styles[state] ?? ""}`}
+            title={`${COPY[stage].hint}${t && incident ? ` · started ${since(t.start, incident.openedAt)}` : ""}`}>
+            <span className={styles.title}>{COPY[stage].title}</span>
+            <span className={styles.state}>
+              {t && incident && state === "done" ? duration(t.took)
+                : t && incident ? `${STATE_LABEL[state]} · ${duration(t.took)}` : STATE_LABEL[state]}
+            </span>
           </li>
         );
       })}

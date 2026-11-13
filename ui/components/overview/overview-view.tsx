@@ -119,8 +119,8 @@ export function OverviewView({ services }: { services: Record<string, ServiceInf
   return (
     <div className={styles.page}>
       <PageHead
-        eyebrow={`namespace shop${health ? ` · numbers from ${clock(health.last_ok_ts ?? health.ts)}` : ""}`}
         title="Overview"
+        meta={`Namespace shop${health ? ` · numbers from ${clock(health.last_ok_ts ?? health.ts)}` : ""}`}
         aside={<>
           {mode && <Tag tone={mode.tone} title={mode.title}>{mode.label}</Tag>}
           {openIds.length > 1
