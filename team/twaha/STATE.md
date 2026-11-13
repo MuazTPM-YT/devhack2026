@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-11-13
 **Current phase:** Chaos Lab + agent chooses the fix, offline checks done, live check NOT run
-**Branch:** `twaha/chaos-lab` off `origin/main` `88d0ef7` (PR #43 merged), 19 commits, not pushed
+**Branch:** `twaha/chaos-lab` off `origin/main` `88d0ef7` (PR #43 merged), not pushed
 **Implementation:** PRs #8, #12, #15, #43 merged
 
 ## Done (with proof)
