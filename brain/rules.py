@@ -3,6 +3,7 @@
 
 # template-level changes undo by rollback; env by revert_config; replica count by scale
 TOOL_FOR_KIND = {"image": "rollback_deploy", "resources": "rollback_deploy", "other": "rollback_deploy",
+                 "flag": "revert_config",
                  "env": "revert_config", "replicas": "scale"}
 UNITS = {"Ki": 2**10, "Mi": 2**20, "Gi": 2**30, "K": 10**3, "M": 10**6, "G": 10**9}
 
@@ -21,21 +22,30 @@ def _action(incident: dict, tool: str, target: str, pattern: str, evidence: list
 
 
 # THE GENERAL RULE input: newest non-restart change on the culprit's Deployment inside the window
-def latest_change_before_onset(journal: list[dict], culprit: str, onset: float, window_s: float) -> dict | None:
-    # ponytail: only the culprit's own Deployment; link ConfigMaps/flags to services when services.yaml maps them
-    hits = [j for j in journal if j["object"] == f"deployment/{culprit}" and j["kind"] != "restart"
-            and onset - window_s <= j["ts"] <= onset]
+def _flag_targets(entry: dict, flag_map: dict) -> set[str]:
+    names = [p[len("flags["):].split("]", 1)[0] for p in entry.get("diff", {}) if p.startswith("flags[")]
+    return {flag_map[n] for n in names if n in flag_map}
+
+
+# THE GENERAL RULE input: newest non-restart change on the culprit's Deployment, or on a flag that
+# config/services.yaml `flags:` maps to the culprit, inside the window
+def latest_change_before_onset(journal: list[dict], culprit: str, onset: float, window_s: float,
+                               flag_map: dict | None = None) -> dict | None:
+    hits = [j for j in journal if onset - window_s <= j["ts"] <= onset and j["kind"] != "restart"
+            and (j["object"] == f"deployment/{culprit}"
+                 or (j["kind"] == "flag" and culprit in _flag_targets(j, flag_map or {})))]
     return max(hits, key=lambda j: (j["ts"], j["id"]), default=None)
 
 
 # -> (pattern, actions). pattern: recent_change | resource | protected | unknown
 def match(incident: dict, journal: list[dict], events: list[dict], services: dict, policy: dict,
-          memory_ratio: float | None = None, memory_limit: str | None = None) -> tuple[str, list[dict]]:
+          memory_ratio: float | None = None, memory_limit: str | None = None,
+          flag_map: dict | None = None) -> tuple[str, list[dict]]:
     culprit = incident.get("culprit")
     if culprit is None or culprit not in services:
         return "unknown", []
     window_s = policy["change_window_minutes"] * 60
-    change = latest_change_before_onset(journal, culprit, incident["onset_at"], window_s)
+    change = latest_change_before_onset(journal, culprit, incident["onset_at"], window_s, flag_map)
 
     if services[culprit].get("protected"):
         # propose the obvious inverse anyway; the gateway always escalates protected targets

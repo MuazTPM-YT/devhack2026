@@ -72,8 +72,8 @@ def find_culprit(traces: list[dict], unhealthy: list[str], edges: list[tuple[str
 # culprit had no change of its own: a recent change on something it depends on is the likelier root
 # (scenario 5: valkey-cart scaled to 0, cart shows the errors)
 def dependency_change(journal: list[dict], culprit: str, edges: list[tuple[str, str, float]], services: dict,
-                      onset: float, window_s: float) -> dict | None:
-    own = latest_change_before_onset(journal, culprit, onset, window_s)
+                      onset: float, window_s: float, flag_map: dict | None = None) -> dict | None:
+    own = latest_change_before_onset(journal, culprit, onset, window_s, flag_map)
     if own and not own["by_agent"]:
         return None
     # ponytail: datastores emit no spans, so Jaeger has no edge to them; treat stateful services as dependencies
