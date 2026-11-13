@@ -146,6 +146,8 @@ REASONS = [
     (r"another action is still being verified", "The agent is still checking an earlier fix, "
                                                 "so it will not start another one yet."),
     (r"problem no longer present", "The problem went away before the agent acted."),
+    (r"no health readings", "Health data stopped arriving, so the agent cannot tell if the problem is still "
+                            "there. A person must check."),
     (r"rule result changed", "The situation changed while the agent was deciding, so a person should check."),
     (r"journal entry \d+ (?:no longer matches|not found)", "The change the agent wanted to undo has changed again "
                                                            "since. A person should check."),

@@ -180,6 +180,7 @@ def test_model_text_loses_epochs_ids_and_markdown():
     "action budget used up", "no safe action (unknown)", "no safe action (resource)",
     "valkey-cart is protected; a human must act", "valkey-cart is a protected data store; a human must approve",
     "another action is still being verified", "problem no longer present",
+    "no health readings for payment; cannot tell if the problem is still there",
     "rule result changed: ('recent_change', 3) -> ('recent_change', 4)",
     "journal entry 41 no longer matches the live object", "journal entry 41 not found",
     "observer unreachable: ConnectError", "action refused: target not allowed", "tool scale not allowed",
