@@ -43,6 +43,8 @@ class FakeKubectl:
             raise KubectlError(f"kubectl {args[0]} {args[1]}: forbidden")
         if args[:2] == ("get", "deployments"):
             return json.dumps({"items": list(self.deployments.values())})
+        if args[0] == "patch" and "--dry-run=server" in args:
+            return ""
         if args[:2] == ("patch", "deployment"):
             target = self.deployments[args[2]]
             patch = json.loads(args[args.index("-p") + 1])
@@ -63,7 +65,11 @@ class FakeKubectl:
                         if container["name"] != change["name"]:
                             continue
                         env = {e["name"]: e for e in container["env"]}
-                        env.update({e["name"]: e for e in change.pop("env", [])})
+                        for e in change.pop("env", []):
+                            if e.get("$patch") == "delete":
+                                env.pop(e["name"], None)
+                            else:
+                                env[e["name"]] = e
                         container.update(change, env=list(env.values()))
             return ""
         if args[:2] == ("get", "configmap"):
@@ -413,3 +419,38 @@ def test_reset_with_old_snapshot_without_resources_still_works(tmp_path):
     shared_outage(fake)
     restored = reset(snapshot, fake)  # kafka back, then its clients restarted (RESTART_AFTER)
     assert restored[0] == "kafka" and fake.replicas("kafka") == 1
+
+
+def test_read_field_sees_every_owned_kind():
+    from chaos.faults import read_field
+    fake = FakeKubectl()
+    assert read_field("image", "payment", None, fake) == GOOD_IMAGE
+    assert read_field("replicas", "payment", None, fake) == 2
+    assert read_field("env", "checkout", "PAYMENT_ADDR", fake) == "payment:8080"
+    assert read_field("env", "checkout", "NOT_SET", fake) is None
+    assert read_field("flag", FLIP_FLAG, None, fake) == "off"
+
+
+def test_write_field_removes_an_env_var_and_leaves_the_rest():
+    from chaos.faults import write_field
+    fake = FakeKubectl()
+    write_field("env", "checkout", "EXTRA", "1", fake)
+    assert fake.env("checkout")["EXTRA"] == "1"
+    write_field("env", "checkout", "EXTRA", None, fake)
+    assert fake.env("checkout") == {"CHECKOUT_PORT": "8080", "PAYMENT_ADDR": "payment:8080"}
+
+
+def test_dry_write_changes_nothing():
+    from chaos.faults import write_field
+    fake = FakeKubectl()
+    write_field("image", "payment", None, BAD_PAYMENT_IMAGE, fake, dry=True)
+    write_field("flag", FLIP_FLAG, None, "50%", fake, dry=True)
+    assert fake.image("payment") == GOOD_IMAGE
+    assert json.loads(fake.configmaps[FLAG_CONFIGMAP]["data"][FLAG_FILE])["flags"][FLIP_FLAG]["defaultVariant"] == "off"
+    assert all("--dry-run=server" in c for c in fake.calls if c[0] == "patch")
+
+
+def test_unknown_deployment_fails_loud():
+    from chaos.faults import read_field
+    with pytest.raises(KubectlError, match="not found"):
+        read_field("image", "nope", None, FakeKubectl())
