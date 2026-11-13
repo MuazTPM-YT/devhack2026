@@ -10,6 +10,17 @@ section. Only my own work here; cross-team facts go in
 
 ## Done (with proof)
 
+- End-to-end bad-deploy through the CLI, UI and Discord, 2026-11-13:
+  run 3 `incident_resolved`, card `FIXED in 2m 42s: payment; payment
+  errors 43.0% -> 0.0%`, receipt #13, prediction held, harm clean,
+  approved in Discord by Anirudh. Runs 1-2 escalated: notifier was not
+  running (run 1), then Anirudh's id was missing from
+  `ONCALL_APPROVER_IDS` (run 2; added, gateway + notifier restarted).
+  False ground-truth line removed (backup in scratchpad); chaos panel
+  restarted with the `verb()` fix (live `-n shop get` not logged). UI
+  fix: trust gate asking a human left Check "stopped" on a resolved
+  incident; test added.
+
 - UI redesign + judges' chaos CLI, 2026-11-13, branch `anirudh/ui-redesign`
   (4 commits: a6eaeb9, 94647fb, 63a43d2, 2ccd8d7). Decisions by Anirudh:
   hybrid style (same palette, denser), real events only, approvals stay
@@ -165,12 +176,6 @@ section. Only my own work here; cross-team facts go in
 
 ## Next
 
-- **Bad ground-truth line** written by my live CLI check before the
-  fix: `data/ground_truth.jsonl` last line `judge_kubectl` args
-  `["-n","shop","get","deploy","cart"]` (ts 1794560746.68). Asked
-  Anirudh whether to delete it.
-- Restart the chaos panel (:7004) to load the `verb()` fix; the running
-  process still has the old read-only check.
 0. **REMINDER for Anirudh: remove the `?demo=1` replay before submission**
    (`ui/lib/demo.ts`, the demo branch in `ui/lib/use-live.ts` and
    `ui/lib/use-receipt.ts`, the Replay button in
