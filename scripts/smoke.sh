@@ -50,7 +50,11 @@ def show(kind):
 outcome = next((k for k in ("incident_resolved", "escalated", "handed_off") if k in marks), "timeout")
 print(f"incident={incident} outcome={outcome}")
 print(f"detect={show('incident_opened')} diagnose={show('diagnosis_ready')} "
-      f"recover={show('incident_resolved')}")
+      f"act={show('action_executed')} recover={show('incident_resolved')}")
+# "resolved" with no action means the agent fixed nothing (e.g. it lost its metrics and saw "problem gone")
+if outcome == "incident_resolved" and "action_executed" not in marks:
+    print("FAIL: resolved but the agent took no action; the fault may still be live")
+    sys.exit(1)
 sys.exit(0 if outcome == "incident_resolved" else 1)
 EOF
 
