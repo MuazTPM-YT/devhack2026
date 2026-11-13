@@ -482,7 +482,8 @@ class Gateway:
                             "payload": {"receipt_id": receipt_id, **harm}})
         outcome = v.outcome(harm["clean"])
         if outcome == "undo":
-            reason = "did not recover" if not v.recovered else "harm check failed"
+            reason = "harm check failed" if v.recovered else (
+                "monitoring went blind; recovery not proven" if v.blind else "did not recover")
             return await self.undo_and_close(receipt_id, action, row, receipt, v, pause=False, harm=harm,
                                              reason=reason, hash_after=namespace_hash(after), plan=plan)
         return await self.close(receipt_id, action, row, receipt, v, outcome, harm, None, namespace_hash(after),

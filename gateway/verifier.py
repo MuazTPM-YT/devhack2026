@@ -26,6 +26,8 @@ class Verification:
         # None = nothing to check (no prediction); a fix without one can only be "right by accident"
         self.prediction_held: bool | None = False if prediction else None
         self.recovered = False
+        # the last reading was stale (observer serving old numbers, prometheus_ok false): it proved nothing
+        self.blind = False
         self.last_health = health_at_action
         self.collateral: dict[str, float] = {}
         self.last_ts = t0
@@ -41,8 +43,10 @@ class Verification:
                 self.collateral[s] = self.collateral.get(s, 0) + (now - self.last_ts)
         self.last_ts = now
 
+        # stale numbers are no evidence: they cannot prove the prediction, a recovery, or harm
+        self.blind = health.get("prometheus_ok") is False
         p = self.prediction
-        if p and now - self.t0 <= p["within_s"] + self.prediction_delay_s:
+        if p and not self.blind and now - self.t0 <= p["within_s"] + self.prediction_delay_s:
             value = services.get(p["target"], {}).get(p["metric"])
             if value is not None and value < p["below"]:
                 self.prediction_held = True
@@ -50,9 +54,10 @@ class Verification:
         if non_agent_change:
             return "handed_off"
         # victims lag the culprit, so severity can rise just after a right fix: no early abort in the grace
-        if self.early_abort and now - self.t0 >= self.grace_s and health["severity"] > self.sev_before:
+        if (self.early_abort and not self.blind and now - self.t0 >= self.grace_s
+                and health["severity"] > self.sev_before):
             return "early_abort"
-        healthy = all(services.get(s, {}).get("unhealthy") is False for s in self.watched)
+        healthy = not self.blind and all(services.get(s, {}).get("unhealthy") is False for s in self.watched)
         self.recovered = healthy
         if healthy:
             self.healthy_since = now if self.healthy_since is None else self.healthy_since
