@@ -43,7 +43,7 @@ have offline test evidence; live acceptance stays open below.
 - [x] P1 Human approver clicks Approve on a real cluster approval (smoke #2, #3 via Discord)
 - [x] P1 Benchmark harness: incremental results, failed attempts, resume, SSE reconnect/deduplication, partial timings (`tests/test_bench.py`, §9.1)
 - [x] P1 Read-only trust report separates statistical confidence from authorization (`tests/test_trust_report.py`)
-- [ ] P1 Fix LLM timeouts on live bundles first: no diagnosis -> no prediction -> no trust credit
+- [ ] P1 Live smoke reliable first: LLM deadline 90 s done; wrong culprit (frontend-proxy) open, M
 - [ ] P1 Start overnight runs: 30 each for `(recent_change, rollback_deploy, payment)` and `(recent_change, revert_config, checkout)` (§9.1)
 - [x] P1 Red-team component suite: 12 cases; JSON report generation (`tests/redteam/`, `bench/redteam.py`)
 - [ ] P1 Complete live RBAC/admission, freshness, budget, and authorization checks; publish the acceptance table (§8.3)

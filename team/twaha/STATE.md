@@ -118,10 +118,12 @@
 
 ## Blocked / waiting on
 
-- LLM `deadline_exceeded` on live bundles (45 s in smoke #3; small bundle
-  takes 12.6 s with 1225 prompt tokens, A's live success used 44323 tokens).
-  Without a diagnosis there is no prediction, so the outcome is right_by_accident
-  and the ledger gets no credit. This blocks useful overnight trust runs.
+- LLM deadline raised to 90 s (`1136069`): smoke #3 timed out at 45 s; smoke #4
+  call took 14.7 s with 2387 prompt tokens, so it is provider latency, not size.
+- Smoke #4 escalated: brain blamed `frontend-proxy` (trace tie-break, M's
+  `brain/culprit.py`), no change in bundle, no action. Payment reset by chaos
+  panel; incident closed with a `[SMOKE TEST]` handed_off. Details for M in
+  SHARED_CONTEXT. Smoke is flaky until this is fixed.
 - M: `/approvals/{id}/decide` trusts `decided_by` from the body (auth gap).
 - Push/PR of `twaha/live-fixes-2` waits on Twaha's OK.
 - `agent.kubeconfig`/`reader.kubeconfig` tokens last 72 h; rerun
@@ -132,7 +134,7 @@
 
 ## Next
 
-1. Shrink the live diagnosis prompt (measure tokens per bundle part first).
+1. Culprit tie-break fix (M's file; or reproduce with live trace capture).
 2. Rerun smoke; confirm `llm_called` succeeds and the card is FIXED.
 3. Overnight trust runs, accuracy runs, separate result files; then reports.
 4. Try A's `/chaos/flag-flip` -> `revert_config` path live.
