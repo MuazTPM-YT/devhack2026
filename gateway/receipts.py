@@ -1,10 +1,12 @@
 import json
+import re
 import sqlite3
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
 from brain.redact import redact_value
+from gateway.executor import NAMESPACE
 from schemas.models import Card, Diagnosis, GatewayDecision, Incident, Receipt
 
 
@@ -97,16 +99,18 @@ def checked(receipt: Receipt) -> str:
     return "; ".join(parts)
 
 
-# a command the human can run, or why there is nothing to run
-def undo(receipt: Receipt, svc: str) -> str:
+# a command the human can run, or why there is nothing to run; only plain k8s names go into a command
+def undo(receipt: Receipt, target: str) -> str:
     if receipt.outcome == "undone":
         return "nothing to do, the agent already undid it"
-    if receipt.tool in ("rollback_deploy", "raise_limit"):
-        return f"kubectl rollout undo deploy/{svc} -n shop"
-    if receipt.tool == "scale" and receipt.inverse.get("replicas") is not None:
-        return f"kubectl scale deploy/{svc} -n shop --replicas={receipt.inverse['replicas']}"
     if receipt.tool == "restart_service":
         return "nothing to undo, a restart changes no settings"
+    if not re.fullmatch(r"[a-z0-9-]+", target):
+        return "see the receipt for the saved previous state"
+    if receipt.tool in ("rollback_deploy", "raise_limit"):
+        return f"kubectl rollout undo deploy/{target} -n {NAMESPACE}"
+    if receipt.tool == "scale" and isinstance(receipt.inverse.get("replicas"), int):
+        return f"kubectl scale deploy/{target} -n {NAMESPACE} --replicas={receipt.inverse['replicas']}"
     return "see the receipt for the saved previous state"
 
 
@@ -147,8 +151,9 @@ def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
     if causes and causes[0].explanation.strip():
         why += f"; {one_line(causes[0].explanation)[:200]}"
     if receipt and receipt_id is not None:
-        did = f"{DID.get(receipt.tool, receipt.tool).format(svc=svc)} (receipt #{receipt_id})"
-        last = f"Undo: {undo(receipt, svc)}"
+        target = one_line(receipt.target)
+        did = f"{DID.get(receipt.tool, receipt.tool).format(svc=target)} (receipt #{receipt_id})"
+        last = f"Undo: {undo(receipt, target)}"
         check = checked(receipt)
     else:
         did = "nothing yet"

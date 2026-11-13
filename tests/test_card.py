@@ -70,3 +70,16 @@ async def test_fyi_receipt_link_is_absolute(tmp_path):
         await NotificationConsumer(client, "http://127.0.0.1:7003/", notifier,
                                    NotifierState(tmp_path / "s.db")).handle(record)
     assert notifier.urls == ["http://127.0.0.1:7003/receipts/2"]
+
+
+# action can target a dependency (valkey-cart) while the culprit is cart: undo must name what was touched
+def test_did_and_undo_name_the_action_target_not_the_culprit():
+    cart = INC.model_copy(update={"culprit": "cart"})
+    lines = build_incident_card(cart, receipt=receipt(target="valkey-cart"), receipt_id=4).text.splitlines()
+    assert lines[2] == "Did: rolled valkey-cart back to its previous version (receipt #4)"
+    assert lines[4] == "Undo: kubectl rollout undo deploy/valkey-cart -n shop"
+
+
+def test_odd_target_name_never_becomes_a_command():
+    lines = build_incident_card(INC, receipt=receipt(target="pay;rm -rf"), receipt_id=5).text.splitlines()
+    assert "kubectl" not in lines[4]
