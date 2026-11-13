@@ -38,6 +38,28 @@ endpoint with its own user agent and a stable incident session header.
 availability, compatible clients, and allowance limits. Confirm that the selected
 model and workload are supported by your subscription before live use.
 
+### Agent mode (default)
+
+`BRAIN_MODE=agent` (the default) runs diagnosis as a tool-using agent
+(`brain/agent.py`, built on `pydantic-ai-slim`). The model gets a thin brief:
+the incident, the rule pattern and action, the culprit guess, runbooks and past
+incidents. It then reads telemetry through nine read-only tools in
+`brain/tools.py`: service health, metric history (allow-listed PromQL only),
+recent changes, dependencies, error traces, pods, Kubernetes events, pod error
+logs, and earlier runs of a fix. Agent mode needs `PROMETHEUS_URL`.
+
+The code keeps control. After 6 model rounds the tools are removed, and the
+whole run has 150 s. Each tool result is redacted, its injection lines are
+quarantined, and it is capped at 2000 chars. The model may cite only evidence IDs
+that a tool returned, and a made-up ID goes back to the model. For known
+patterns the rule's fix is still the action. When the agent fails, the rule
+action goes to the gateway without a diagnosis. Every tool call is published as
+`llm_called` with `tool`, `args`, `ms` and `evidence_ids`.
+
+`BRAIN_MODE=bundle` keeps the single-call path below, for comparison.
+
+### Bundle mode
+
 Muaz's orchestration constructs `OpenCodeGoAdapter.from_env(http_client)`, then
 `DiagnosisService(provider, Path("data/inference-cache"))`. Call
 `await service.diagnose(bundle, pattern, rule_action)`. The result contains a
@@ -153,6 +175,33 @@ at start. Read routes stay open for the UI. A manual approval is now:
 -d '{"decision":"approved","decided_by":"<id>"}' $GATEWAY_URL/approvals/<id>/decide`.
 
 The notifier and Go adapter are not exercised live by the offline suite.
+
+## Breaking the shop (chaos CLI)
+
+Faults are injected from the terminal, not from the UI. The CLI talks to the
+chaos panel on `:7004` (`CHAOS_URL`), so every change is logged in
+`data/ground_truth.jsonl`. The agent never reads that file. Every fault
+stays until `reset`.
+
+Interactive shell: run `uv run -m chaos.cli` with no command. Type `/` for
+a dropdown of commands (arrow keys to pick, Tab or Enter to fill in);
+`/inject <Tab>` lists the faults; `/watch` streams the agent's steps live;
+the bottom bar shows gateway and observer state and the current severity.
+
+One-shot commands (scripts, CI):
+
+```bash
+uv run python -m chaos.cli list                       # faults you can inject
+uv run python -m chaos.cli inject bad-deploy          # break payment; watch http://localhost:3000/live
+uv run python -m chaos.cli status                     # severity and per-service health (observer :7001)
+uv run python -m chaos.cli kubectl -n shop scale deploy/cart --replicas=0   # break it your own way (admin)
+uv run python -m chaos.cli truth                      # what was really broken and when
+uv run python -m chaos.cli reset                      # undo everything, wait until healthy
+```
+
+`kubectl` runs as cluster admin without a shell: pipes and `$()` are passed
+to kubectl as plain words. Read-only verbs (`get`, `describe`, `logs`, ...)
+are not logged. Every other verb is logged as ground truth.
 
 ## Benchmarks and adversarial checks
 

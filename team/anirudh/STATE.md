@@ -5,10 +5,56 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** spec audit fixes on `anirudh/spec-fixes` (not pushed).
-Phases 0-4 merged.
+**Current phase:** UI redesign + chaos CLI on `anirudh/ui-redesign`
+(cut from `anirudh/spec-fixes`; neither pushed). Phases 0-4 merged.
 
 ## Done (with proof)
+
+- UI revamp + emil-design-eng audit, 2026-11-13 (df70108). Skill pack
+  `emilkowalski/skills` installed project-scoped in `.claude/skills/` +
+  `skills-lock.json` (untracked, not committed). Decisions by Anirudh:
+  neutral paper/ink + oxblood accent, Geist only, slim light sidebar,
+  Overview as `/`, live page at `/live`. Audit fixes applied (loops on
+  persistent elements removed, row entrance motion removed, strong
+  easing tokens, `:active` press, gated hover, gentler reduced motion,
+  Escape closes drawer instantly, 100dvh, 16px select, "1m 60s" and
+  "1 events" bugs). Checks: UI 30 pass, tsc clean, build OK, pytest 400,
+  ruff clean. Screenshots 1440/1680/900/390 px from a prod build on
+  :3001 (scratchpad `rv/`), no console errors.
+
+- End-to-end bad-deploy through the CLI, UI and Discord, 2026-11-13:
+  run 3 `incident_resolved`, card `FIXED in 2m 42s: payment; payment
+  errors 43.0% -> 0.0%`, receipt #13, prediction held, harm clean,
+  approved in Discord by Anirudh. Runs 1-2 escalated: notifier was not
+  running (run 1), then Anirudh's id was missing from
+  `ONCALL_APPROVER_IDS` (run 2; added, gateway + notifier restarted).
+  False ground-truth line removed (backup in scratchpad); chaos panel
+  restarted with the `verb()` fix (live `-n shop get` not logged). UI
+  fix: trust gate asking a human left Check "stopped" on a resolved
+  incident; test added.
+
+- UI redesign + judges' chaos CLI, 2026-11-13, branch `anirudh/ui-redesign`
+  (4 commits: a6eaeb9, 94647fb, 63a43d2, 2ccd8d7). Decisions by Anirudh:
+  hybrid style (same palette, denser), real events only, approvals stay
+  read-only, faults from a CLI not the UI, `/chaos` read-only, brand
+  "Akira", event-log card removed.
+  - `chaos/cli.py`: `uv run python -m chaos.cli list|inject|reset|kubectl|
+    status|truth`, wraps the chaos API so ground truth is still logged.
+    Live: `list`, `status`, `truth`, `kubectl get` OK against :7004/:7001.
+    Inject/reset **not run live** (would page Discord).
+  - Fix: `chaos/main.py` judged read-only kubectl by `args[0]`, so
+    `-n shop get ...` was logged as ground truth. Now `verb()` skips
+    global flags. Test fails before, passes after.
+  - UI: left sidebar (nav, incident history, gateway/observer status;
+    rail at <=1100 px, drawer at <=720 px); one SSE stream in the layout
+    (`ui/lib/live-context.tsx`); live page has a request-flow map
+    (`ui/lib/flow.ts` maps each event to a path between services) and a
+    per-incident timeline with payloads. `/chaos` shows health, ground
+    truth, copyable CLI commands; Next proxies only
+    `GET /chaos/ground-truth`.
+  - Checks: UI `npm test` 23 pass, `tsc` clean, `next build` OK; pytest
+    400 passed; ruff, mypy clean. Screenshots 1440/900/390 px with live
+    bus data and the `?demo=1` replay (scratchpad only).
 
 - Spec audit (IMPLEMENTATION.md vs code) and fixes, 2026-11-13, branch
   `anirudh/spec-fixes`: details and open items in `team/SHARED_CONTEXT.md`
@@ -142,6 +188,10 @@ Phases 0-4 merged.
 
 ## Next
 
+- Restart the Next dev server on :3000: it serves a stale `/live`
+  (hydration error); the auto-mode permission check blocked me from
+  killing it. A prod build of the new UI runs on :3001 from my session.
+- Break-ui dev toggle (Demo / Worst case) not wired; offered.
 0. **REMINDER for Anirudh: remove the `?demo=1` replay before submission**
    (`ui/lib/demo.ts`, the demo branch in `ui/lib/use-live.ts` and
    `ui/lib/use-receipt.ts`, the Replay button in

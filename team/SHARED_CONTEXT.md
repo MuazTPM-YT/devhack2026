@@ -1022,6 +1022,36 @@ Seeded from reading the plan. Reply under each one.
   293Mi). `scripts/install_shop.sh` now passes `--force-conflicts`: helm 4
   applies server-side and a re-install after any flag fault stopped on a
   flagd-config conflict with chaos-panel. Suite 385 passed.
+- [A] 2026-11-13 for M,T: Branch `anirudh/ui-redesign` (not pushed).
+  (1) Faults now come from a terminal: `uv run python -m chaos.cli
+  inject <fault>|reset|kubectl ...|status|truth`. It calls the same
+  chaos API, so `data/ground_truth.jsonl` and the bench are unchanged.
+  The UI no longer injects, and Next proxies only
+  `GET /api/chaos/ground-truth`. (2) Chaos fix: `-n shop get ...` from
+  the judges' kubectl used to be logged as ground truth (verb read from
+  `args[0]`). (3) The UI draws a request-flow map from bus events. The
+  event to path mapping is in `ui/lib/flow.ts` (`pathOf`). If you add or
+  rename an event type or a checklist step name, tell me so the map and
+  timeline stay right. Plan §6.8 updated.
+- [A] 2026-11-13 for M: Observer closed a resolved incident as stuck.
+  Incident `inc-1794563592328` got `incident_resolved` (audit seq 979)
+  and then the observer's max-age `escalated` ("no outcome 1202 s after
+  opening", seq 980). The gateway had been restarted about 3 min before
+  that incident opened (15:20, to reload `ONCALL_APPROVER_IDS`). Guess,
+  not verified (no observer log here): `follow_terminal_events` did not
+  see seq 979 after the gateway restart. The UI shows the last terminal
+  event, so the incident now reads "escalated".
+- [A] 2026-11-13 for M,T: UI routes changed: `/` is now an Overview of
+  every service, the live incident page is `/live` (`/live?incident=`).
+  The UI reads `config/policy.yaml` (detection thresholds,
+  `incident_max_age_seconds`) and `config/services.yaml` on the server
+  side; renaming those keys breaks the Overview bars and the "No outcome"
+  status (tests in `ui/lib/overview.test.ts` read the real files).
+- [A] 2026-11-13 for M,T: New dependency `prompt-toolkit~=3.0.53` (plus
+  `wcwidth` 0.9.4) for the chaos shell; run `uv sync --locked` after
+  pulling `anirudh/ui-redesign`. `uv run -m chaos.cli` with no command
+  opens an interactive shell (`/inject`, `/watch`, `/status`, `/reset`).
+  The one-shot subcommands are unchanged.
 - [T] 2026-11-13 for M,A: **Discord cards are embeds now** (branch
   `twaha/card-embeds`). Live pages read "action budget used up", "no safe
   action (unknown)" and `[query:p95_ms:service=...]`; on-call could not tell
@@ -1113,6 +1143,16 @@ Seeded from reading the plan. Reply under each one.
   `For:` audience line, runbook, seen-before, approvers, page count and a who/when outcome
   on decide/ack (custom_ids unchanged); escalated/approval/terminal payloads may carry `runbook`
   and `seen_before`; `rule_matched` adds `runbooks`, `similar_before`; prompt version 6.
+- [T] 2026-11-13 for M,A: Branch `twaha/agent-tools` (not pushed). Brain
+  diagnosis becomes a tool-using agent: `brain/agent.py` + 9 read-only tools in
+  `brain/tools.py` (reader identity, allow-listed PromQL, no writes). Rules and
+  gateway unchanged; the rule fix still wins for known patterns.
+  **Action needed:** brain `.env` needs `PROMETHEUS_URL` (agent mode is the
+  default) or `BRAIN_MODE=bundle` for the old single call. **Deps bumped for
+  everyone:** pydantic 2.11 -> 2.14.1 and new `pydantic-ai-slim[openai]` 2.63.0;
+  run `uv sync --locked`. Events: each tool call is an `llm_called` with extra
+  `tool`, `args`, `ms`, `evidence_ids` (no schema change). Agent run takes
+  ~60 s and ~30k tokens vs one ~2k-token call: bench both modes.
 - [M] 2026-11-13 for A,T: Audit + local end-to-end run on `muaz/agent-polish` (Muaz OK'd edits to your files).
   **Action needed (A):** re-apply `k8s/admission-policy.yaml` + `k8s/admission-binding.yaml` on the live
   cluster (new policy `oncall-agent-flags`), then `./scripts/security_check.sh` (now 35 rows). The image rule is
@@ -1134,3 +1174,6 @@ Seeded from reading the plan. Reply under each one.
   now expects `handed_off` (Muaz OK'd); new `REASONS` rows in `gateway/receipts.py`.
   Open, not changed: a judge's unjournaled break within 10 min of a chaos reset can still pick the reset's change
   as "recent change" (reset and inject share the field manager `chaos-panel`; needs a separate reset manager, A's call).
+  -> [M] 2026-11-13: after merging main (A's read-only chaos page): the UI chaos route above is dropped; the
+  browser only reads `/chaos/ground-truth` (GET, open). `chaos/cli.py` and the shell send `X-Oncall-Token`
+  from `ONCALL_API_TOKEN` and stop with a plain error when it is missing.

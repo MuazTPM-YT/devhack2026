@@ -44,43 +44,47 @@ class DiagnosisResult:
     events: list[dict[str, Any]]
 
 
+# model may cite only evidence it was shown and name only services in play; raises ValueError(code)
+def check(diagnosis: Diagnosis, bundle: EvidenceBundle, needs_prediction: bool = False) -> Diagnosis:
+    evidence = {e.id for group in (bundle.changes, bundle.metrics, bundle.traces,
+                                  bundle.events, bundle.logs) for e in group}
+    services = set(bundle.incident.unhealthy + bundle.incident.victims)
+    if bundle.incident.culprit:
+        services.add(bundle.incident.culprit)
+    services.update(s for edge in bundle.dependency_edges for s in edge[:2])
+    for cause in diagnosis.causes:
+        if cause.cause_class != "unknown" and not cause.evidence_ids:
+            raise ValueError("cause_requires_evidence")
+        if not set(cause.evidence_ids) <= evidence or cause.culprit not in services:
+            raise ValueError("unsupported_cause")
+    action = diagnosis.proposed
+    if action:
+        if action.incident_id != bundle.incident.id or action.target not in services:
+            raise ValueError("invalid_action_context")
+        if not action.evidence_ids or not set(action.evidence_ids) <= evidence:
+            raise ValueError("unsupported_action")
+        if action.journal_entry is not None and f"journal:{action.journal_entry}" not in action.evidence_ids:
+            raise ValueError("unsupported_journal")
+        if action.tool == "scale" and (
+            type(action.params.get("replicas")) is not int
+            or not 1 <= action.params["replicas"] <= 3
+        ):
+            raise ValueError("invalid_scale")
+    for prediction in (diagnosis.prediction, action.prediction if action else None):
+        if prediction and (prediction.target not in services or prediction.metric not in {"err_ratio", "p95_ms"}):
+            raise ValueError("invalid_prediction")
+    # no prediction -> the verifier can only ever say "right by accident"
+    if (needs_prediction or action) and not (diagnosis.prediction or (action and action.prediction)):
+        raise ValueError("missing_prediction")
+    return diagnosis
+
+
 class DiagnosisService:
     def __init__(self, provider: InferenceProvider, cache_dir: Path, timeout_s: float = DEADLINE_S):
         self.provider, self.cache_dir, self.timeout_s = provider, cache_dir, timeout_s
 
     def _validate(self, raw: str, bundle: EvidenceBundle, needs_prediction: bool = False) -> Diagnosis:
-        diagnosis = Diagnosis.model_validate_json(raw)
-        evidence = {e.id for group in (bundle.changes, bundle.metrics, bundle.traces,
-                                      bundle.events, bundle.logs) for e in group}
-        services = set(bundle.incident.unhealthy + bundle.incident.victims)
-        if bundle.incident.culprit:
-            services.add(bundle.incident.culprit)
-        services.update(s for edge in bundle.dependency_edges for s in edge[:2])
-        for cause in diagnosis.causes:
-            if cause.cause_class != "unknown" and not cause.evidence_ids:
-                raise ValueError("cause_requires_evidence")
-            if not set(cause.evidence_ids) <= evidence or cause.culprit not in services:
-                raise ValueError("unsupported_cause")
-        action = diagnosis.proposed
-        if action:
-            if action.incident_id != bundle.incident.id or action.target not in services:
-                raise ValueError("invalid_action_context")
-            if not action.evidence_ids or not set(action.evidence_ids) <= evidence:
-                raise ValueError("unsupported_action")
-            if action.journal_entry is not None and f"journal:{action.journal_entry}" not in action.evidence_ids:
-                raise ValueError("unsupported_journal")
-            if action.tool == "scale" and (
-                type(action.params.get("replicas")) is not int
-                or not 1 <= action.params["replicas"] <= 3
-            ):
-                raise ValueError("invalid_scale")
-        for prediction in (diagnosis.prediction, action.prediction if action else None):
-            if prediction and (prediction.target not in services or prediction.metric not in {"err_ratio", "p95_ms"}):
-                raise ValueError("invalid_prediction")
-        # no prediction -> the verifier can only ever say "right by accident"
-        if (needs_prediction or action) and not (diagnosis.prediction or (action and action.prediction)):
-            raise ValueError("missing_prediction")
-        return diagnosis
+        return check(Diagnosis.model_validate_json(raw), bundle, needs_prediction)
 
     # guide: {"runbooks": [...], "past_incidents": [...]} from brain/runbooks.py and brain/memory.py
     async def diagnose(self, bundle: EvidenceBundle, pattern: Pattern,

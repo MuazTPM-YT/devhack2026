@@ -7,7 +7,8 @@ import httpx
 
 from brain.providers.base import DEADLINE_S, InferenceRequest, InferenceResponse, ProviderError
 
-ENDPOINT = "https://opencode.ai/inference/go/openai/v1/chat/completions"
+BASE_URL = "https://opencode.ai/inference/go/openai/v1"
+ENDPOINT = f"{BASE_URL}/chat/completions"
 
 
 class OpenCodeGoAdapter:

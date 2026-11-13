@@ -33,6 +33,24 @@ FAULTS: dict[str, Callable[[Kubectl], dict[str, str]]] = {
 READ_ONLY = {"get", "describe", "logs", "top", "explain", "api-resources", "api-versions", "version",
              "events", "auth", "cluster-info", "diff"}
 
+# kubectl global flags that take the next word as their value (when written without "=")
+VALUE_FLAGS = {"-n", "--namespace", "--context", "--cluster", "--user", "--kubeconfig", "-s", "--server",
+               "--as", "--as-group", "--request-timeout", "-v", "--v"}
+
+
+# the subcommand, skipping global flags before it: `-n shop get pods` -> "get"
+def verb(args: list[str]) -> str | None:
+    skip = False
+    for word in args:
+        if skip:
+            skip = False
+        elif word.startswith("-"):
+            skip = "=" not in word and word in VALUE_FLAGS
+        else:
+            return word
+    return None
+
+
 RawKubectl = Callable[[list[str]], tuple[bool, str]]
 Severity = Callable[[], float | None]
 log = logging.getLogger("chaos")
@@ -136,7 +154,7 @@ def create_app(data_dir: Path = Path("data"), run: Kubectl = faults.kubectl,
         with lock:
             ok, output = raw(args)
             recorded = None
-            if args[0] not in READ_ONLY:
+            if verb(args) not in READ_ONLY:
                 recorded = ground_truth.record(truth_path, "judge_kubectl", args=args, ok=ok)
         return {"ok": ok, "output": output, "recorded": recorded is not None}
 

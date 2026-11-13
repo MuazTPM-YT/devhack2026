@@ -1,67 +1,114 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
+import { type ReactNode, useState } from "react";
 
-import { words } from "@/lib/format";
-import { type Link, useLive } from "@/lib/use-live";
+import { Kpis } from "@/components/ui/kpis";
+import { PageHead } from "@/components/ui/page-head";
+import { Tag } from "@/components/ui/tag";
+import { clock, duration, words } from "@/lib/format";
+import type { Incident } from "@/lib/live";
+import { useLiveContext } from "@/lib/live-context";
+import { incidentStatus } from "@/lib/overview";
+import { useNow } from "@/lib/use-now";
 import { useReceipt } from "@/lib/use-receipt";
 
+import { Approval } from "./approval";
 import { Blast } from "./blast";
 import { Checklist } from "./checklist";
 import { Evidence } from "./evidence";
-import { Feed } from "./feed";
+import { FlowMap } from "./flow-map";
+import { IncidentList, IncidentSelect, STATUS_TAG, who } from "./incident-list";
 import { Outcome } from "./outcome";
 import { Severity } from "./severity";
+import sheet from "./sheet.module.css";
 import { StageStrip } from "./stage-strip";
+import { Timeline } from "./timeline";
 import styles from "./live-view.module.css";
 
-const LINK_COPY: Record<Link, { text: string; dot: string }> = {
-  connecting: { text: "connecting to gateway", dot: "dot-warn" },
-  live: { text: "live", dot: "dot-ok" },
-  down: { text: "gateway unreachable", dot: "dot-bad" },
-  demo: { text: "demo replay", dot: "dot-warn" },
-};
+function headline(inc: Incident | null, elapsed: number | null): string {
+  if (!inc) return "Waiting for an incident";
+  const name = who(inc);
+  if (inc.outcome === "resolved") return `${name} fixed in ${duration(elapsed ?? 0)}`;
+  if (inc.outcome === "escalated") return `${name}: woke a human`;
+  if (inc.outcome === "handed_off") return `${name}: handed off`;
+  return `Working on ${name}`;
+}
+
+// one incident: figures, stages, flow and timeline in the middle, the decision sheet on the right
+function IncidentBody({ incident, demo, list, picker }: {
+  incident: Incident | null; demo: boolean; list: ReactNode; picker: ReactNode;
+}) {
+  const { policy, link, replay } = useLiveContext();
+  const [selected, setSelected] = useState<number | null>(null);
+  const open = incident != null && incident.outcome == null;
+  const now = useNow(open);
+  const receipt = useReceipt(incident?.action?.receiptId ?? null, incident?.outcome != null, demo);
+  const elapsed = incident ? (incident.closedAt ?? now) - incident.openedAt : null;
+  const status = incident ? incidentStatus(incident, now, policy.maxAgeS) : null;
+  const gates = incident?.checklist ?? [];
+  const sev = incident?.ticks.findLast((t) => t.severity != null)?.severity ?? incident?.severityAtOpen ?? null;
+
+  return (
+    <>
+      <PageHead
+        eyebrow={incident ? <>Live incident · <span className="mono">{incident.id}</span> · opened {clock(incident.openedAt)}</> : "Live incident"}
+        title={headline(incident, elapsed)}
+        aside={<>
+          <span className={styles.picker}>{picker}</span>
+          {status && <Tag tone={STATUS_TAG[status].tone}>{STATUS_TAG[status].label}</Tag>}
+          {link === "demo" && <button type="button" className="btn" onClick={replay}>Replay demo</button>}
+        </>}
+      />
+
+      {incident && (
+        <Kpis label="Incident figures" items={[
+          { label: "Severity", value: sev ?? "–", sub: incident.severityAtOpen != null ? `${incident.severityAtOpen} at open` : undefined, tone: sev ? "warn" : "ok" },
+          { label: "Unhealthy", value: incident.unhealthy.length, sub: incident.groupings ? `${incident.groupings} folded in` : undefined },
+          { label: "Culprit", value: incident.culprit ?? "–", sub: incident.victims.length ? `victims ${incident.victims.join(", ")}` : undefined },
+          { label: "Pattern", value: incident.pattern ? words(incident.pattern) : "–", sub: incident.tools.length ? incident.tools.join(", ") : undefined },
+          { label: "Gates", value: gates.length ? `${gates.filter((g) => g.passed).length}/${gates.length}` : "–", sub: "passed" },
+          { label: open ? "Open for" : "Took", value: elapsed == null ? "–" : duration(elapsed), sub: incident.onsetAt != null ? `detected ${duration(incident.openedAt - incident.onsetAt)} after onset` : undefined },
+        ]} />
+      )}
+
+      <div className={styles.layout}>
+        <div className={styles.list}>{list}</div>
+        <div className={styles.center}>
+          <StageStrip incident={incident} now={now} />
+          <FlowMap incident={incident} upto={selected} />
+          <Timeline incident={incident} selected={selected} onSelect={setSelected} now={now} />
+        </div>
+        {incident && (
+          <aside className={`${sheet.sheet} ${styles.sheet}`} aria-label="Incident details">
+            <Outcome incident={incident} receipt={receipt} />
+            <Approval incident={incident} now={now} />
+            <Severity incident={incident} receipt={receipt} />
+            <Checklist incident={incident} />
+            <Blast incident={incident} />
+            <Evidence incident={incident} />
+          </aside>
+        )}
+      </div>
+    </>
+  );
+}
 
 export function LiveView() {
-  const demo = useSearchParams().get("demo") === "1";
-  const { state, link, replay } = useLive(demo);
-  const incident = state.current ? state.incidents[state.current] : null;
-  const receipt = useReceipt(incident?.action?.receiptId ?? null, incident?.outcome != null, demo);
+  const { state, link, policy } = useLiveContext();
+  const asked = useSearchParams().get("incident");
+  const now = useNow(true, 5000);
+  const id = asked && state.incidents[asked] ? asked : state.current;
+  const incident = id ? state.incidents[id] : null;
 
   return (
     <div className={styles.page}>
-      <div className={styles.head}>
-        <div>
-          <p className="label">{incident ? `Incident ${incident.id}` : "No open incident"}</p>
-          <h1 className={styles.title}>Live incident</h1>
-        </div>
-        <div className={styles.meta}>
-          {incident?.outcome && (
-            <span className={`pill ${incident.outcome === "resolved" ? "" : "pill-dark"}`}>
-              <span className={`dot ${incident.outcome === "resolved" ? "dot-ok" : "dot-bad"}`} />
-              {words(incident.outcome)}
-            </span>
-          )}
-          <span className="pill">
-            <span className={`dot ${LINK_COPY[link].dot}`} />
-            {LINK_COPY[link].text}
-          </span>
-          {demo && (
-            <button type="button" className={`pill ${styles.button}`} onClick={replay}>Replay</button>
-          )}
-        </div>
-      </div>
-
-      <StageStrip incident={incident} />
-
-      <div className={styles.grid}>
-        <Blast incident={incident} className={styles.span4} />
-        <Severity incident={incident} receipt={receipt} className={styles.span5} />
-        <Checklist incident={incident} className={styles.span3} />
-        <Evidence incident={incident} className={styles.span4} />
-        <Outcome incident={incident} receipt={receipt} className={styles.span5} />
-        <Feed feed={state.feed} className={styles.span3} />
-      </div>
+      {asked && !state.incidents[asked] && state.order.length > 0 && (
+        <p className={styles.note}>Incident <span className="mono">{asked}</span> is not on the bus; showing the latest one.</p>
+      )}
+      <IncidentBody key={incident?.id ?? "none"} incident={incident} demo={link === "demo"}
+        list={<IncidentList state={state} picked={id} now={now} maxAgeS={policy.maxAgeS} />}
+        picker={<IncidentSelect state={state} picked={id} />} />
     </div>
   );
 }

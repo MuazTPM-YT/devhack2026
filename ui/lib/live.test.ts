@@ -113,3 +113,27 @@ test("demo script ends resolved with every tile done", async () => {
   assert.equal(inc.checklist.length, 8);
   assert.ok(DEMO_SCRIPT.every((step, i) => i === 0 || step.at >= DEMO_SCRIPT[i - 1].at));
 });
+
+test("each incident keeps its own events in order with payloads", () => {
+  const s = run(
+    rec("incident_opened", { severity: 4 }, "inc-1"),
+    rec("incident_opened", {}, "inc-2"),
+    rec("culprit_found", { culprit: "cart" }, "inc-1"),
+    rec("blocked", {}, null),
+  );
+  assert.deepEqual(s.incidents["inc-1"].events.map((e) => e.type), ["incident_opened", "culprit_found"]);
+  assert.deepEqual(s.incidents["inc-1"].events[1].payload, { culprit: "cart" });
+  assert.deepEqual(s.incidents["inc-2"].events.map((e) => e.type), ["incident_opened"]);
+});
+
+test("a gate that asks a human does not leave check stopped", () => {
+  const s = run(
+    rec("incident_opened"),
+    rec("checklist_step", { name: "trust_gate", passed: false, reason: "trust bound 0.0 < 0.9" }),
+    rec("approval_requested", { approval_id: "a1", diff: "", forecast: "", expires_at: 0, card }),
+    rec("approval_decided", { approval_id: "a1", decision: "approved" }),
+    rec("action_executed", { receipt_id: 1, tool: "rollback_deploy", target: "payment" }),
+    rec("incident_resolved", { card }),
+  );
+  assert.equal(s.incidents["inc-1"].stages.check, "done");
+});

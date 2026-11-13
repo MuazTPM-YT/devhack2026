@@ -1,36 +1,15 @@
-/* page frame and data table shared by /trust, /receipts and /benchmark */
-.page { display: flex; flex-direction: column; gap: var(--gap); }
-
-.head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 6px;
-}
-
-.title {
-  font-family: var(--serif);
-  font-weight: 400;
-  font-size: 48px;
-  line-height: 1;
-  margin: 4px 0 0;
-  letter-spacing: -0.02em;
-  color: var(--ox-deep);
-}
-
-.figures { display: flex; gap: 28px; flex-wrap: wrap; }
-.figures div { display: flex; flex-direction: column; gap: 4px; }
+/* page frame and data table shared by /trust, /receipts, /benchmark and /chaos */
+.page { display: flex; flex-direction: column; gap: 18px; max-width: 1320px; }
 
 .note {
   margin: 0;
   padding: 10px 14px;
-  border-radius: var(--radius-sm);
-  background: var(--card-sunk);
+  background: var(--warn-tint);
   color: var(--ink-soft);
   font-size: 13px;
 }
+
+.lede { margin: 0; max-width: 72ch; font-size: 13.5px; color: var(--ink-soft); }
 
 .scroll { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
 
@@ -38,18 +17,20 @@
 
 .table th {
   text-align: left;
-  font-weight: 400;
-  font-size: 12px;
-  color: var(--ink-mute);
-  padding: 0 10px 8px 0;
-  border-bottom: 1px solid var(--line-strong);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+  padding: 0 12px 8px 0;
+  border-bottom: 2px solid var(--ink);
   white-space: nowrap;
 }
 
 .table td {
-  padding: 9px 10px 9px 0;
+  padding: 10px 12px 10px 0;
   border-bottom: 1px solid var(--line);
-  vertical-align: middle;
+  vertical-align: top;
 }
 
 .table tr:last-child td { border-bottom: 0; }
@@ -70,7 +51,4 @@
 @media (max-width: 1100px) {
   .span4, .span8 { grid-column: span 12; }
 }
-
-@media (max-width: 640px) {
-  .title { font-size: 38px; }
-}
+.stack { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
