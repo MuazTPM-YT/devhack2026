@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-11-14
 **Current phase:** UI shows the orchestrator (Agents band) on `twaha/ui-agents`, checked in the browser
-**Branch:** `twaha/ui-agents` off `origin/main` `5fa827d`, 16 commits, not pushed
+**Branch:** `twaha/ui-agents` off `origin/main` `5fa827d`, pushed 2026-11-14, PR open
 **Implementation:** PRs #8, #12, #15, #43 merged
 
 ## Done (with proof)
@@ -27,6 +27,9 @@
     did not silence it under Turbopack, harmless). Browser: live (real incident and demo), overview, receipts,
     chaos at 1440-1680 px and live at 375 px, panels open and folded: no console errors, no sideways scroll.
     impeccable page scan: 1 finding left (cream background).
+  - Flow map bleed fixed (`0fe0b69`): node words were SVG text cut by character count ("Prometheus · Jaeger"
+    123 px in a 116 px box). Now HTML inside each box with an ellipsis, boxes 124 px. 27 labels measured on 3
+    views, 0 outside a box.
   - NOT done: Python checks not rerun after this pass (no Python file touched; last run 897 passed, 1 known
     fail). Reduced motion checked in CSS only. Receipts and Chaos Lab got the shared changes only (head, labels,
     tags, centring), no page-specific word cutting. Overview keeps 11 cards in rows of 4, 4, 3.
