@@ -17,7 +17,6 @@ const NAV: { href: string; label: string; icon: IconName }[] = [
   { href: "/live", label: "Live incident", icon: "live" },
   { href: "/chaos", label: "Chaos Lab", icon: "chaos" },
   { href: "/receipts", label: "Receipts", icon: "receipts" },
-  { href: "/benchmark", label: "Benchmark", icon: "bench" },
 ];
 
 const LINK_DOT: Record<LinkState, string> = { live: "dot-ok", connecting: "dot-warn", down: "dot-bad", demo: "dot-warn" };
