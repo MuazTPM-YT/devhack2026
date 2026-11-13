@@ -226,7 +226,7 @@ class Gateway:
         await self.step(action.incident_id, steps, "schema", True)
         return await self.run(action, steps, approved=False)
 
-    async def decide(self, approval_id: str, decision: str, decided_by: str) -> GatewayDecision:
+    async def decide(self, approval_id: str, decision: str, decided_by: str, via: str = "discord") -> GatewayDecision:
         row = approvals.get(self.conn, approval_id)
         if row is None:
             return GatewayDecision(decision="refused", failed_step="approval", reason="unknown approval")
@@ -246,7 +246,8 @@ class Gateway:
         state = "expired" if expired else ("approved" if decision == "approved" else "rejected")
         approvals.set_state(self.conn, approval_id, state, decided_by)
         await self.publish({"type": "approval_decided", "incident_id": action.incident_id,
-                            "payload": {"approval_id": approval_id, "decision": state}})
+                            "payload": {"approval_id": approval_id, "decision": state, "decided_by": decided_by,
+                                        "via": via}})
         if state != "approved":
             return await self.stop(action, inc, [], "approval", "escalated", f"approval {state}",
                                    sent_by=("gateway", "approval decision"))

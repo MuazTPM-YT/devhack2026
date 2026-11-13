@@ -28,6 +28,7 @@ def test_brain_refuses_incidents_without_the_token():
 
     with TestClient(create_app(object())) as client:  # type: ignore[arg-type]
         assert client.post("/incidents", json={}).status_code == 401
+        assert client.get("/health").json() == {"ok": True}  # liveness stays open, like the gateway's
 
 
 def test_missing_or_short_token_fails_loud(monkeypatch):

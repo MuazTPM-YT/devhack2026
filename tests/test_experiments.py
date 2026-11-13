@@ -244,6 +244,15 @@ def test_blind_run_hides_the_answer_until_reveal(world):
     assert not shown["hidden"] and shown["spec"]["target"] == exp["spec"]["target"]
 
 
+# runs Claude started through the Akira MCP stay marked, even blind, so bench can leave them out
+def test_origin_is_recorded_and_visible_when_blind(world):
+    exp = world.engine.draw(seed=7, origin="akira-mcp")
+    seen = world.engine.get(exp["id"])
+    assert seen["hidden"] and seen["origin"] == "akira-mcp"
+    assert ground_truth.read_all(world.engine.truth_path)[-1]["origin"] == "akira-mcp"
+    assert world.engine.start(ADDR)["origin"] == "judge"
+
+
 def test_same_seed_draws_the_same_experiment(tmp_path):
     picks = [World(tmp_path / str(i)).engine.draw(seed=42)["spec"] for i in range(2)]
     assert picks[0] == picks[1] and picks[0]["blind"]

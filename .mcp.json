@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "akira": {
+      "command": "uv",
+      "args": ["run", "--locked", "--env-file", ".env", "python", "-m", "akira_mcp"]
+    }
+  }
+}

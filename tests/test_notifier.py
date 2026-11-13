@@ -288,3 +288,71 @@ async def test_dead_bot_stops_the_process(monkeypatch):
     await ok
     main.die_on_failure(ok)
     assert len(killed) == 1
+
+
+# decided in Akira MCP: the stored row names who and where, so the closed Discord message can say so
+async def test_decision_from_akira_mcp_closes_message_with_decider(tmp_path, monkeypatch):
+    monkeypatch.setattr("notifier.consumer.time.time", lambda: 50)
+    closed = []
+
+    class Closing(PagerNotifier):
+        async def close_approval(self, approval_id, row, decision):
+            closed.append((approval_id, row["decided_by"], row["via"], decision))
+
+    state = NotifierState(tmp_path / "state.db")
+    state.set("approval:a", {"expires_at": 99, "message_id": 1, "channel_id": 2})
+    async with httpx.AsyncClient() as client:
+        consumer = NotificationConsumer(client, "http://gateway", Closing(), state, repage_s=10)
+        await consumer.handle({"seq": 1, "event": {"type": "approval_decided", "incident_id": "i", "payload": {
+            "approval_id": "a", "decision": "approved", "decided_by": "123", "via": "akira-mcp"}}})
+        await consumer.expire_once()
+        await consumer.expire_once()
+    assert closed == [("a", "123", "akira-mcp", "approved")]
+
+
+def test_decided_embed_names_akira_mcp():
+    import discord
+
+    from notifier import embeds
+    out = embeds.decided(discord.Embed(title="t"), "approved", "123", now=0, via="akira-mcp")
+    assert out is not None and out.fields[-1].value == "**approved** by <@123> via Akira MCP <t:0:R>"
+    plain = embeds.decided(discord.Embed(title="t"), "approved", "123", now=0)
+    assert plain is not None and "via" not in plain.fields[-1].value
+
+
+# ack without Discord: our token, the approver allowlist, an open page; the wake message loses its button
+def test_pages_and_ack_routes(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from notifier import main
+    from schemas import auth
+
+    class FakeBot:
+        def __init__(self, controller):
+            self.controller, self.closed = controller, []
+
+        async def close_page(self, message_id, by, via=None):
+            self.closed.append((message_id, by, via))
+
+    state = NotifierState(tmp_path / "state.db")
+    state.set("wakes", {"i": {"card": {"status": "WOKE YOU"}, "briefing": "b", "last_page": 1, "message_id": 7}})
+    state.set("approval:a", {"expires_at": time.time() + 60})
+    state.set("approval:old", {"expires_at": time.time() + 60, "decision": "approved"})
+    client = TestClient(main.app)  # no `with`: the lifespan would log in to Discord
+    try:
+        assert client.get("/pages").status_code == 503
+        bot = FakeBot(ApprovalController(httpx.AsyncClient(), "http://gateway", {"123"}, state))
+        main.app.state.notifier = bot
+        listed = client.get("/pages").json()
+        assert [p["incident_id"] for p in listed["pages"]] == ["i"] and listed["pages"][0]["headline"] == "WOKE YOU"
+        assert [a["approval_id"] for a in listed["approvals"]] == ["a"]
+        assert client.post("/pages/i/ack", json={"by": "123"}).status_code == 401
+        with_token = {"headers": auth.headers()}
+        assert client.post("/pages/nope/ack", json={"by": "123"}, **with_token).status_code == 404
+        assert client.post("/pages/i/ack", json={"by": "999"}, **with_token).status_code == 403
+        ok = client.post("/pages/i/ack", json={"by": "123"}, **with_token)
+        assert ok.status_code == 200 and ok.json()["message_updated"] is True
+        assert bot.closed == [(7, "123", "akira-mcp")] and state.get("ack:i")["by"] == "123"
+        assert client.post("/pages/i/ack", json={"by": "123"}, **with_token).status_code == 409
+    finally:
+        main.app.state.notifier = None

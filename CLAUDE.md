@@ -112,13 +112,14 @@ Rules:
 - Install: `uv sync --locked`
 - Test: `uv run pytest`
 - Lint: `uv run ruff check .`
-- Type check: `uv run mypy schemas brain gateway notifier bench observer chaos`
+- Type check: `uv run mypy schemas brain gateway notifier bench observer chaos akira_mcp`
 - Observer: `uv run --locked --env-file .env uvicorn observer.main:app --host 127.0.0.1 --port 7001`
 - Brain: `uv run --locked --env-file .env uvicorn brain.main:app --host 127.0.0.1 --port 7002`
 - Gateway: `uv run --locked --env-file .env uvicorn gateway.main:app --host 127.0.0.1 --port 7003`
 - Notifier: `uv run --locked --env-file .env uvicorn notifier.main:app --host 127.0.0.1 --port 7005`
 - Chaos: `uv run --locked --env-file .env uvicorn chaos.main:app --host 127.0.0.1 --port 7004` (reset waits for observer severity 0 via `OBSERVER_URL`)
 - Audit: `uv run python scripts/verify_audit.py data/audit.jsonl`
+- Akira MCP (stdio, for Claude): `uv run --locked --env-file .env python -m akira_mcp` (live feed: `... -m akira_mcp watch`)
 
 Python 3.12. Use `uv run --env-file .env` when starting a configured service.
 Inference uses OpenCode Go through an adapter. No Claude API key is needed.

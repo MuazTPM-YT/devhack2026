@@ -417,6 +417,10 @@ def create_app(brain: Brain | None = None) -> FastAPI:
                  body.max_attempts, len(body.failed))
         return {"incident_id": incident_id, "status": "accepted", "attempt": body.attempt}
 
+    @app.get("/health")
+    def health() -> dict:
+        return {"ok": True}
+
     @app.get("/incidents/{incident_id}")
     def get_incident(incident_id: str) -> dict:
         record = app.state.brain.results.get(incident_id)
