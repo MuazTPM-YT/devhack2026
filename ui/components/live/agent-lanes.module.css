@@ -1,0 +1,144 @@
+/* agents band: one ruled lane per agent on a shared time axis. Every lane is the same height, so a
+   hand-off can be drawn as a line of whole lane heights */
+.band { container-type: inline-size; --lane-h: 46px; }
+
+.lanes {
+  list-style: none;
+  margin: -12px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr) max-content;
+  column-gap: 14px;
+}
+
+.lane, .axis {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+}
+
+.lane {
+  height: var(--lane-h);
+  border-bottom: 1px solid var(--line);
+  transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out);
+}
+
+.who { grid-column: 1; display: flex; flex-direction: column; min-width: 0; }
+.name { font-size: 13.5px; font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub { font-size: 11.5px; color: var(--ink-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 8 px kept free on the right so a mark at "now" is not cut by the edge */
+.track { grid-column: 2; position: relative; height: 100%; margin-right: 8px; }
+.state { grid-column: 3; justify-self: end; }
+
+/* how long the agent was on the incident */
+.extent { position: absolute; top: 50%; height: 1px; background: var(--line-strong); }
+
+.mark { position: absolute; min-width: 3px; transition: opacity 200ms var(--ease-out); }
+
+/* shape says what it is; colour only adds "now" and "went wrong" */
+.request { top: calc(50% - 11px); height: 9px; background: var(--ink); }
+.run { top: calc(50% - 11px); height: 9px; background: var(--card); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.reads { top: calc(50% + 3px); height: 8px; min-width: 2px; background: var(--ink-soft); }
+.many { min-width: 5px; }
+.wait { top: calc(50% - 1px); height: 2px; background: repeating-linear-gradient(to right, var(--warn) 0 5px, transparent 5px 9px); }
+.verify { top: calc(50% - 3px); height: 5px; background: var(--ink); }
+
+.request.bad, .run.bad, .verify.bad { background: var(--bad-tint); box-shadow: inset 0 0 0 1.5px var(--bad); }
+.wait.bad { background: repeating-linear-gradient(to right, var(--bad) 0 5px, transparent 5px 9px); }
+.run.live { box-shadow: inset 0 0 0 1.5px var(--ox); background: var(--rose-soft); }
+.verify.live { background: var(--ox); }
+
+.link {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  width: 1px;
+  height: calc(var(--lane-h) * var(--rows));
+  background: var(--ink-soft);
+  transition: opacity 200ms var(--ease-out);
+}
+.link::after { content: ""; position: absolute; left: -2px; width: 5px; height: 5px; background: var(--ink-soft); }
+.down::after { bottom: -2px; }
+.up::after { top: -2px; }
+
+.axis { padding-top: 5px; }
+.ticks {
+  grid-column: 2;
+  display: flex;
+  justify-content: space-between;
+  margin-right: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-mute);
+}
+
+/* one grid for all notes, so every sentence starts on the same line as its neighbours */
+.notes { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: max-content max-content minmax(0, 1fr); column-gap: 14px; }
+.notes li {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  row-gap: 2px;
+  align-items: baseline;
+  padding: 6px 0;
+  border-top: 1px dashed var(--line);
+  font-size: 13px;
+}
+.at { font-family: var(--mono); font-size: 11.5px; color: var(--ink-mute); }
+.route { font-size: 11.5px; color: var(--ink-mute); white-space: nowrap; }
+.said { font-weight: 500; overflow-wrap: anywhere; }
+.detail { display: block; font-weight: 400; color: var(--ink-soft); }
+
+.totals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 20px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.spend { display: inline-flex; align-items: center; gap: 10px; margin: 0; font-size: 13px; color: var(--ink-soft); }
+.spend strong { color: var(--ink); font-weight: 600; }
+
+.meter { display: inline-flex; gap: 2px; }
+.meter i { width: 9px; height: 10px; }
+.cell { background: var(--line); }
+.cellMain { background: var(--ink); }
+.cellSpec { background: var(--card); box-shadow: inset 0 0 0 2px var(--ink); }
+
+.legend { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; margin: 0 0 0 auto; font-size: 11.5px; color: var(--ink-mute); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.key { position: relative; display: inline-block; width: 14px; min-width: 0; }
+.key.request, .key.run { top: 0; height: 8px; }
+.key.reads { top: 0; width: 2px; height: 8px; }
+.key.wait { top: 0; height: 2px; }
+.key.verify { top: 0; height: 5px; }
+
+/* narrow band (phone, or a slim centre column): who and state above, the track takes the full width */
+@container (max-width: 520px) {
+  .lanes { grid-template-columns: minmax(0, 1fr) max-content; margin-top: -8px; }
+  .lane { --lane-h: 62px; grid-template-rows: auto 22px; align-content: center; row-gap: 2px; }
+  .who { grid-row: 1; flex-direction: row; align-items: baseline; gap: 8px; }
+  .state { grid-column: 2; grid-row: 1; }
+  .track { grid-column: 1 / -1; grid-row: 2; margin-right: 4px; }
+  .ticks { grid-column: 1 / -1; margin-right: 4px; }
+  /* the line would cross the names here; the notes below say the same hand-offs in words */
+  .link { display: none; }
+  .notes { grid-template-columns: max-content minmax(0, 1fr); }
+  .said { grid-column: 1 / -1; }
+  .legend { margin-left: 0; }
+}
+
+/* something new arrived: fade it in, never pop. Reduced motion keeps the fade and drops the slide */
+@starting-style {
+  .mark, .link { opacity: 0; }
+  .lane { opacity: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  @starting-style {
+    .lane { transform: translateY(-4px); }
+  }
+}

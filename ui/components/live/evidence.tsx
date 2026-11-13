@@ -24,7 +24,7 @@ export function Evidence({ incident }: { incident: Incident }) {
         )}
       </div>
       <p className={s.note}>
-        {plural(total, "item")}, redacted · {incident.pattern ? words(incident.pattern) : "no"} pattern · {plural(incident.llmCalls, "model request")} · {plural(incident.reads.length, "telemetry read")}
+        {plural(total, "item")}, redacted · {incident.pattern ? words(incident.pattern) : "no"} pattern
         {incident.quarantined > 0 && <span className="bad"> · {plural(incident.quarantined, "line")} quarantined</span>}
       </p>
       <div className={s.bars}>

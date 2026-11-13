@@ -6,6 +6,7 @@ import { type ReactNode, useState } from "react";
 import { Kpis } from "@/components/ui/kpis";
 import { PageHead } from "@/components/ui/page-head";
 import { Tag } from "@/components/ui/tag";
+import { DEMO_STATUS } from "@/lib/demo";
 import { clock, duration, words } from "@/lib/format";
 import type { Incident } from "@/lib/live";
 import { useLiveContext } from "@/lib/live-context";
@@ -15,6 +16,7 @@ import { useOrchestrationStatus } from "@/lib/use-orchestration";
 import { useNow } from "@/lib/use-now";
 import { useReceipt } from "@/lib/use-receipt";
 
+import { AgentLanes } from "./agent-lanes";
 import { Approval } from "./approval";
 import { Blast } from "./blast";
 import { Checklist } from "./checklist";
@@ -48,7 +50,10 @@ function IncidentBody({ incident, demo, list, picker }: {
   incident: Incident | null; demo: boolean; list: ReactNode; picker: ReactNode;
 }) {
   const { policy, link, replay } = useLiveContext();
-  const mode = modeLabel(useOrchestrationStatus(link !== "demo"));
+  const polled = useOrchestrationStatus(link !== "demo");
+  // the replay has no gateway to ask: its coordinated run brings its own answer
+  const orch = link === "demo" ? (incident?.orch ? DEMO_STATUS : null) : polled;
+  const mode = modeLabel(orch);
   const [selected, setSelected] = useState<number | null>(null);
   const open = incident != null && incident.outcome == null;
   const now = useNow(open);
@@ -86,6 +91,10 @@ function IncidentBody({ incident, demo, list, picker }: {
         <div className={styles.list}>{list}</div>
         <div className={styles.center}>
           <StageStrip incident={incident} now={now} />
+          {incident && (
+            <AgentLanes incident={incident} live={status === "open"} maxRequests={orch?.max_model_requests ?? null}
+              now={status === "lost" ? incident.events.at(-1)?.ts ?? now : now} />
+          )}
           <FlowMap incident={incident} upto={selected} />
           <Timeline incident={incident} selected={selected} onSelect={setSelected} now={now} />
         </div>
