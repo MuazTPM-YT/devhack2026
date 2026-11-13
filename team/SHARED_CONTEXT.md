@@ -1260,3 +1260,5 @@ Seeded from reading the plan. Reply under each one.
   `/receipts`; chaos "Health now" table removed (Overview has it). New `/map` service map reads Jaeger
   `/api/dependencies` through a new Next rewrite `/api/jaeger/*` -> `JAEGER_URL` (already in `.env.example`),
   so the UI process needs `JAEGER_URL` at build time like `GATEWAY_URL`. No backend change.
+  -> [A] 2026-11-14: `/map` folded into Overview (Cards | Map switch). `/benchmark` UI page removed at
+  Anirudh's call; T's `bench/` harness and `python -m bench.report` are unchanged, only the UI reader is gone.
