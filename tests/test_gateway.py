@@ -509,3 +509,36 @@ async def test_concurrent_runs_never_put_two_actions_in_flight(tmp_path):
         t.cancel()
     assert sorted(d.decision for d in decisions) == ["executed", "refused"]
     assert conn.execute("SELECT COUNT(*) FROM receipts WHERE outcome='pending'").fetchone()[0] == 1
+
+
+# a follow-up (raise_limit after a restart) expiring after the incident resolved flipped it back to
+# escalated and woke on-call; now it stays resolved and goes to the day-team ticket queue (Muaz chose)
+async def test_followup_expiry_keeps_resolved_and_files_ticket(tmp_path):
+    from gateway import approvals
+    from notifier.consumer import NotificationConsumer
+    w = World(tmp_path)
+    approvals.create(w.conn, "inc-1", action(tool="raise_limit", params={"memory": "400Mi"}, journal_entry=None,
+                                             pattern="resource"), 900.0, 50)
+    w.conn.execute("UPDATE incidents SET state='resolved', resolved_at=990 WHERE id='inc-1'")
+    await w.gw.expire_approvals()
+    assert w.conn.execute("SELECT state FROM incidents").fetchone()[0] == "resolved"
+    assert "escalated" not in w.types()
+    done = next(e for e in w.events if e["type"] == "incident_resolved")
+    assert done["payload"]["card"]["status"] == "MITIGATED, NOT FIXED"
+
+    sent = []
+
+    class Fake:
+        async def ticket(self, card, details=None):
+            sent.append("ticket")
+
+        async def wake(self, *a, **k):
+            sent.append("wake")
+
+        async def fyi(self, *a, **k):
+            sent.append("fyi")
+
+    from notifier.state import NotifierState
+    c = NotificationConsumer(None, "http://gw", Fake(), NotifierState(tmp_path / "n.db"))  # type: ignore[arg-type]
+    await c.handle({"seq": 1, "event": done})
+    assert sent == ["ticket"]

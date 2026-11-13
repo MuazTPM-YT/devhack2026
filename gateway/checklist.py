@@ -133,6 +133,15 @@ class Gateway:
             await self.publish({"type": "blocked", "incident_id": incident_id,
                                 "payload": {"step": name, "tool": getattr(action, "tool", None), "reason": reason}})
         decision = GatewayDecision(decision=outcome, failed_step=name, reason=reason)  # type: ignore[arg-type]
+        if row is not None and name == "approval" and row.get("state") == "resolved":
+            # a follow-up (raise_limit after a restart) on a fixed incident: stay resolved, ticket the day
+            # team instead of waking on-call (Muaz chose); the notifier tickets a MITIGATED card
+            card = self.card(row, target, decision=decision, mitigated=True, reason=reason,
+                             proposal=action if isinstance(action, ActionRequest) else None)
+            await self.publish({"type": "incident_resolved", "incident_id": incident_id,
+                                "payload": {"card": card.model_dump(mode="json"),
+                                            "briefing": f"follow-up not done: {reason}"}})
+            return decision
         if row is not None:
             gone = name == "freshness" and outcome == "refused"
             event = "incident_resolved" if gone else ("handed_off" if outcome == "handed_off" else "escalated")
