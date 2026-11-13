@@ -224,3 +224,67 @@ async def test_unreadable_saved_wake_still_pages_as_text(tmp_path):
     async with httpx.AsyncClient() as client:
         await NotificationConsumer(client, "http://gateway", notifier, state, repage_s=10).repage_once()
     assert notifier.pages == [("i", "payment is failing", [])]
+
+
+class FlakyBot:
+    def __init__(self, failures):
+        self.failures, self.starts, self.clears = list(failures), 0, 0
+
+    async def start(self, token):
+        self.starts += 1
+        if self.failures:
+            raise self.failures.pop(0)
+
+    async def close(self):
+        pass
+
+    def clear(self):
+        self.clears += 1
+
+
+async def no_wait(_):
+    pass
+
+
+# live 2026-11-13: discord 503 on connect killed the bot; paging was dead while /health still answered
+async def test_bot_reconnects_after_a_crash_on_connect():
+    from notifier.main import run_bot
+
+    bot = FlakyBot([AttributeError("'NoneType' object has no attribute 'sequence'"), OSError("503")])
+    await run_bot(bot, "t", sleep=no_wait)
+    assert (bot.starts, bot.clears) == (3, 2)
+
+
+async def test_bot_gives_up_loud_and_a_bad_token_fails_at_once():
+    import discord
+    import pytest
+
+    from notifier.main import run_bot
+
+    with pytest.raises(RuntimeError, match="discord unreachable after 3 tries"):
+        await run_bot(FlakyBot([OSError()] * 3), "t", tries=3, sleep=no_wait)
+    bad = FlakyBot([discord.LoginFailure("bad token")])
+    with pytest.raises(discord.LoginFailure):
+        await run_bot(bad, "t", sleep=no_wait)
+    assert bad.starts == 1
+
+
+async def test_dead_bot_stops_the_process(monkeypatch):
+    import asyncio
+
+    from notifier import main
+
+    killed = []
+    monkeypatch.setattr(main.os, "kill", lambda pid, sig: killed.append(sig))
+
+    async def boom():
+        raise RuntimeError("discord unreachable")
+
+    task = asyncio.create_task(boom())
+    await asyncio.gather(task, return_exceptions=True)
+    main.die_on_failure(task)
+    assert killed == [main.signal.SIGTERM]
+    ok = asyncio.create_task(asyncio.sleep(0))
+    await ok
+    main.die_on_failure(ok)
+    assert len(killed) == 1
