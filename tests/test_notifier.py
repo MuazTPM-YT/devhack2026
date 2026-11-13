@@ -356,3 +356,22 @@ def test_pages_and_ack_routes(tmp_path):
         assert client.post("/pages/i/ack", json={"by": "123"}, **with_token).status_code == 409
     finally:
         main.app.state.notifier = None
+
+
+# orchestration: the plan changed, so the old approval can never be used; its buttons go away
+async def test_superseded_approval_closes_its_buttons(tmp_path, monkeypatch):
+    monkeypatch.setattr("notifier.consumer.time.time", lambda: 50)
+    closed = []
+
+    class Closing(PagerNotifier):
+        async def close_approval(self, approval_id, row, decision):
+            closed.append((approval_id, decision))
+
+    state = NotifierState(tmp_path / "state.db")
+    state.set("approval:a", {"expires_at": 99, "message_id": 1, "channel_id": 2})
+    async with httpx.AsyncClient() as client:
+        consumer = NotificationConsumer(client, "http://gateway", Closing(), state, repage_s=10)
+        await consumer.handle({"seq": 1, "event": {"type": "approval_decided", "incident_id": "i", "payload": {
+            "approval_id": "a", "decision": "superseded", "decided_by": "u1"}}})
+        await consumer.expire_once()
+    assert closed == [("a", "superseded")]

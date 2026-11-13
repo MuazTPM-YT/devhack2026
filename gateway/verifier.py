@@ -9,9 +9,12 @@ def service_score(s: dict) -> int:
 class Verification:
     def __init__(self, t0: float, health_at_action: dict, culprit: str, victims: list[str],
                  prediction: dict | None, window_s: float, early_abort: bool, stable_s: float = 15,
-                 grace_s: float = 0, prediction_delay_s: float = 0):
+                 grace_s: float = 0, prediction_delay_s: float = 0, scope: set[str] | None = None):
         self.t0 = t0
-        self.sev_before = health_at_action["severity"]
+        # orchestration: severity counted over this action's own services only, frozen at execute time, so
+        # another incident's outage cannot abort a fix that works. None = whole fleet (legacy)
+        self.scope = scope
+        self.sev_before = self.severity(health_at_action)
         # only services the observer measures; a trace-only victim (frontend-proxy) would block recovery forever
         self.watched = [s for s in [culprit, *victims] if s == culprit or s in health_at_action["services"]]
         self.prediction = prediction
@@ -34,6 +37,13 @@ class Verification:
         self.healthy_at_start = {s for s, v in health_at_action["services"].items()
                                  if not v["unhealthy"] and s not in self.watched}
 
+    def severity(self, health: dict) -> float:
+        if self.scope is None:
+            return health["severity"]
+        return sum(service_score({"breaching": v.get("breaching", False), "bad_pods": v.get("bad_pods", 0),
+                                  "unhealthy": v.get("unhealthy", False)})
+                   for s, v in health["services"].items() if s in self.scope)
+
     # one tick -> None (keep going) | "early_abort" | "handed_off" | "recovered" | "window_end"
     def step(self, now: float, health: dict, non_agent_change: bool) -> str | None:
         services = health["services"]
@@ -55,7 +65,7 @@ class Verification:
             return "handed_off"
         # victims lag the culprit, so severity can rise just after a right fix: no early abort in the grace
         if (self.early_abort and not self.blind and now - self.t0 >= self.grace_s
-                and health["severity"] > self.sev_before):
+                and self.severity(health) > self.sev_before):
             return "early_abort"
         healthy = not self.blind and all(services.get(s, {}).get("unhealthy") is False for s in self.watched)
         self.recovered = healthy
@@ -83,11 +93,17 @@ def ledger_effect(outcome: str) -> bool | None:
 
 # harm check 1+2: only the declared object changed (others -> hands-off), no service outside blast got worse
 def harm_check(hashes_before: dict, hashes_after: dict, declared: str, non_agent_objects: set[str],
-               health_before: dict, health_after: dict, blast: set[str], tolerance: int = 0) -> dict:
+               health_before: dict, health_after: dict, blast: set[str], tolerance: int = 0,
+               excused: frozenset[str] = frozenset()) -> dict:
     changed = {k for k in hashes_before.keys() | hashes_after.keys() if hashes_before.get(k) != hashes_after.get(k)}
     unexpected = sorted(changed - {declared} - non_agent_objects)
-    worse = sorted(s for s, v in health_after["services"].items()
-                   if s not in blast and s in health_before["services"]
-                   and service_score(v) > service_score(health_before["services"][s]) + tolerance)
-    return {"clean": not unexpected and declared in changed and not worse,
-            "declared_changed": declared in changed, "unexpected_changes": unexpected, "worse_services": worse}
+    all_worse = sorted(s for s, v in health_after["services"].items()
+                       if s not in blast and s in health_before["services"]
+                       and service_score(v) > service_score(health_before["services"][s]) + tolerance)
+    # excused: services of another incident that broke on its own before this action (orchestration only)
+    worse = [s for s in all_worse if s not in excused]
+    out = {"clean": not unexpected and declared in changed and not worse,
+           "declared_changed": declared in changed, "unexpected_changes": unexpected, "worse_services": worse}
+    if excused:
+        out["unrelated_worse"] = [s for s in all_worse if s in excused]
+    return out

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Tag, type Tone } from "@/components/ui/tag";
 import { clock, duration } from "@/lib/format";
 import type { Incident, LiveState } from "@/lib/live";
+import { orchSummary } from "@/lib/orchestration";
 import { type IncidentStatus, incidentStatus, VERDICT, verdict } from "@/lib/overview";
 
 import styles from "./incident-list.module.css";
@@ -53,6 +54,7 @@ export function IncidentList({ state, picked, now, maxAgeS }: {
                     <Tag tone={st.tone}>{st.label}</Tag>
                   </span>
                   <span className={styles.meta}>{clock(inc.openedAt)} · {status === "lost" ? "–" : duration(took)}</span>
+                  {orchSummary(inc) && <span className={styles.meta}>{orchSummary(inc)}</span>}
                 </Link>
               </li>
             );

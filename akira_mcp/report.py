@@ -44,4 +44,17 @@ def incident_report(detail: dict[str, Any]) -> dict[str, Any]:
         "model_said": inc.get("llm_why"),
         "actions": actions, "approvals": humans,
         "card": card.get("text"), "similar_before": detail.get("similar") or [], "notes": notes,
+        "orchestration": orchestration_summary(detail.get("orchestration")),
     }
+
+
+# coordinated mode only: who investigated, what specialists ran and why, what it cost; None for old incidents
+def orchestration_summary(o: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not o:
+        return None
+    return {"phase": o.get("phase"), "services": sorted({m["service"] for m in o.get("memberships") or []}),
+            "delegation": [d.get("explanation") for d in o.get("delegation") or []],
+            "specialists": [{"task_id": t["task_id"], "state": t["state"]} for t in o.get("tasks") or []],
+            "findings": [{"verdict": f["verdict"], "summary": f["summary"]} for f in o.get("findings") or []],
+            "model_requests": (o.get("budget") or {}).get("requests_used"),
+            "fixes": [{"intent_id": i["intent_id"], "status": i["status"]} for i in o.get("intents") or []]}

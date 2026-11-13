@@ -60,3 +60,20 @@
 @media (hover: hover) and (pointer: fine) {
   .open:hover { text-decoration: underline; }
 }
+
+/* cards or map: one segmented switch, the pressed half filled */
+.switch { display: inline-flex; align-self: flex-start; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
+.switchBtn {
+  font: 500 13px var(--sans);
+  padding: 6px 14px;
+  border: 0;
+  background: var(--card);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.switchBtn + .switchBtn { border-left: 1px solid var(--line-strong); }
+.switchBtn[aria-pressed="true"] { background: var(--ink); color: var(--frame); }
+.switchBtn:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) {
+  .switchBtn[aria-pressed="false"]:hover { color: var(--ink); }
+}

@@ -310,7 +310,7 @@ uv run --locked python -m bench.trust_report data/oncall.db
 # After manual trials exist:
 uv run --locked python -m bench.report bench/results.jsonl --manual data/manual-results.jsonl
 # Export tables and chart files from recorded trials:
-uv run --locked python -m bench.report bench/results.jsonl --manual data/manual-results.jsonl --output-dir bench/out  # the UI /benchmark page reads bench/out
+uv run --locked python -m bench.report bench/results.jsonl --manual data/manual-results.jsonl --output-dir bench/out
 uv run --locked pytest tests/redteam --junitxml=data/redteam.xml
 uv run --locked python -m bench.redteam data/redteam.xml
 ```

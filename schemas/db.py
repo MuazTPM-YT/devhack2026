@@ -51,6 +51,8 @@ def connect(path: str = DEFAULT_PATH, shared: bool = False) -> sqlite3.Connectio
     conn = sqlite3.connect(path, timeout=5, check_same_thread=not shared)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    # sqlite leaves this off per connection; only the orchestration tables declare foreign keys
+    conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
     # DBs from before the LLM "why" column: CREATE IF NOT EXISTS never adds columns
     if "llm_why" not in {r[1] for r in conn.execute("PRAGMA table_info(incidents)")}:

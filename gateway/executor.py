@@ -37,7 +37,7 @@ def _call(fn: Any, name: str, body: Any, dry_run: bool, content_type: str) -> di
             raise WriteRefused("escalated", f"Kubernetes API unreachable ({type(e).__name__})") from None
         # no answer to a real write: it may have landed. No receipt, no auto-undo: a human checks (Muaz chose)
         raise WriteRefused("escalated", f"write outcome unknown ({type(e).__name__}): the change may or may not "
-                                        f"be live; check the cluster by hand") from None
+                                        f"be live; check the cluster by hand", unknown=True) from None
     return json.loads(resp.data)
 
 

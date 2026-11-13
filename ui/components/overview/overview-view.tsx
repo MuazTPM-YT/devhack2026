@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 
+import { ServiceMap } from "@/components/map/service-map";
 import { Kpis } from "@/components/ui/kpis";
 import { PageHead } from "@/components/ui/page-head";
 import { Tag, type Tone } from "@/components/ui/tag";
@@ -9,8 +11,9 @@ import type { ServiceHealth } from "@/lib/chaos-api";
 import { clock, duration, plural } from "@/lib/format";
 import { telemetry } from "@/lib/lab";
 import { useLiveContext } from "@/lib/live-context";
+import { culpritIncident, openIncidentIds } from "@/lib/orchestration";
 import {
-  incidentStats, incidentStatus, latencyLimit, type Policy, serviceSentence, type ServiceInfo, serviceStatus,
+  incidentStats, latencyLimit, type Policy, serviceSentence, type ServiceInfo, serviceStatus,
   type ServiceStatus,
 } from "@/lib/overview";
 import { useNow } from "@/lib/use-now";
@@ -92,6 +95,7 @@ function ServiceCard({ name, health, info, policy, culprit, incidentId, blind }:
 export function OverviewView({ services }: { services: Record<string, ServiceInfo> }) {
   const { state, observer, policy } = useLiveContext();
   const now = useNow(true, 5000);
+  const [view, setView] = useState<"cards" | "map">("cards");
   const health = observer.health;
   const tele = telemetry(health, observer.error, now);
   // old numbers behind a fresh response: every card is unknown, none is healthy
@@ -104,15 +108,19 @@ export function OverviewView({ services }: { services: Record<string, ServiceInf
   const breaching = names.filter((n) => status(n) === "breaching");
   const unmeasured = names.filter((n) => status(n) === "nodata");
   const stats = incidentStats(state, now, policy.maxAgeS);
-  const openId = state.order.find((id) => incidentStatus(state.incidents[id], now, policy.maxAgeS) === "open") ?? null;
+  // orchestration can hold several open incidents at once; with one, everything below reads as before
+  const openIds = openIncidentIds(state, now, policy.maxAgeS);
+  const openId = openIds[0] ?? null;
   const openInc = openId ? state.incidents[openId] : null;
 
   return (
     <div className={styles.page}>
       <PageHead
-        eyebrow={`Overview · namespace shop${health ? ` · numbers from ${clock(health.last_ok_ts ?? health.ts)}` : ""}`}
-        title="Shop at a glance"
-        aside={openInc && <Link className="btn btn-dark" href={`/live?incident=${encodeURIComponent(openInc.id)}`}>Open live incident →</Link>}
+        eyebrow={`namespace shop${health ? ` · numbers from ${clock(health.last_ok_ts ?? health.ts)}` : ""}`}
+        title="Overview"
+        aside={openIds.length > 1
+          ? <Link className="btn btn-dark" href="/live">{openIds.length} open incidents →</Link>
+          : openInc && <Link className="btn btn-dark" href={`/live?incident=${encodeURIComponent(openInc.id)}`}>Open live incident →</Link>}
       />
 
       <Kpis label="Shop and agent figures" items={[
@@ -132,7 +140,11 @@ export function OverviewView({ services }: { services: Record<string, ServiceInf
           <p className={styles.alert} role="alert">{tele.text}. The cards below show the last numbers, not the shop now.</p>
         ) : bad.length ? (
           <p><b>{bad.length} of {names.length} services are unhealthy:</b> {bad.join(", ")}.{" "}
-            {openInc ? <>Akira is on it in incident <Link href={`/live?incident=${encodeURIComponent(openInc.id)}`} className="mono">{openInc.id}</Link>.</> : "No incident is open yet."}</p>
+            {openIds.length > 1
+              ? <>Akira is on {openIds.length} incidents: {openIds.map((id, i) => (
+                <span key={id}>{i > 0 && ", "}<Link href={`/live?incident=${encodeURIComponent(id)}`} className="mono">{id}</Link></span>
+              ))}.</>
+              : openInc ? <>Akira is on it in incident <Link href={`/live?incident=${encodeURIComponent(openInc.id)}`} className="mono">{openInc.id}</Link>.</> : "No incident is open yet."}</p>
         ) : (
           <p>{!health ? "Waiting for the first reading…"
             : breaching.length ? `${plural(breaching.length, "service")} over a limit, not yet unhealthy: ${breaching.join(", ")}.`
@@ -140,19 +152,29 @@ export function OverviewView({ services }: { services: Record<string, ServiceInf
                 : `All ${names.length} services are inside their baselines.`}{" "}
             {stats.total > 0 && `Akira has handled ${plural(stats.total, "incident")}: ${stats.verified} verified fixed, ${stats.resolved - stats.verified} recovered unproven, woke a human for ${stats.escalated + stats.handedOff}.`}</p>
         )}
-        <p className={styles.legend}>
+        {view === "cards" && <p className={styles.legend}>
           Each card is one service. Top bar: error ratio, the tick is the {((policy.errThreshold ?? 0.05) * 100).toFixed(0)}% line.
           Bottom bar: p95 latency, the tick is its limit ({policy.latencyMultiplier ?? 2}× baseline and at least
           {" "}{policy.latencyFloorMs ?? 100} ms above it). A bar past its tick is a breach; held for 30 s it opens an incident.
-        </p>
+        </p>}
       </div>
 
-      <div className={styles.grid}>
-        {names.map((n) => (
-          <ServiceCard key={n} name={n} health={health?.services[n]} info={services[n]} policy={policy}
-            blind={blind} culprit={openInc?.culprit === n} incidentId={openInc?.id ?? null} />
+      <div className={styles.switch} role="group" aria-label="Show services as">
+        {(["cards", "map"] as const).map((v) => (
+          <button key={v} type="button" aria-pressed={view === v} className={styles.switchBtn} onClick={() => setView(v)}>
+            {v === "cards" ? "Cards" : "Map"}
+          </button>
         ))}
       </div>
+
+      {view === "map" ? <ServiceMap services={services} /> : (
+        <div className={styles.grid}>
+          {names.map((n) => (
+            <ServiceCard key={n} name={n} health={health?.services[n]} info={services[n]} policy={policy}
+              blind={blind} culprit={culpritIncident(state, openIds, n) != null} incidentId={culpritIncident(state, openIds, n)} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

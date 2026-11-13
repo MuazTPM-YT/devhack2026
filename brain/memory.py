@@ -40,3 +40,20 @@ def summary(past: list[dict]) -> str | None:
     took = f" in {last['took_s']} s" if last["took_s"] is not None else ""
     worked = sum(1 for p in past if p["outcome"] == "success")
     return f"{len(past)} similar before, {worked} fixed and proven; last ({last['incident_id']}): {how}{took}"
+
+
+# coordinated mode (migration v3): what each fix did before, newest first; a lesson from another service
+# is a hint to check there afresh, never a reason to act or to trust. Caller holds its DB lock
+def experience(conn: sqlite3.Connection, pattern: str | None, service: str | None, limit: int = 5) -> list[dict]:
+    if not pattern:
+        return []
+    try:
+        rows = conn.execute("SELECT tool, service, outcome, source_incident_id, applicability_json FROM "
+                            "experience_records WHERE pattern=? AND status='active' "
+                            "ORDER BY (service IS ?) DESC, created_at DESC LIMIT ?",
+                            (pattern, service, limit)).fetchall()
+    except sqlite3.OperationalError:  # no experience table: nothing learned yet
+        return []
+    return [{"fix": f"{r['tool']} {r['service']}", "outcome": r["outcome"], "incident_id": r["source_incident_id"],
+             "requires_fresh_confirmation": r["service"] != service} for r in rows]
+

@@ -521,7 +521,7 @@ async def test_retry_drops_the_failed_fix_and_pages_with_the_tries(tmp_path):
         i, "decline", reason="The only recorded change was already undone and nothing improved.", prediction=None))
     tried = [{"attempt": 1, "tool": "rollback_deploy", "target": "payment", "params": {}, "journal_entry": 41,
               "why_undone": "did not recover", "receipt_id": 3, "ran_s": 120.0}]
-    record = await brain.handle(INC, tried)
+    record = await brain.handle(INC, tried=tried)
     assert brain.submitted == [] and record["attempt"] == 2
     assert last(world, "rule_matched")["candidates"] == [] and last(world, "rule_matched")["tools"] == []
     esc = last(world, "escalated")

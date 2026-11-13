@@ -39,8 +39,6 @@
 
   --sans: var(--font-sans), system-ui, sans-serif;
   --mono: var(--font-mono), ui-monospace, monospace;
-  /* kept for components/flow (Muaz's /flow page): the serif face was dropped, headings use Geist */
-  --serif: var(--sans);
 
   color-scheme: light;
 }

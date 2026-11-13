@@ -5,6 +5,7 @@ import logging
 import sqlite3
 import threading
 import time
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -21,15 +22,19 @@ from gateway.dryrun import build_flag_patch, build_patch, namespace_hash, outsid
 from gateway.verifier import Verification, harm_check, ledger_effect
 from gateway.executor import (WriteRefused, list_json, patch_configmap, patch_deployment, patch_scale,
                               read_configmap, read_deployment)
+from gateway.intents import IntentStore, precondition, submission
 from gateway.receipts import ReceiptStore, build_incident_card, source, started_by
 from observer import journal
 from observer.kube_watch import service_of
 from schemas import auth
 from schemas.models import ActionRequest, Card, GatewayDecision, Incident, Receipt
+from schemas.orchestration import IntentEnvelope, IntentSubmission
 
 log = logging.getLogger("gateway")
 # chaos/faults.py FIELD_MANAGER: a fault injection is the incident's cause, not a human taking over (§6.4.2 step 2)
 CHAOS_MANAGER = "chaos-panel"
+# orchestration: the intent the running checklist works for (None = legacy MCP/HTTP submit)
+_intent: ContextVar[str | None] = ContextVar("intent", default=None)
 
 
 def forecast_text(plan: dict) -> str:
@@ -122,6 +127,9 @@ class Gateway:
         self.tries: dict[str, list[dict]] = {}  # incident id -> failed fixes, the brain's error context
         # incident id -> (granted at, attempt number); attempt None = adopted after a restart, not a retry
         self.retry_grants: dict[str, tuple[float, int | None]] = {}
+        self.intents: IntentStore | None = None  # orchestration on (migration v2): durable action intents
+        self.workspace: Any = None  # schemas.workspace.Workspace on the same connection: read views only
+        self.orchestration: Any = None  # schemas.orchestration.OrchestrationPolicy this gateway started with
 
     # ---- helpers -------------------------------------------------------------------------------
     def incident(self, incident_id: str) -> dict | None:
@@ -236,6 +244,15 @@ class Gateway:
             return GatewayDecision(decision="refused", failed_step="approval", reason=f"approval is {row['state']}")
         action = ActionRequest.model_validate_json(row["action_json"])
         inc = self.incident(action.incident_id)
+        intent_id = row.get("intent_id") if self.intents is not None else None
+        if intent_id is not None and (stale := self.stale_intent(intent_id)):
+            # an approval asked for one plan never authorises another (handoff §5.3)
+            approvals.set_state(self.conn, approval_id, "superseded", decided_by)
+            await self.publish({"type": "approval_decided", "incident_id": action.incident_id,
+                                "payload": {"approval_id": approval_id, "decision": "superseded",
+                                            "decided_by": decided_by, "via": via}})
+            await self.moved(intent_id, "superseded", reason=stale)
+            return GatewayDecision(decision="refused", failed_step="approval", reason=f"stale_plan: {stale}")
         expired = self.clock() > row["expires_at"]
         with self.lock:
             busy = policy.usage(self.conn, action.incident_id, self.clock())["in_flight"]
@@ -249,11 +266,20 @@ class Gateway:
                             "payload": {"approval_id": approval_id, "decision": state, "decided_by": decided_by,
                                         "via": via}})
         if state != "approved":
+            if intent_id is not None:
+                await self.moved(intent_id, "terminal", reason=f"approval {state}")
             return await self.stop(action, inc, [], "approval", "escalated", f"approval {state}",
                                    sent_by=("gateway", "approval decision"))
         # things may have changed while we waited: steps 2 to 6 again, trust gate skipped
-        return await self.run(action, [{"name": "approval", "passed": True, "reason": decided_by}], approved=True,
-                              approved_by=decided_by)
+        token = _intent.set(intent_id)
+        try:
+            out = await self.run(action, [{"name": "approval", "passed": True, "reason": decided_by}], approved=True,
+                                 approved_by=decided_by)
+        finally:
+            _intent.reset(token)
+        if intent_id is not None:
+            await self.settle_intent(intent_id, out)
+        return out
 
     # ---- steps 2 to 8 --------------------------------------------------------------------------
     # one checklist at a time: step 3 counts in-flight actions, then awaits the API; a second run checking
@@ -432,9 +458,12 @@ class Gateway:
     async def ask(self, action: ActionRequest, row: dict, steps: list[dict], plan: dict, reason: str | None,
                   gate: dict | None = None, step_name: str = "trust_gate") -> GatewayDecision:
         await self.step(action.incident_id, steps, step_name, False, reason)
+        intent_id = _intent.get()
         with self.lock:
             appr = approvals.create(self.conn, action.incident_id, action.model_dump(mode="json"), self.clock(),
-                                    self.policy["approval"]["expiry_seconds"])
+                                    self.policy["approval"]["expiry_seconds"], intent_id=intent_id)
+        if intent_id is not None:
+            await self.moved(intent_id, "awaiting_approval", approval_id=appr["id"], reason=reason)
         decision = GatewayDecision(decision="awaiting_approval", failed_step=step_name, reason=reason,
                                    approval_id=appr["id"])
         card = self.card(row, action.target, decision=decision, proposal=action, did=plan["summary"])
@@ -509,10 +538,28 @@ class Gateway:
 
     async def execute(self, action: ActionRequest, row: dict, steps: list[dict], plan: dict,
                       gate: dict) -> GatewayDecision:
+        intent_id = _intent.get()
+        # intent first, committed, before the cluster sees anything: a crash after this is reconcilable
+        if intent_id is not None and not await self.moved(intent_id, "executing", precondition_json=precondition(plan),
+                                                          executing_at=self.clock()):
+            return await self.stop(action, row, steps, "execute", "escalated",
+                                   f"intent {intent_id} is no longer current; nothing written")
         try:
             await asyncio.to_thread(self.write, action.target, plan["patch"], False)
         except WriteRefused as e:
+            if intent_id is not None:
+                if e.unknown:  # may have landed: never retry, never undo blind; the slot stays held
+                    why = f"{e.reason}; then clear intent {intent_id}"
+                    await self.moved(intent_id, "execution_unknown", reason=why)
+                    return await self.stop(action, row, steps, "execute", "escalated", why)
+                await self.moved(intent_id, "terminal", reason=e.reason)
             return await self.stop(action, row, steps, "execute", e.outcome, e.reason)
+        except Exception as e:
+            if intent_id is None:
+                raise
+            why = f"write outcome unknown ({type(e).__name__}); check the cluster, then clear intent {intent_id}"
+            await self.moved(intent_id, "execution_unknown", reason=why)
+            return await self.stop(action, row, steps, "execute", "escalated", why)
         await self.step(action.incident_id, steps, "execute", True)
         inverse = plan["inverse"]
         receipt = Receipt(incident_id=action.incident_id, tool=action.tool, target=action.target, diff=plan["diff"],
@@ -536,6 +583,9 @@ class Gateway:
         await self.publish({"type": "action_executed", "incident_id": action.incident_id,
                             "payload": {"receipt_id": receipt_id, "tool": action.tool, "target": action.target,
                                         "tier": tier_of(gate)}})
+        if intent_id is not None:
+            await self.moved(intent_id, "verifying", receipt_id=receipt_id)
+            plan["scope"] = self.verification_scope(action, row, plan)
         task = asyncio.create_task(self.verify(receipt_id, action, row, plan, receipt))
         self.tasks.add(task)
         self.verifying[receipt_id] = task
@@ -550,10 +600,12 @@ class Gateway:
         extra = cfg["flag_extra_seconds"] if plan["patch"]["kind"] == "configmap" else 0  # flagd reload ~60 s
         # aborting means undoing; with no safe undo, give the fix its whole window instead
         can_undo = plan["inverse"]["op"] != "none"
+        scope = plan.get("scope")  # orchestration: this action's own services, frozen at execute time
         v = Verification(self.clock(), plan["health"], action.target, victims,
                          action.prediction.model_dump() if action.prediction else None,
                          cfg["window_seconds"] + extra, cfg["early_abort"] and can_undo,
-                         grace_s=cfg["early_abort_grace_seconds"] + extra, prediction_delay_s=extra)
+                         grace_s=cfg["early_abort_grace_seconds"] + extra, prediction_delay_s=extra,
+                         scope=set(scope["services"]) if scope else None)
         health, human, others, result = plan["health"], [], [], None
         while result is None:
             await asyncio.sleep(self.verify_every)
@@ -592,10 +644,18 @@ class Gateway:
         after = await asyncio.to_thread(lambda: spec_hashes(list_json(self.apps.list_namespaced_deployment),
                                                             list_json(self.core.list_namespaced_config_map)))
         harm = harm_check(plan["hashes"], after, plan["declared"], {r["object"] for r in others},
-                          plan["health"], health, {action.target, *victims, *plan["blast"].get("upstream", [])})
+                          plan["health"], health, {action.target, *victims, *plan["blast"].get("upstream", [])},
+                          excused=frozenset(scope["unrelated"]) if scope else frozenset())
         await self.publish({"type": "harm_check", "incident_id": action.incident_id,
                             "payload": {"receipt_id": receipt_id, **harm}})
         outcome = v.outcome(harm["clean"])
+        if (scope and outcome == "undo" and v.recovered and harm["declared_changed"] and not harm["unexpected_changes"]
+                and harm["worse_services"]):
+            # recovered, but services nobody can tie to this fix or to another incident got worse: undoing a
+            # working fix is a guess too. Keep it, page, no trust either way (pending review, handoff §9.3)
+            return await self.keep_and_page(receipt_id, action, row, receipt,
+                                            f"recovered, but {', '.join(harm['worse_services'])} got worse and "
+                                            "nothing shows why; check by hand", failure=False)
         if outcome == "undo":
             reason = "harm check failed" if v.recovered else (
                 "monitoring went blind; recovery not proven" if v.blind else "did not recover")
@@ -720,7 +780,8 @@ class Gateway:
                 {"attempt": done, **failed_try(receipt_id, action, v, harm, reason, plan)})
         # a clean undo for a wrong fix may hand the incident back to the brain instead of paging (§6.4.11)
         retrying, no_retry = False, None
-        if outcome == "undone" and reason in RETRY_REASONS and self.request_retry is not None:
+        # single-agent path only: with orchestration on, intents and the coordinator own what comes next
+        if outcome == "undone" and reason in RETRY_REASONS and self.request_retry is not None and self.intents is None:
             no_retry = self.retry_blocker(action.incident_id)
             retrying = no_retry is None
         event = {"success": "incident_resolved", "right_by_accident": "incident_resolved",
@@ -870,6 +931,8 @@ class Gateway:
                                 "payload": {"approval_id": r["id"], "decision": "expired"}})
             await self.stop(action, self.incident(action.incident_id), [], "approval", "escalated",
                             "approval expired", sent_by=("gateway", "approval expiry"))
+            if self.intents is not None and r.get("intent_id"):
+                await self.moved(r["intent_id"], "terminal", reason="approval expired")
         return len(rows)
 
     # an action older than 180 s whose verifier stopped ticking gets undone and a human woken
@@ -937,6 +1000,158 @@ class Gateway:
                 await self.expire_approvals()
                 await self.watchdog()
                 await self.retry_timeouts()
+                if self.intents is not None:
+                    await self.sync_intents()
+                    await self.drain_intents()
             except Exception as e:  # never let upkeep die quietly
                 log.error("upkeep failed: %r", e)
             await asyncio.sleep(every_s)
+
+    # ---- orchestration intents (handoff §9) ------------------------------------------------------------
+    async def moved(self, intent_id: str, to: str, **fields: Any) -> bool:
+        assert self.intents is not None
+        if not self.intents.move(intent_id, to, **fields):
+            return False
+        row = self.intents.get(intent_id)
+        assert row is not None
+        await self.publish({"type": "action_intent_changed", "incident_id": row["incident_id"], "payload": {
+            "intent_id": intent_id, "status": to, "plan_revision": row["plan_revision"],
+            "approval_id": row["approval_id"], "receipt_id": row["receipt_id"], "reason": row["reason"]}})
+        return True
+
+    # why this intent may no longer run; None while it is the brain's current plan
+    def stale_intent(self, intent_id: str) -> str | None:
+        assert self.intents is not None
+        row = self.intents.get(intent_id)
+        if row is None:
+            return "unknown intent"
+        if row["status"] == "superseded":
+            return "superseded by a newer plan"
+        current = self.intents.current_plan(row["incident_id"])
+        if current is not None and current != row["plan_revision"]:
+            return f"plan {row['plan_revision']} replaced by plan {current}"
+        return None
+
+    def slot_busy(self) -> bool:
+        with self.lock:
+            used = policy.usage(self.conn, "", self.clock())["in_flight"]
+        return used >= self.policy["budgets"]["max_in_flight"]
+
+    # step 3's "asking": these end in an approval request, so a busy slot does not hold them back
+    def will_ask(self, action: ActionRequest) -> bool:
+        protected = bool(self.services.get(action.target, {}).get("protected"))
+        return (self.policy["tools"].get(action.tool, {}).get("auto_eligible") is False or protected
+                or action.origin == "model")
+
+    async def submit_intent(self, env: IntentEnvelope) -> IntentSubmission:
+        if self.intents is None:
+            raise RuntimeError("orchestration intents are off in this gateway")
+        row, created = self.intents.create_or_get(env)  # Conflict when the id holds another action
+        if not created:
+            return submission(row)
+        steps: list[dict] = []
+        await self.step(env.incident_id, steps, "schema", True)
+        return await self.run_intent(row, steps)
+
+    # busy slot: queue, never refuse; the queue drains in upkeep and reruns the whole checklist then
+    async def run_intent(self, row: dict, steps: list[dict]) -> IntentSubmission:
+        assert self.intents is not None
+        intent_id = row["intent_id"]
+        action = ActionRequest.model_validate_json(row["action_json"])
+        async with self.run_lock:
+            if stale := self.stale_intent(intent_id):
+                await self.moved(intent_id, "superseded", reason=stale)
+            elif self.slot_busy() and not self.will_ask(action):
+                if row["status"] != "queued":
+                    await self.moved(intent_id, "queued", reason="another action is being verified")
+            else:
+                token = _intent.set(intent_id)
+                try:
+                    decision = await self._run(action, steps, approved=False)
+                finally:
+                    _intent.reset(token)
+                await self.settle_intent(intent_id, decision)
+        latest = self.intents.get(intent_id)
+        assert latest is not None
+        return submission(latest)
+
+    # the checklist ended without a write or an approval request: the intent ends with it
+    async def settle_intent(self, intent_id: str, decision: GatewayDecision) -> None:
+        assert self.intents is not None
+        row = self.intents.get(intent_id)
+        if row is None or row["status"] not in ("new", "queued", "awaiting_approval"):
+            return
+        if decision.decision == "awaiting_approval":
+            return
+        await self.moved(intent_id, "terminal", reason=f"{decision.decision}: {decision.reason or decision.failed_step}")
+
+    async def drain_intents(self) -> None:
+        assert self.intents is not None
+        row = self.intents.oldest("queued")
+        if row is not None and not self.slot_busy():
+            await self.run_intent(row, [])
+
+    # verification finished (any path: close, undo, keep and page, watchdog): the intent is done
+    async def sync_intents(self) -> None:
+        assert self.intents is not None
+        for row in self.intents.with_status("verifying"):
+            with self.lock:
+                r = self.conn.execute("SELECT outcome FROM receipts WHERE id=?", (row["receipt_id"],)).fetchone()
+            if r is not None and r["outcome"] not in ("pending", "watchdog_failed"):
+                await self.moved(row["intent_id"], "terminal", reason=f"receipt #{row['receipt_id']}: {r['outcome']}")
+
+    # services this action answers for, and services another open incident broke on its own before it
+    def verification_scope(self, action: ActionRequest, row: dict, plan: dict) -> dict:
+        victims = json.loads(row.get("victims_json") or "[]")
+        with self.lock:
+            own = {r[0] for r in self.conn.execute(
+                "SELECT service FROM incident_memberships WHERE incident_id=?", (action.incident_id,))}
+            others = self.conn.execute(
+                "SELECT m.service, e.first_breach_at, e.sustained_at FROM incident_memberships m "
+                "JOIN signal_episodes e ON e.episode_id = m.episode_id "
+                "JOIN orchestration_workspaces w ON w.incident_id = m.incident_id "
+                "WHERE m.closed = 0 AND m.incident_id != ? AND w.phase != 'terminal'", (action.incident_id,)).fetchall()
+        mine = {action.target, *victims, *own, *(plan.get("blast") or {}).get("upstream", [])}
+        now = self.clock()
+        unrelated = {r["service"] for r in others if (r["first_breach_at"] or r["sustained_at"]) < now} - mine
+        return {"services": sorted(mine), "unrelated": sorted(unrelated)}
+
+    # restart: a write that started but left no receipt is unknown; never replay it, never undo it blind
+    async def reconcile_intents(self) -> list[str]:
+        if self.intents is None:
+            return []
+        unknown = []
+        for row in self.intents.with_status("executing"):
+            action = ActionRequest.model_validate_json(row["action_json"])
+            with self.lock:
+                rec = self.conn.execute("SELECT id FROM receipts WHERE incident_id=? AND tool=? AND target=? AND "
+                                        "ts >= ? ORDER BY ts LIMIT 1", (row["incident_id"], action.tool, action.target,
+                                                                        row["executing_at"] or 0)).fetchone()
+            if rec is not None:  # receipted: the watchdog takes over the lost verifier
+                await self.moved(row["intent_id"], "verifying", receipt_id=rec["id"])
+                continue
+            why = (f"gateway restarted during the write of intent {row['intent_id']}; outcome unknown. Check "
+                   f"{action.target} by hand, then clear the intent")
+            await self.moved(row["intent_id"], "execution_unknown", reason=why)
+            if (inc := self.incident(row["incident_id"])) is not None:
+                await self.stop(action, inc, [], "execute", "escalated", why)
+            unknown.append(row["intent_id"])
+        with self.lock:
+            receipted = {r[0] for r in self.conn.execute("SELECT id FROM receipts")}
+        orphans = [rid for rid, _ in self.receipts.recent(1000) if rid not in receipted]
+        if orphans:
+            log.error("receipt views without a receipt row (crash between the two writes): %s", orphans)
+        return unknown
+
+    # an approver checked the cluster after an unknown write: the slot frees, audited
+    async def clear_intent(self, intent_id: str, decided_by: str) -> dict:
+        if self.intents is None or decided_by not in self.approvers:
+            return {"cleared": False, "reason": "not an approver" if self.intents else "orchestration off"}
+        row = self.intents.get(intent_id)
+        if row is None or row["status"] != "execution_unknown":
+            return {"cleared": False, "reason": f"intent is {row['status'] if row else 'unknown'}"}
+        await self.moved(intent_id, "terminal", reason=f"cleared by {decided_by} after checking the cluster")
+        await self.publish({"type": "checklist_step", "incident_id": row["incident_id"], "payload": {
+            "name": "human_clear", "passed": True, "reason": f"intent {intent_id} cleared by {decided_by}"}})
+        return {"cleared": True}
+

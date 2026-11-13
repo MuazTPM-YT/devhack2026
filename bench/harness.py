@@ -22,6 +22,8 @@ SCENARIOS = {
     "datastore-down": ("protected", True),
 }
 TERMINAL = {"incident_resolved", "escalated", "handed_off"}
+# incidents one injection should open; every current scenario is one fault (bench-only label, never shown to agents)
+EXPECTED_INCIDENTS = {name: 1 for name in SCENARIOS}
 
 
 @dataclass
@@ -46,6 +48,15 @@ class TrialResult:
     forecast_s: float | None = None
     actual_added_s: float | None = None
     error: str | None = None
+    # orchestration (old rows load with these defaults)
+    mode: str | None = None
+    incidents_opened: int = 0
+    specialist_starts: int = 0
+    delegation_denied: dict[str, int] | None = None
+    evidence_reused: int = 0
+    model_calls: int | None = None
+    queue_wait_s: float | None = None
+    approval_wait_s: float | None = None
 
 
 class ObservationError(ValueError):
@@ -62,8 +73,9 @@ class TrialServices(Protocol):
 
 
 class Harness:
-    def __init__(self, services: TrialServices, output: Path, rehearsal: bool = False):
-        self.services, self.output, self.rehearsal = services, output, rehearsal
+    # mode: label for A/B rows (disabled, shadow, coordinated, coordinated+delegation); recorded, not enforced
+    def __init__(self, services: TrialServices, output: Path, rehearsal: bool = False, mode: str | None = None):
+        self.services, self.output, self.rehearsal, self.mode = services, output, rehearsal, mode
 
     def completed_attempts(self) -> dict[str, int]:
         completed: dict[str, int] = {}
@@ -92,7 +104,8 @@ class Harness:
         for scenario in scenarios:
             remaining = max(0, repetitions - completed.get(scenario, 0)) if resume else repetitions
             for _ in range(remaining):
-                result = TrialResult(scenario, time.time(), "failed", should_wake=SCENARIOS[scenario][1])
+                result = TrialResult(scenario, time.time(), "failed", should_wake=SCENARIOS[scenario][1],
+                                     mode=self.mode)
                 records: list[dict[str, Any]] = []
                 injection: dict[str, Any] = {}
                 try:
@@ -121,11 +134,38 @@ class Harness:
 
 
 def measure(result: TrialResult, injection: dict[str, Any], records: list[dict[str, Any]]) -> None:
+    opened: set[str] = set()
+    asked_at = queued_at = None
     for record in records:
         event, ts = record["event"], record["ts"]
         kind, payload = event["type"], event.get("payload", {})
-        result.incident_id = event.get("incident_id") or result.incident_id
+        if kind == "incident_opened" and event.get("incident_id"):
+            opened.add(event["incident_id"])
+            result.incidents_opened = len(opened)
+        # timings and outcome follow the first incident; others only count toward grouping
+        if result.incident_id is None:
+            result.incident_id = event.get("incident_id")
+        if event.get("incident_id") not in (None, result.incident_id):
+            continue
         elapsed = max(0.0, ts - result.started_at)
+        if kind == "delegation_decided":
+            if payload.get("status") == "admitted":
+                result.specialist_starts += 1
+            elif payload.get("status") == "denied" and isinstance(payload.get("reason"), str):
+                denied = result.delegation_denied or {}
+                denied[payload["reason"]] = denied.get(payload["reason"], 0) + 1
+                result.delegation_denied = denied
+        elif kind == "evidence_reused":
+            result.evidence_reused += 1
+        elif kind == "action_intent_changed":
+            if payload.get("status") == "queued" and queued_at is None:
+                queued_at = ts
+            elif queued_at is not None and result.queue_wait_s is None and payload.get("status") != "queued":
+                result.queue_wait_s = max(0.0, ts - queued_at)
+        elif kind == "approval_requested" and asked_at is None:
+            asked_at = ts
+        elif kind == "approval_decided" and asked_at is not None and result.approval_wait_s is None:
+            result.approval_wait_s = max(0.0, ts - asked_at)
         if kind == "incident_opened":
             result.detect_s = elapsed
         elif kind == "diagnosis_ready":
@@ -136,6 +176,10 @@ def measure(result: TrialResult, injection: dict[str, Any], records: list[dict[s
                     and payload["culprit"] == injection["target"]
                 )
         elif kind == "llm_called":
+            if payload.get("kind") == "summary":  # per-call events already counted this run
+                continue
+            if payload.get("kind") == "call":
+                result.model_calls = (result.model_calls or 0) + 1
             usage = result.usage or {}
             provided = payload.get("usage") or {
                 "prompt_tokens": payload.get("tokens_in"),
@@ -257,7 +301,11 @@ class HttpTrialServices:
                                 continue
                             if incident_id is None and event["type"] == "incident_opened":
                                 incident_id = event["incident_id"]
-                            if incident_id is None or event.get("incident_id") != incident_id:
+                            if incident_id is None:
+                                continue
+                            if event.get("incident_id") != incident_id:
+                                if event["type"] == "incident_opened":  # another incident: grouping count only
+                                    records.append(record)
                                 continue
                             payload = event.get("payload", {})
                             if not isinstance(payload, dict):
@@ -298,6 +346,8 @@ async def main():
     parser.add_argument("--runs", type=int, default=10)
     parser.add_argument("--rehearsal", action="store_true")
     parser.add_argument("--resume", action="store_true", help="Count recorded attempts toward --runs")
+    parser.add_argument("--mode", choices=["disabled", "shadow", "coordinated", "coordinated+delegation"],
+                        help="Label rows for same-budget A/B; must match config/orchestration.yaml of the stack")
     parser.add_argument("--output", type=Path, default=Path("bench/results.jsonl"))
     # flag-flip needs ~60 s flagd reload + a 210 s verify window, so 300 s is too short for it
     parser.add_argument("--timeout", type=float, default=600, help="Seconds to wait per trial")
@@ -309,7 +359,8 @@ async def main():
     async with httpx.AsyncClient() as client:
         services = HttpTrialServices(client, os.environ["GATEWAY_URL"], os.environ["OBSERVER_URL"],
                                      os.environ["CHAOS_URL"], timeout_s=args.timeout)
-        await Harness(services, args.output, args.rehearsal).run(args.scenario, args.runs, resume=args.resume)
+        await Harness(services, args.output, args.rehearsal, args.mode).run(args.scenario, args.runs,
+                                                                           resume=args.resume)
 
 
 if __name__ == "__main__":

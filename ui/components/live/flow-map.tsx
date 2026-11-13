@@ -17,7 +17,7 @@ const NH = 58;
 // component centres; the main row is the incident's path left to right
 const POS: Record<NodeId, [number, number]> = {
   shop: [62, 160], observer: [194, 160], brain: [326, 160], gateway: [458, 160], k8s: [598, 160],
-  llm: [326, 40], notifier: [458, 40], verifier: [528, 278],
+  llm: [326, 40], notifier: [458, 40], verifier: [528, 278], specialist: [194, 40],
 };
 
 type Pt = [number, number];
@@ -35,6 +35,10 @@ const EDGES: Record<string, Pt[]> = {
   "brain>gateway": [[R("brain"), Y("brain")], [L("gateway"), Y("gateway")]],
   "gateway>k8s": [[R("gateway"), Y("gateway")], [L("k8s"), Y("k8s")]],
   "brain>llm": [[X("brain"), T("brain")], [X("llm"), B("llm")]],
+  // above the shop>brain line (y 100), below the specialist box
+  "brain>specialist": [[X("brain") - 14, T("brain")], [X("brain") - 14, 84], [X("specialist") + 30, 84],
+    [X("specialist") + 30, B("specialist")]],
+  "specialist>llm": [[R("specialist"), Y("specialist")], [L("llm"), Y("llm")]],
   "gateway>notifier": [[X("gateway"), T("gateway")], [X("notifier"), B("notifier")]],
   "shop>brain": [[X("shop"), T("shop")], [X("shop"), 100], [X("brain") - 34, 100], [X("brain") - 34, T("brain")]],
   "observer>verifier": [[X("observer"), B("observer")], [X("observer"), Y("verifier")], [L("verifier"), Y("verifier")]],

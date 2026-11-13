@@ -63,10 +63,20 @@ class EventBus:
         self.audit, self.queue_size = audit, queue_size
         self.lock = asyncio.Lock()
         self.subscribers: set[asyncio.Queue] = set()
+        # outbox redeliveries carry the same event_id; rebuilt from the verified log, so a crash between
+        # append and index loses nothing
+        self.by_event_id: dict[str, dict[str, Any]] = {r["event"]["event_id"]: r for r in audit.records
+                                                       if isinstance(r["event"].get("event_id"), str)}
 
+    # a known event_id returns its original record: nothing appended, nobody notified twice
     async def publish(self, event: dict[str, Any]) -> dict[str, Any]:
         async with self.lock:
+            event_id = event.get("event_id")
+            if isinstance(event_id, str) and event_id in self.by_event_id:
+                return self.by_event_id[event_id]
             record = self.audit.append(event)
+            if isinstance(event_id, str):
+                self.by_event_id[event_id] = record
             for queue in tuple(self.subscribers):
                 if queue.full():
                     self.subscribers.discard(queue)

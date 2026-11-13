@@ -196,6 +196,24 @@ def describe(kind: str, p: dict[str, Any]) -> tuple[str, str]:
         return ("ok" if p.get("clean") else "bad"), "harm check " + ("clean" if p.get("clean") else "found side effects")
     if kind == "blocked":
         return "bad", f"blocked by the API server · {_s(p.get('reason'))}"
+    # orchestration (coordinated mode only)
+    if kind == "incident_scope_changed":
+        return "warn", f"scope r{_s(p.get('scope_revision'))} · {', '.join(p.get('services') or [])}"
+    if kind == "delegation_decided":
+        return ("warn" if p.get("status") == "admitted" else "info"), _s(p.get("explanation"))
+    if kind == "investigation_task_changed":
+        return ("bad" if p.get("state") in ("failed", "timed_out") else "info"), \
+            f"specialist {_s(p.get('task_id'))} · {_s(p.get('state'))}"
+    if kind == "finding_recorded":
+        return "ok", f"finding · {_s(p.get('verdict'))} · {_s(p.get('summary'))}"
+    if kind == "evidence_reused":
+        return "info", f"reused a read · {_s(p.get('source'))} · {_s(p.get('age_s'))} s old"
+    if kind == "orchestration_budget_changed":
+        return "info", f"model requests {_s(p.get('requests_used'))}/{_s(p.get('requests_limit'))}"
+    if kind == "action_intent_changed":
+        tone = {"execution_unknown": "bad", "superseded": "warn", "terminal": "info"}.get(p.get("status") or "", "info")
+        return tone, f"fix {_s(p.get('intent_id'))} · {_s(p.get('status'))}" + (
+            f" · {_s(p.get('reason'))}" if p.get("reason") else "")
     if kind in ("incident_resolved", "escalated", "handed_off"):
         card = (p.get("card") or {}).get("text", "")
         first = card.splitlines()[0] if card else ""
