@@ -83,6 +83,23 @@ async def test_prometheus_down_keeps_last_health_and_skips_detector():
     assert obs.health["prometheus_ok"] is False and obs.detector.incident is None
 
 
+# live smoke inc-1794562461681: Prometheus answered with no span metrics (collector pushes rejected),
+# every service read None = "fine", payment's sustain timer reset, and the gateway saw "problem gone"
+async def test_no_span_metrics_at_all_is_blind_not_healthy():
+    clock = [1000.0]
+    backend = Backend({"payment": 0.4}, {"payment": 120.0, "cart": 30.0})
+    obs = make(backend, clock)
+    await obs.step()
+    backend.err, backend.p95 = {}, {}
+    clock[0] = 1015.0
+    assert await obs.step() is None
+    assert obs.health["prometheus_ok"] is False and obs.health["services"]["payment"]["err_ratio"] == 0.4
+    backend.err, backend.p95 = {"payment": 0.4}, {"payment": 120.0, "cart": 30.0}
+    clock[0] = 1030.0
+    kind, inc = await obs.step()
+    assert (kind, inc["onset_at"]) == ("incident_opened", 1000.0)
+
+
 async def test_brain_down_does_not_stop_detection():
     clock = [0.0]
 
