@@ -1,0 +1,19 @@
+# Orchestration (reports/akira-orchestration-implementation-handoff.md §7.3). Checked at startup by
+# schemas/orchestration.py OrchestrationPolicy. No file = disabled.
+mode: disabled                    # disabled | shadow | coordinated
+delegation_enabled: false         # needs coordinated + both token limits below
+max_active_commanders: 2
+max_specialists_per_incident: 2   # lifetime starts, including replacement attempts
+max_active_specialists: 2         # fleet-wide; commanders have separate slots
+max_delegation_depth: 1
+max_model_requests: 9             # combined commander + specialists + retries/resumes
+max_requests_per_specialist: 2
+reserved_commander_requests: 2
+max_tool_calls: 24                # combined; cache hits still count as tool invocations
+max_specialist_tool_calls: 6
+investigation_deadline_seconds: 150
+specialist_deadline_seconds: 45
+task_lease_seconds: 30
+task_heartbeat_seconds: 10
+max_input_tokens_per_request: null  # set from measured prompts before enabling delegation
+max_total_tokens: null

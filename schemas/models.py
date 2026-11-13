@@ -14,7 +14,16 @@ EventType = Literal[
     "approval_decided", "action_executed", "verify_tick", "early_abort", "action_undone",
     "harm_check", "incident_resolved", "escalated", "handed_off", "injection_quarantined", "blocked",
     "tool_called",
+    # orchestration (schemas/orchestration.py); only emitted when orchestration mode is not disabled
+    "incident_scope_changed", "delegation_decided", "investigation_task_changed", "finding_recorded",
+    "evidence_reused", "orchestration_budget_changed", "action_intent_changed",
 ]
+# shared by orchestration payloads here and the contracts in schemas/orchestration.py
+TaskState = Literal["pending", "running", "succeeded", "failed", "timed_out", "cancelled", "lease_expired"]
+Verdict = Literal["supported", "refuted", "inconclusive"]
+AdmissionStatus = Literal["admitted", "reused", "waiting", "denied"]
+IntentStatus = Literal["queued", "awaiting_approval", "executing", "verifying", "terminal", "execution_unknown",
+                       "superseded", "refused"]
 
 
 class Model(BaseModel):
@@ -198,7 +207,69 @@ class ToolCalledPayload(Payload):
     evidence_ids: list[str] = Field(default_factory=list)
 
 
+class ScopeChangedPayload(Payload):
+    scope_revision: int = Field(ge=0)
+    services: list[str]
+    reasons: list[str] = Field(default_factory=list)
+
+
+# why a specialist did or did not start; "none_needed" = commander alone, the common case
+class DelegationDecidedPayload(Payload):
+    status: AdmissionStatus | Literal["none_needed"]
+    explanation: str
+    reason: str | None = None
+    question_id: str | None = None
+    task_id: str | None = None
+
+
+class TaskChangedPayload(Payload):
+    task_id: str
+    question_id: str
+    state: TaskState
+    attempt: int = Field(ge=0)
+
+
+class FindingRecordedPayload(Payload):
+    task_id: str
+    finding_id: str
+    question_id: str
+    verdict: Verdict
+    summary: str
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+# a read served from the shared cache, not a fresh upstream fetch
+class EvidenceReusedPayload(Payload):
+    query_key: str
+    source: Literal["cache", "inflight"]
+    age_s: float = Field(ge=0)
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class BudgetChangedPayload(Payload):
+    requests_used: int = Field(ge=0)
+    requests_limit: int = Field(gt=0)
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+
+
+class IntentChangedPayload(Payload):
+    intent_id: str
+    status: IntentStatus
+    plan_revision: int = Field(ge=0)
+    approval_id: str | None = None
+    receipt_id: int | None = None
+    reason: str | None = None
+
+
 PAYLOADS: dict[str, type[Payload]] = {
+    "incident_scope_changed": ScopeChangedPayload,
+    "delegation_decided": DelegationDecidedPayload,
+    "investigation_task_changed": TaskChangedPayload,
+    "finding_recorded": FindingRecordedPayload,
+    "evidence_reused": EvidenceReusedPayload,
+    "orchestration_budget_changed": BudgetChangedPayload,
+    "action_intent_changed": IntentChangedPayload,
     "approval_requested": ApprovalRequestedPayload,
     "approval_decided": ApprovalDecidedPayload,
     "diagnosis_ready": DiagnosisReadyPayload,
@@ -216,6 +287,8 @@ class Event(Model):
     type: EventType
     incident_id: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
+    # set by the orchestration outbox so a redelivery dedupes; left out of dumps when unset (old record shape)
+    event_id: str | None = Field(default=None, min_length=1, max_length=64, exclude_if=lambda v: v is None)
 
     @model_validator(mode="after")
     def check_payload(self) -> Self:
