@@ -68,6 +68,11 @@ async def test_autonomous_journal_revert_verifies_and_reports_without_approval(t
     from notifier.state import NotifierState
 
     w, a, status = autonomous_world(tmp_path, kind)
+    if kind == "memory":
+        from test_phase3 import FakeGraph
+
+        w.apps.dep["spec"]["replicas"] = 1
+        w.gw.graph = FakeGraph([("frontend", "ad", 1.0)])
     d = await w.gw.submit({**a, "origin": origin})
     assert d.decision == "executed"
     assert "approval_requested" not in w.types()

@@ -10,6 +10,17 @@ section. Only my own work here; cross-team facts go in
 
 ## Done (with proof)
 
+- Fixed single-replica surge forecast blocking safe memory restores (2026-11-14).
+  Live incident `inc-5198ce6253f6` selected recommendation 32Mi -> 200Mi, but net-benefit asked with a
+  10535 s forecast. `gateway/blast.py` now treats 1+ replicas with RollingUpdate, maxUnavailable=0 and
+  positive maxSurge as no planned capacity loss. Invalid/zero surge stays unsafe; Recreate still asks.
+  Regression failed before fix for both rule/model memory restores with one replica and healthy frontend
+  caller; after fix both verify recovery and notifier FYI without approval. 12 new forecast/surge cases.
+  Proof: 61 targeted pass; full isolated suite with tracked defaults 949 pass (20.38 s), Ruff clean,
+  mypy clean (99 files), graph updated. Existing local config overrides untouched. Gateway restarted
+  alone, /health ok; MCP reports all services up, Prometheus/Discord ready, severity 0. Actual live
+  recommendation strategy now forecasts 0 s instead of 10535 s. No new live fault/model/Discord drill.
+
 - Chaos Lab now has actual memory/capacity fault parameters feeding new repair proposals (2026-11-14).
   `memory_limit` offers reviewed caps below live limit and at least live request on recommendation/ad/email;
   `replica_reduction` leaves 1+ replicas, on those services plus payment/checkout. Missing baseline capacity
