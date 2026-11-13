@@ -11,9 +11,28 @@ services:
   valkey-cart:    {kind: stateful,  critical: true,  protected: true}
   kafka:          {kind: stateful,  critical: true,  protected: true}
 flag_config:
-  # seed only: an init container copies it to an emptyDir at pod start;
-  # flagd reads and flagd-ui writes /etc/flagd/demo.flagd.json on that emptyDir
+  # flagd reads this ConfigMap directly (k8s/values.yaml) and reloads ~60 s after a patch;
+  # flagd-ui edits do not reach flagd
   configmap: flagd-config
+# flag -> service whose behaviour it changes (from each flag's description in flagd-config).
+# Lets a `flag` journal entry on flagd-config be linked to the culprit. Not listed: emitRawPii
+# (not a failure) and aiRunawayAgent / aiSlowResponse (the agent service is disabled).
+flags:
+  adFailure: ad
+  adHighCpu: ad
+  adManualGc: ad
+  cartFailure: cart
+  emailMemoryLeak: email
+  failedReadinessProbe: cart
+  imageSlowLoad: frontend
+  intlShippingSlowdown: shipping
+  kafkaQueueProblems: kafka
+  loadGeneratorFloodHomepage: frontend
+  paymentFailure: payment
+  paymentUnreachable: checkout
+  productCatalogFailure: product-catalog
+  productCatalogLockContention: product-catalog
+  recommendationCacheFailure: recommendation
 degraded_mode_flags:               # non-critical features that can be switched off
   - recommendation
   - ad

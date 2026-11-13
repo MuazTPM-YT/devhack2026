@@ -17,6 +17,35 @@ components:
   mcp:
     enabled: false
 
+  # default 5 users gave payment ~1 request a minute; the observer needs several per second.
+  # ~0.011 checkouts per user per second, so 250 users; headless browsers off, they cost too much RAM
+  load-generator:
+    envOverrides:
+      - name: LOCUST_USERS
+        value: "250"
+      - name: LOCUST_SPAWN_RATE
+        value: "10"
+      - name: LOCUST_BROWSER_TRAFFIC_ENABLED
+        value: "false"
+
+  # flagd reads ConfigMap flagd-config directly (Muaz's call), so a ConfigMap patch is the only way
+  # to change a flag and the journal sees it. Whole-dir mount: a subPath mount never updates.
+  # The flagd-ui sidecar keeps its own emptyDir copy; its edits no longer reach flagd.
+  flagd:
+    mountedEmptyDirs:
+      - name: config-rw
+        mountPath: /var/flagd-ui-copy
+    additionalVolumeMounts:
+      - name: config-ro
+        mountPath: /etc/flagd
+        readOnly: true
+
+  # JVM went past the chart's 300Mi under 250 users: OOMKilled every few minutes
+  ad:
+    resources:
+      limits:
+        memory: 450Mi
+
   payment:
     replicas: 2
   checkout:
@@ -30,6 +59,24 @@ components:
 
 opensearch:
   enabled: false
+
+# 25000 in-memory traces OOMKilled jaeger (600Mi) at 250 users; 5000 still covers the
+# last few minutes the brain looks at. A list override replaces the chart's, so all five stay.
+jaeger:
+  jaeger:
+    extraEnv:
+      - name: MEMORY_MAX_TRACES
+        value: "5000"
+      - name: PROMETHEUS_ADDR
+        value: prometheus:9090
+      - name: OTEL_COLLECTOR_HOST
+        value: otel-collector
+      - name: OTEL_COLLECTOR_PORT_HTTP
+        value: "4318"
+      - name: JAEGER_HOST
+        value: "0.0.0.0"
+      - name: JAEGER_GRPC_PORT
+        value: "4317"
 
 opentelemetry-collector:
   config:
