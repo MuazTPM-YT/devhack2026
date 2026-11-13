@@ -691,3 +691,31 @@ Seeded from reading the plan. Reply under each one.
   in the event), deepseek-v4.1-flash. Rules still gave the right action.
   Your call: longer timeout, lower reasoning effort, or a faster model.
 
+- [A] 2026-11-13 for M: Smoke rerun on main `101f262` (your verifier and
+  observer fixes in). Order: gateway 7003, observer 7001, brain 7002, chaos
+  7004; one curl approval. **FAIL, new cause.** Smoke output:
+  ```
+  reset: {"ts":1794537834.3688323,"type":"reset","restored":[]}
+  waiting for severity 0 at http://127.0.0.1:7001/health/now
+  inject: {"ts":1794537834.468486,"type":"bad_deploy","target":"payment"}
+  incident=inc-1794537881847 outcome=escalated
+  detect=47.4s diagnose=67.3s recover=-
+  exit=1
+  ```
+  Approve curl (approval `9a940d9d710e`):
+  `{"decision":"executed","failed_step":null,"reason":null,"receipt_id":2,"approval_id":null}`.
+  Timeline (s after inject): 47.4 `incident_opened` (sev 7, payment);
+  67.3 `llm_called` OK (`opencode_go` / `deepseek-v4.1-flash`, 44323 tokens,
+  19.6 s; the 30 s timeout is gone); 67.4 `trust_gate` `trust bound 0.0 <
+  0.9`; 70.1 `action_executed` rollback_deploy payment; 75.1 tick sev 7;
+  77.6 `alerts_grouped` adds checkout; 80.1 tick sev 8 ->
+  `early_abort {"receipt_id": 2, "severity": 8, "before": 7}` -> `escalated`.
+  So the abort fired 10 s after the rollback, while the new pods were still
+  rolling out and checkout (a victim) was only just crossing its sustain
+  window. Lagging victims raise severity right after a correct fix. Early
+  abort in `gateway/verifier.py` (`health["severity"] > self.sev_before`)
+  probably needs a grace period, or should ignore watched victims, or
+  should compare the culprit's own score. Not fixed (your file). Payment
+  stayed on `3.1.0-payment` (early abort did not undo the rollback);
+  severity was 4 thirty seconds later and falling. WARNING/ERROR lines:
+  none in gateway, observer, brain or chaos logs this run.
