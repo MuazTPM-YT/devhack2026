@@ -101,3 +101,18 @@ class HarmCheckTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# live run 2026-11-13: trace victim frontend-proxy is not in /health/now, so recovery could never pass
+class VictimOutsideHealthTest(unittest.TestCase):
+    def test_victim_the_observer_does_not_measure_is_not_waited_on(self):
+        start = health(8, payment=svc(True, True, 0.4))
+        v = Verification(0, start, "payment", ["frontend-proxy"], None, window_s=120, early_abort=True)
+        v.step(5, health(0, payment=svc(err=0.01)), False)
+        self.assertEqual(v.step(20, health(0, payment=svc(err=0.01)), False), "recovered")
+
+    def test_measured_service_that_vanishes_still_blocks_recovery(self):
+        start = health(8, payment=svc(True, True, 0.4), checkout=svc(True, True, 0.2))
+        v = Verification(0, start, "payment", ["checkout"], None, window_s=120, early_abort=True)
+        v.step(5, health(0, payment=svc(err=0.01)), False)
+        self.assertIsNone(v.step(20, health(0, payment=svc(err=0.01)), False))
