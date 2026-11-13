@@ -451,3 +451,61 @@ async def test_network_error_on_real_write_pages_check_by_hand(tmp_path):
     assert w.conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0] == 0
     card = next(e for e in w.events if e["type"] == "escalated")["payload"]["card"]
     assert "may or may not" in json.dumps(card)
+
+
+class TwoApps:
+    def __init__(self):
+        self.by = {"payment": FakeApps(), "checkout": FakeApps()}
+        self.by["checkout"].dep["metadata"]["name"] = "checkout"
+
+    def read_namespaced_deployment(self, name, ns, **kw):
+        return self.by[name].read_namespaced_deployment(name, ns, **kw)
+
+    def patch_namespaced_deployment(self, name, ns, patch, **kw):
+        return self.by[name].patch_namespaced_deployment(name, ns, patch, **kw)
+
+    def list_namespaced_deployment(self, ns, **kw):
+        return Resp({"items": [a.dep for a in self.by.values()]})
+
+    def list_namespaced_replica_set(self, ns, **kw):
+        return Resp({"items": []})
+
+
+# step 3 counted in-flight actions, then the checklist awaited the API; a second run checked in that gap
+# and both executed (2 in flight, max 1)
+async def test_concurrent_runs_never_put_two_actions_in_flight(tmp_path):
+    import asyncio
+    import time
+    conn = connect(":memory:", shared=True)
+    for inc, svc in (("inc-1", "payment"), ("inc-2", "checkout")):
+        conn.execute("INSERT INTO incidents (id, opened_at, onset_at, culprit, victims_json, state, severity_at_open)"
+                     " VALUES (?, 990, 960, ?, '[]', 'open', 4)", (inc, svc))
+        conn.execute("INSERT INTO ledger VALUES ('resource', 'restart_service', ?, 'rehearsal', 30, 0, NULL)", (svc,))
+
+    def obs(request):
+        if request.url.path == "/journal":
+            return httpx.Response(200, json=[])
+        return httpx.Response(200, json={"ts": 1000.0, "severity": 8, "services": {
+            "payment": {"unhealthy": True, "err_ratio": 0.4}, "checkout": {"unhealthy": True, "err_ratio": 0.4}}})
+
+    async def publish(e):
+        Event.model_validate(e)
+
+    gw = Gateway(conn, TwoApps(), FakeCore(), httpx.AsyncClient(transport=httpx.MockTransport(obs)), "http://obs",
+                 SERVICES, POLICY, publish, ReceiptStore(tmp_path / "r.db"), {"u1"}, clock=lambda: 1000.0)
+    real = gw.prepare
+
+    def slow(a, e):  # a real API server answer takes time: that is the gap
+        plan = real(a, e)
+        time.sleep(0.2)
+        return plan
+
+    gw.prepare = slow
+    acts = [{"incident_id": i, "tool": "restart_service", "target": s, "pattern": "resource", "evidence_ids": ["q:1"],
+             "prediction": {"metric": "err_ratio", "target": s, "below": 0.05, "within_s": 90}}
+            for i, s in (("inc-1", "payment"), ("inc-2", "checkout"))]
+    decisions = await asyncio.gather(gw.submit(acts[0]), gw.submit(acts[1]))
+    for t in gw.tasks:
+        t.cancel()
+    assert sorted(d.decision for d in decisions) == ["executed", "refused"]
+    assert conn.execute("SELECT COUNT(*) FROM receipts WHERE outcome='pending'").fetchone()[0] == 1

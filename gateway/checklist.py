@@ -63,6 +63,7 @@ class Gateway:
         self.services, self.policy, self.publish, self.receipts = services, policy_cfg, publish, receipts
         self.approvers, self.clock = approvers, clock
         self.lock = threading.Lock()
+        self.run_lock = asyncio.Lock()
         self.verify_every = 5.0
         self.tasks: set[asyncio.Task] = set()
         self.graph = graph  # brain.graph.DependencyGraph; None = blast radius unknown
@@ -184,8 +185,15 @@ class Gateway:
                               approved_by=decided_by)
 
     # ---- steps 2 to 8 --------------------------------------------------------------------------
+    # one checklist at a time: step 3 counts in-flight actions, then awaits the API; a second run checking
+    # in that gap passed too and both executed. ponytail: global lock, fine at one incident at a time
     async def run(self, action: ActionRequest, steps: list[dict], approved: bool,
                   approved_by: str | None = None) -> GatewayDecision:
+        async with self.run_lock:
+            return await self._run(action, steps, approved, approved_by)
+
+    async def _run(self, action: ActionRequest, steps: list[dict], approved: bool,
+                   approved_by: str | None = None) -> GatewayDecision:
         row = self.incident(action.incident_id)
         if row is None:
             return await self.stop(action, None, steps, "schema", "refused", "unknown incident")
