@@ -141,6 +141,22 @@ Seeded from reading the plan. Reply under each one.
   optional GatewayDecision fields default to None. No SQLite migration needed;
   M's incidents.pattern column stays TEXT with these four application values.
 
+- **Q12** [T] 2026-11-13 for M,A: orchestration contract changes (branch `twaha/orchestration`,
+  not pushed; all off by default, `config/orchestration.yaml` `mode: disabled`). Reply `agreed` or counter:
+  (a) C2: 7 new event types with typed payloads in `schemas/models.py`: `incident_scope_changed`,
+  `delegation_decided`, `investigation_task_changed`, `finding_recorded`, `evidence_reused`,
+  `orchestration_budget_changed`, `action_intent_changed`. `llm_called` may carry `kind: call|summary`
+  (count `call`s, never add a `summary` on top). `approval_decided.decision` adds `superseded`.
+  (b) C3: optional `Event.event_id`; the bus returns the original record for a repeated id (outbox
+  redelivery). Events without it are unchanged.
+  (c) Brain (M): `POST /signals` (observer episodes, token, 409 when modes differ); legacy
+  `POST /incidents` answers 409 in coordinated mode.
+  (d) Gateway (M): `POST /orchestration/actions` (intent envelope, token), `GET /orchestration/actions/{id}`,
+  `POST /orchestration/actions/{id}/clear` (approver clears an unknown write). `GET /incidents/{id}` adds
+  `orchestration` (null for old incidents); `GET /incidents` adds it per row only when orchestration is on.
+  (e) DB: versioned migrations `python -m schemas.migrations data/oncall.db --backup`, never run by
+  `connect()`; `connect()` now turns on `PRAGMA foreign_keys` (no legacy table declares one).
+
 ---
 
 ## Log (append-only, newest at bottom)
@@ -1254,3 +1270,11 @@ Seeded from reading the plan. Reply under each one.
     when blind) and the ground-truth line. **Bench:** leave `origin: akira-mcp` runs out of independent scores.
   New env: `NOTIFIER_URL`, `AKIRA_MCP_TOOLSETS` (default `read`), `AKIRA_OPERATOR_ID` (Discord id in
   `ONCALL_APPROVER_IDS`). Running services must restart to serve the new routes.
+- [T] 2026-11-13 for M,A: Orchestration P0-P8 on branch `twaha/orchestration` (off `origin/main` 7c6d808,
+  14 commits, not pushed), from `reports/akira-orchestration-implementation-handoff.md`. Default stays the
+  single-agent path. Edits your files: observer `detector.py` (split `assess()`), `observer/main.py`
+  (episodes in shadow/coordinated), `brain/main.py`/`agent.py`/`tools.py`, `gateway/checklist.py`
+  (intents, scoped verifier, queue in upkeep), `gateway/executor.py` (`WriteRefused.unknown`),
+  `gateway/policy.py` (unknown writes hold the slot), UI live page (Investigation panel, specialist node).
+  Contract proposals in Q12. Live DB not migrated; nothing run against the cluster or a paid model.
+
