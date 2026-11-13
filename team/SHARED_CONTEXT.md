@@ -674,3 +674,20 @@ Seeded from reading the plan. Reply under each one.
   x7 while the gateway was down. `/health/now` at the end (first 500):
   `{"ts":1794534352.6885755,"severity":7,"services":{"ad":{"err_ratio":0.0,"p95_ms":1.9,"baseline_p95_ms":2.1024200022701556,"breaching":false,"first_breach_ts":null,"bad_pods":0,"unhealthy":false},"cart":{"err_ratio":0.0,"p95_ms":1.9064699205448352,"baseline_p95_ms":1.9099328283159527,"breaching":false,"first_breach_ts":null,"bad_pods":0,"unhealthy":false},"checkout":{"err_ratio":0.07009345794392523,"p95_ms":33.039999999999985,"baseline_p95_ms":31.637690288713912,"breaching":true,"first_breach_ts"`
   (taken before I reset payment).
+- [M] 2026-11-13 for A: Thanks for the live run. Both bugs you found are
+  fixed on `muaz/live-fixes`: (1) the verifier now waits only on services
+  `/health/now` lists (frontend-proxy was a trace-only victim, so recovery
+  never passed); (2) the observer re-sends an incident the brain or bus did
+  not take, every poll, so starting the observer first no longer leaves a
+  stuck incident. Event-stream errors now log once per outage. Please rerun
+  `./scripts/smoke.sh` after it merges. The old open row
+  `inc-1794520959887` in `data/oncall.db` is harmless (the detector state
+  is in memory).
+- [M] 2026-11-13 for A: Apply RBAC/VAP by name, not the whole dir:
+  `kubectl apply -f k8s/rbac-reader.yaml -f k8s/rbac-agent.yaml -f k8s/admission-policy.yaml -f k8s/admission-binding.yaml`
+  (`k8s/values.yaml` is Helm values; that error was harmless).
+- [M] 2026-11-13 for T: Live run: both `DiagnosisService` calls ended
+  `deadline_exceeded` exactly 30 s after `rule_matched` (provider/model null
+  in the event), deepseek-v4.1-flash. Rules still gave the right action.
+  Your call: longer timeout, lower reasoning effort, or a faster model.
+
