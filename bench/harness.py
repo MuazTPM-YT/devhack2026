@@ -16,6 +16,7 @@ from schemas.models import GatewayDecision
 SCENARIOS = {
     "bad-deploy": ("recent_change", False),
     "broken-config": ("recent_change", False),
+    "flag-flip": ("recent_change", False),  # §7 scenario 3; flagd reloads ~60 s after the patch
     "memory-leak": ("resource", True),
     "datastore-down": ("protected", True),
 }
@@ -262,11 +263,13 @@ class HttpTrialServices:
                             candidate = payload.get("receipt_id")
                             if type(candidate) is int and candidate > 0:
                                 receipt_id = candidate
-                            if rehearsal and event["type"] == "approval_requested":
+                            # approve the scenario's own fix only; a follow-up (raise_limit after a
+                            # restart) is a morning job for a human and would be refused while the
+                            # first action still verifies
+                            if rehearsal and event["type"] == "approval_requested" and not approvals:
                                 approval_id = event["payload"]["approval_id"]
-                                if approval_id not in approvals:
-                                    approvals.add(approval_id)
-                                    await self._approve(approval_id, records)
+                                approvals.add(approval_id)
+                                await self._approve(approval_id, records)
                             if event["type"] in TERMINAL:
                                 if rehearsal and receipt_id is not None:
                                     await self._credit(receipt_id, records, injection)
@@ -293,6 +296,8 @@ async def main():
     parser.add_argument("--rehearsal", action="store_true")
     parser.add_argument("--resume", action="store_true", help="Count recorded attempts toward --runs")
     parser.add_argument("--output", type=Path, default=Path("bench/results.jsonl"))
+    # flag-flip needs ~60 s flagd reload + a 210 s verify window, so 300 s is too short for it
+    parser.add_argument("--timeout", type=float, default=600, help="Seconds to wait per trial")
     args = parser.parse_args()
     if args.runs < 1:
         parser.error("--runs must be positive")
@@ -300,7 +305,7 @@ async def main():
         parser.error("Set ONCALL_REHEARSAL=1 for rehearsal hooks")
     async with httpx.AsyncClient() as client:
         services = HttpTrialServices(client, os.environ["GATEWAY_URL"], os.environ["OBSERVER_URL"],
-                                     os.environ["CHAOS_URL"])
+                                     os.environ["CHAOS_URL"], timeout_s=args.timeout)
         await Harness(services, args.output, args.rehearsal).run(args.scenario, args.runs, resume=args.resume)
 
 
