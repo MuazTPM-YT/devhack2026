@@ -31,18 +31,19 @@ have offline test evidence; live acceptance stays open below.
 
 - [x] P0 Redaction and hash-only injection quarantine; diagnosis returns quarantine events (`tests/test_redact.py`, `tests/test_inference.py`, C8)
 - [x] P0 Brain forwards diagnosis result events (`brain/main.py`, `tests/test_brain.py`, merged PR #14)
-- [ ] P0 Prove brain-to-gateway event delivery with running services
+- [x] P0 Prove brain-to-gateway event delivery with running services (smoke PASS on local k3d, 2026-11-13)
 - [x] P0 Trust, verifier, redaction, audit, and SQLite integration tests pass (§8.1)
 - [x] P0 Policy gate unit tests (`tests/test_policy.py`, 19 cases); checklist integration in M's `tests/test_gateway.py`
-- [ ] P0 Runtime authorization against live cluster (RBAC/admission; needs cluster)
+- [x] P0 Runtime authorization against live cluster: `security_check.sh` 19 PASS, 0 FAIL on local k3d `oncall`
 
 ## Phase 3: humans and proof
 
 - [x] P1 Discord component: FYI/wake/tickets, persistent buttons, approver/expiry checks, re-page, cursor recovery (`tests/test_notifier.py`, §6.6)
 - [x] P1 Live Discord via real gateway SSE: FYI, tickets, wake + role mention, approval buttons, expiry closes buttons, re-page, restart cursor recovery (2026-11-13)
-- [ ] P1 Human approver clicks Approve/Reject on a real cluster approval
+- [x] P1 Human approver clicks Approve on a real cluster approval (smoke #2, #3 via Discord)
 - [x] P1 Benchmark harness: incremental results, failed attempts, resume, SSE reconnect/deduplication, partial timings (`tests/test_bench.py`, §9.1)
 - [x] P1 Read-only trust report separates statistical confidence from authorization (`tests/test_trust_report.py`)
+- [ ] P1 Fix LLM timeouts on live bundles first: no diagnosis -> no prediction -> no trust credit
 - [ ] P1 Start overnight runs: 30 each for `(recent_change, rollback_deploy, payment)` and `(recent_change, revert_config, checkout)` (§9.1)
 - [x] P1 Red-team component suite: 12 cases; JSON report generation (`tests/redteam/`, `bench/redteam.py`)
 - [ ] P1 Complete live RBAC/admission, freshness, budget, and authorization checks; publish the acceptance table (§8.3)
