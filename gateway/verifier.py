@@ -11,7 +11,8 @@ class Verification:
                  prediction: dict | None, window_s: float, early_abort: bool, stable_s: float = 15):
         self.t0 = t0
         self.sev_before = health_at_action["severity"]
-        self.watched = [culprit, *victims]
+        # only services the observer measures; a trace-only victim (frontend-proxy) would block recovery forever
+        self.watched = [s for s in [culprit, *victims] if s == culprit or s in health_at_action["services"]]
         self.prediction = prediction
         self.window_s = window_s
         self.early_abort = early_abort

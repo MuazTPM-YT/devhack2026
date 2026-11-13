@@ -5,11 +5,29 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** Phases 0 to 4 built in code (fakes only); nothing verified on the live cluster yet
-**Branches:** all my work merged (last: PR #25). No open branch of mine.
+**Current phase:** first live run done (A, 2026-11-13); smoke failed on a verifier bug, now fixed; rerun pending
+**Branches:** all merged up to PR #28. Now `muaz/live-fixes` (not pushed)
 
 ## Done (with proof)
 
+- Live run by A (2026-11-13, report in SHARED_CONTEXT): security table 19
+  PASS, `fails: 0` on the real cluster; RBAC/VAP applied; Jaeger API shape
+  matches my graph code; flagd reads the ConfigMap (~60 s); load raised to
+  payment ~3 req/s; flag map agreed. Smoke: detect 42.7 s, diagnose 72.9 s,
+  approve -> rollback executed (receipt #1), then wrongly undone.
+- Fixes from the live run on `muaz/live-fixes`:
+  - Verifier watched trace victim `frontend-proxy`, which `/health/now`
+    never lists, so recovery could not pass and the good rollback was
+    undone. Now it watches only services the observer measures (culprit
+    always); a measured service that vanishes still blocks recovery.
+  - Observer: an incident opened while brain/gateway were down stayed open
+    forever and blocked all later incidents. Now it is re-sent every poll
+    until the brain and bus take it. Event-stream errors log once per
+    outage instead of every 2 s (A saw 6138 lines).
+  Proof: both regression tests failed before the fix (`AssertionError:
+  None != 'recovered'`; resend count) and pass after; `uv run pytest` ->
+  `320 passed`; `ruff check .` -> `All checks passed!`; `mypy ... chaos` ->
+  `no issues found in 62 source files`.
 - Two fixes found by re-reading §7 against the code (merged in PR #25):
   - Incident flood: after an incident closes, its services cannot open a
     new incident until they recover once (`Detector.suppressed`). Before,
@@ -239,24 +257,16 @@ section. Only my own work here; cross-team facts go in
 
 ## Blocked / waiting on
 
-- **Live cluster (A):** run `./scripts/security_check.sh` (§6.5.5 table)
-  and `./scripts/smoke.sh` with observer (7001), brain (7002), gateway
-  (7003) up. Nothing of mine has run against the real cluster yet. Unverified
-  until then: Jaeger response shapes, the failed-JSON-Patch-`test` -> 422
-  assumption, OpenCode Go key header and model output (T's adapter).
-- **Load rate (A):** Muaz chose "A raises the load generator rate"; payment
-  at ~1 req/min makes the 1 m windows flap.
-- **Flags (A):** Muaz chose "flagd reads ConfigMap `flagd-config` directly".
-  A must change `k8s/values.yaml` and test that flagd reloads a ConfigMap
-  update without a restart. Until then flag reverts and
-  `enable_degraded_mode` are refused.
-- **Scenario 3 (A):** flag -> service map proposed for
-  `config/services.yaml`; waiting on A's `agreed`.
+- **Smoke rerun (A):** with `muaz/live-fixes` merged. Expect
+  `outcome=incident_resolved`.
+- **LLM timeout (T):** both live calls ended `deadline_exceeded` at 30 s
+  (deepseek-v4.1-flash). Rules still decide, so not blocking; T to pick a
+  longer timeout, lower reasoning effort or another model.
 - **Scenario 10 (A):** `/chaos/shared-outage` (Q6).
-- Note: `scripts/smoke.sh` does not approve by itself. With an empty trust
-  ledger the gateway asks, so a human must `curl` the approval during the
-  run (that is the Phase 1 exit as written: "rolled back on ask via curl
-  approve").
+- Note: `kubectl apply -f k8s/` also tries `k8s/values.yaml` (Helm values)
+  and prints a harmless error; apply the four RBAC/VAP files by name.
+- Note: `scripts/smoke.sh` needs one manual `curl` approval (empty trust
+  ledger -> the gateway asks).
 
 ## Decisions made (Muaz)
 
@@ -269,16 +279,12 @@ section. Only my own work here; cross-team facts go in
 
 ## Next
 
-1. Muaz sends Anirudh the live-run prompt (written 2026-11-13): security
-   table, load rate, Jaeger curls, flagd ConfigMap reload test, flag map
-   reply, full smoke run with a curl approval.
-2. When A's outputs arrive: fix what the cluster shows; tick the §6.5.5 row
-   and the Phase 1 exit in TASK.md only with that output.
-3. After A agrees the flag map: link flag changes to services in the rules,
-   then ConfigMap flag revert + `enable_degraded_mode` (TASK Phase 2).
-4. If the first real LLM call returns `invalid_diagnosis`: ask T to add a
-   forced tool or JSON mode to the adapter.
-5. Stretch (Phase 6): one retry after a clean undo (§6.4.11).
+1. Push + merge `muaz/live-fixes`; A reruns smoke.
+2. Flag work (unblocked): link `flag` journal entries to services via the
+   new `flags:` map in `config/services.yaml`; ConfigMap flag revert in the
+   executor; `enable_degraded_mode`. Plan first, then build.
+3. Tick the Phase 1 exit only with a passing smoke output.
+4. Stretch (Phase 6) only after the Phase 4 exit works live.
 
 ## Notes for my next session
 
