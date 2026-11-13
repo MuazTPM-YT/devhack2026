@@ -40,6 +40,12 @@ components:
         mountPath: /etc/flagd
         readOnly: true
 
+  # JVM went past the chart's 300Mi under 250 users: OOMKilled every few minutes
+  ad:
+    resources:
+      limits:
+        memory: 450Mi
+
   payment:
     replicas: 2
   checkout:
@@ -53,6 +59,24 @@ components:
 
 opensearch:
   enabled: false
+
+# 25000 in-memory traces OOMKilled jaeger (600Mi) at 250 users; 5000 still covers the
+# last few minutes the brain looks at. A list override replaces the chart's, so all five stay.
+jaeger:
+  jaeger:
+    extraEnv:
+      - name: MEMORY_MAX_TRACES
+        value: "5000"
+      - name: PROMETHEUS_ADDR
+        value: prometheus:9090
+      - name: OTEL_COLLECTOR_HOST
+        value: otel-collector
+      - name: OTEL_COLLECTOR_PORT_HTTP
+        value: "4318"
+      - name: JAEGER_HOST
+        value: "0.0.0.0"
+      - name: JAEGER_GRPC_PORT
+        value: "4317"
 
 opentelemetry-collector:
   config:
