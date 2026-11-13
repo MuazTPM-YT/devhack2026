@@ -1,75 +1,37 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { type ReactNode, Suspense, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { type ReactNode, useEffect, useState } from "react";
 
-import { clock, words } from "@/lib/format";
-import type { Incident } from "@/lib/live";
 import { LiveProvider, useLiveContext } from "@/lib/live-context";
+import { incidentStatus, type Policy } from "@/lib/overview";
+import { useNow } from "@/lib/use-now";
 import type { Link as LinkState } from "@/lib/use-live";
 
 import { Icon, type IconName } from "./icon";
 import styles from "./shell.module.css";
 
 const NAV: { href: string; label: string; icon: IconName }[] = [
-  { href: "/", label: "Live incident", icon: "live" },
+  { href: "/", label: "Overview", icon: "grid" },
+  { href: "/live", label: "Live incident", icon: "live" },
   { href: "/chaos", label: "Chaos monitor", icon: "chaos" },
   { href: "/trust", label: "Trust", icon: "trust" },
   { href: "/receipts", label: "Receipts", icon: "receipts" },
   { href: "/benchmark", label: "Benchmark", icon: "bench" },
 ];
 
-const MAX_LISTED = 30;
-
 const LINK_DOT: Record<LinkState, string> = { live: "dot-ok", connecting: "dot-warn", down: "dot-bad", demo: "dot-warn" };
 const LINK_TEXT: Record<LinkState, string> = { live: "streaming", connecting: "connecting", down: "unreachable", demo: "demo replay" };
 
 // pulse line in a ring: the agent's mark
-function Mark() {
+function Mark({ size = 24 }: { size?: number }) {
   return (
-    <svg width="28" height="28" viewBox="0 0 26 26" aria-hidden="true">
-      <circle cx="13" cy="13" r="12" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M5 13.5h4l2-5 3 9 2-4h5" fill="none" stroke="currentColor" strokeWidth="1.4"
+    <svg width={size} height={size} viewBox="0 0 26 26" aria-hidden="true">
+      <circle cx="13" cy="13" r="12" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M5 13.5h4l2-5 3 9 2-4h5" fill="none" stroke="currentColor" strokeWidth="1.6"
         strokeLinecap="round" strokeLinejoin="round" />
     </svg>
-  );
-}
-
-function statusOf(inc: Incident): { text: string; dot: string } {
-  if (!inc.outcome) return { text: "open", dot: "dot-warn dot-live" };
-  return { text: words(inc.outcome), dot: inc.outcome === "resolved" ? "dot-ok" : "dot-bad" };
-}
-
-// past and open incidents from the bus replay; picks one on the live page via ?incident=
-function IncidentList({ onPick }: { onPick: () => void }) {
-  const { state } = useLiveContext();
-  const params = useSearchParams();
-  const path = usePathname();
-  const picked = path === "/" ? (params.get("incident") ?? state.current) : null;
-  const ids = state.order.slice(0, MAX_LISTED);
-  if (ids.length === 0) return <p className={styles.none}>No incidents yet.</p>;
-  return (
-    <ul className={styles.incidents}>
-      {ids.map((id) => {
-        const inc = state.incidents[id];
-        const st = statusOf(inc);
-        const who = inc.culprit ?? inc.unhealthy[0] ?? "detecting…";
-        return (
-          <li key={id}>
-            <Link href={`/?incident=${encodeURIComponent(id)}`} onClick={onPick}
-              className={id === picked ? `${styles.incident} ${styles.incidentOn}` : styles.incident}
-              aria-current={id === picked ? "true" : undefined}>
-              <span className={`dot ${st.dot}`} />
-              <span className={styles.incMain}>
-                <span className={styles.incWho}>{who}</span>
-                <span className={styles.incSub}>{clock(inc.openedAt)} · {st.text}</span>
-              </span>
-            </Link>
-          </li>
-        );
-      })}
-    </ul>
   );
 }
 
@@ -91,19 +53,17 @@ function Status() {
   );
 }
 
-function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+function Sidebar({ open, instant, onClose }: { open: boolean; instant: boolean; onClose: () => void }) {
   const path = usePathname();
-  const { state } = useLiveContext();
-  const openCount = state.order.filter((id) => !state.incidents[id].outcome).length;
+  const { state, policy } = useLiveContext();
+  const now = useNow(true, 5000);
+  const openCount = state.order.filter((id) => incidentStatus(state.incidents[id], now, policy.maxAgeS) === "open").length;
   return (
-    <aside id="sidebar" className={styles.side} data-open={open} aria-label="Main">
+    <aside id="sidebar" className={styles.side} data-open={open} data-instant={instant} aria-label="Main">
       <div className={styles.brandRow}>
         <Link href="/" className={styles.brand} onClick={onClose}>
           <Mark />
-          <span className={styles.brandText}>
-            <span className={styles.brandName}>Akira</span>
-            <span className={styles.brandSub}>on-call agent</span>
-          </span>
+          <span className={styles.brandName}>Akira</span>
         </Link>
         <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Close menu">
           <Icon name="close" />
@@ -112,13 +72,13 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 
       <nav className={styles.nav} aria-label="Pages">
         {NAV.map((item) => {
-          const on = path === item.href;
+          const on = item.href === "/" ? path === "/" : path.startsWith(item.href);
           return (
             <Link key={item.href} href={item.href} onClick={onClose} title={item.label}
               className={on ? `${styles.link} ${styles.on}` : styles.link} aria-current={on ? "page" : undefined}>
-              <Icon name={item.icon} />
+              <Icon name={item.icon} size={18} />
               <span className={styles.linkText}>{item.label}</span>
-              {item.href === "/" && openCount > 0 && (
+              {item.href === "/live" && openCount > 0 && (
                 <span className={styles.badge} aria-label={`${openCount} open`}>{openCount}</span>
               )}
             </Link>
@@ -126,45 +86,43 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         })}
       </nav>
 
-      <section className={styles.section} aria-labelledby="side-incidents">
-        <h2 id="side-incidents" className={styles.sectionTitle}>
-          Incidents <span className={styles.count}>{state.order.length || ""}</span>
-        </h2>
-        <Suspense fallback={null}>
-          <IncidentList onPick={onClose} />
-        </Suspense>
-      </section>
-
       <Status />
     </aside>
   );
 }
 
-export function Shell({ children }: { children: ReactNode }) {
+export function Shell({ children, policy }: { children: ReactNode; policy: Policy }) {
   const [open, setOpen] = useState(false);
+  // Escape closes without animation: keyboard actions never animate
+  const [instant, setInstant] = useState(false);
   const path = usePathname();
 
-  // drawer closes on navigation and on Escape
   useEffect(() => setOpen(false), [path]);
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setInstant(true);
+      setOpen(false);
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
+  const show = () => { setInstant(false); setOpen(true); };
+
   return (
-    <LiveProvider>
+    <LiveProvider policy={policy}>
       <a href="#main" className={styles.skip}>Skip to content</a>
       <div className={styles.app}>
         <header className={styles.top}>
-          <button type="button" className={styles.menuBtn} onClick={() => setOpen(true)}
+          <button type="button" className={styles.menuBtn} onClick={show}
             aria-expanded={open} aria-controls="sidebar" aria-label="Open menu">
             <Icon name="menu" />
           </button>
-          <span className={styles.topBrand}><Mark /> Akira</span>
+          <span className={styles.topBrand}><Mark size={20} /> Akira</span>
         </header>
-        <Sidebar open={open} onClose={() => setOpen(false)} />
+        <Sidebar open={open} instant={instant} onClose={() => setOpen(false)} />
         {open && <div className={styles.scrim} onClick={() => setOpen(false)} aria-hidden="true" />}
         <main id="main" className={styles.main}>{children}</main>
       </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { since } from "@/lib/format";
+import { duration, plural, since } from "@/lib/format";
 import { describe, type Line, NODES, pathOf, type Phase, phaseOf, type Row, rows, stageTimes } from "@/lib/flow";
 import type { Incident, IncidentEvent } from "@/lib/live";
 
@@ -11,8 +11,6 @@ import styles from "./timeline.module.css";
 const PHASE_TITLE: Record<Phase, string> = {
   detect: "Detect", group: "Group", diagnose: "Diagnose", check: "Check", act: "Act", verify: "Verify", outcome: "Outcome",
 };
-
-const secs = (s: number) => (s < 60 ? `${s.toFixed(1)} s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`);
 
 function rowLine(row: Row, events: IncidentEvent[]): Line {
   if (row.kind === "event") return describe(row.ev, events[row.index + 1] ?? null);
@@ -47,11 +45,9 @@ export function Timeline({ incident, selected, onSelect, now, className }: {
       <div className="card-head">
         <h2 className="card-title">Timeline</h2>
         <div className={styles.headRight}>
-          {events.length > 0 && <span className="label">{events.length} events</span>}
+          {events.length > 0 && <span className="label">{plural(events.length, "event")}</span>}
           {selected != null && (
-            <button type="button" className="pill" onClick={() => onSelect(null)}>
-              <span className="dot dot-ok dot-live" />Follow live
-            </button>
+            <button type="button" className="btn" onClick={() => onSelect(null)}>Follow live</button>
           )}
         </div>
       </div>
@@ -78,7 +74,7 @@ export function Timeline({ incident, selected, onSelect, now, className }: {
                   <div className={styles.phase}>
                     <span>{PHASE_TITLE[phase]}</span>
                     {first && t && phase !== "outcome" && (
-                      <span className={styles.phaseTime}>{since(t.start, incident.openedAt)} · took {secs(t.took)}</span>
+                      <span className={styles.phaseTime}>{since(t.start, incident.openedAt)} · took {duration(t.took)}</span>
                     )}
                   </div>
                 )}

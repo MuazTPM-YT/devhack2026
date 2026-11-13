@@ -1,5 +1,6 @@
 // 20 px line icons drawn for this app; stroke follows currentColor
 const PATHS = {
+  grid: "M3.5 3.5h5v5h-5zM11.5 3.5h5v5h-5zM3.5 11.5h5v5h-5zM11.5 11.5h5v5h-5z",
   live: "M2.5 10.5h3.5l2-5 3.5 9 2-4h4",
   chaos: "M11 2.5 4.5 11h5l-1 6.5L15.5 9h-5z",
   trust: "M10 2.5 3.5 5v4.6c0 3.9 2.7 6.8 6.5 7.9 3.8-1.1 6.5-4 6.5-7.9V5zM7 10l2.2 2.2L13.5 8",

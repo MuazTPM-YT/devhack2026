@@ -1,46 +1,48 @@
-import { words } from "@/lib/format";
-import type { Incident } from "@/lib/live";
+import { Tag, type Tone } from "@/components/ui/tag";
+import type { Incident, Outcome as OutcomeKind } from "@/lib/live";
 import type { ReceiptView } from "@/lib/use-receipt";
 
-import styles from "./outcome.module.css";
+import s from "./sheet.module.css";
+
+export const OUTCOME_TAG: Record<OutcomeKind | "open", { tone: Tone; label: string }> = {
+  open: { tone: "accent", label: "In progress" },
+  resolved: { tone: "ok", label: "Resolved" },
+  escalated: { tone: "bad", label: "Escalated" },
+  handed_off: { tone: "warn", label: "Handed off" },
+};
 
 function Yes({ value, yes, no }: { value: boolean | null | undefined; yes: string; no: string }) {
   if (value == null) return <span className="muted">–</span>;
   return <span className={value ? "ok" : "bad"}>{value ? yes : no}</span>;
 }
 
-// the final card the notifier also posts, plus the receipt numbers behind it
-export function Outcome({ incident, receipt, className }: {
-  incident: Incident | null; receipt: ReceiptView | null; className?: string;
-}) {
-  const action = incident?.action;
+// the card the notifier posts, and the receipt numbers behind it
+export function Outcome({ incident, receipt }: { incident: Incident; receipt: ReceiptView | null }) {
+  const action = incident.action;
   const bound = receipt?.trust?.lower_bound;
+  const tag = OUTCOME_TAG[incident.outcome ?? "open"];
+  const briefing = incident.briefing && !incident.card?.text.includes(incident.briefing) ? incident.briefing : null;
   return (
-    <article className={`card ${className ?? ""}`}>
-      <div className="card-head">
-        <h2 className="card-title">Outcome</h2>
-        {incident?.outcome && <span className="pill pill-dark">{words(incident.outcome)}</span>}
+    <section className={s.sec} aria-labelledby="sec-outcome">
+      <div className={s.head}>
+        <h2 id="sec-outcome" className={s.title}>Outcome</h2>
+        <Tag tone={tag.tone}>{tag.label}</Tag>
       </div>
-
-      {incident?.card ? (
-        <blockquote className={styles.card}>{incident.card.text}</blockquote>
+      {incident.card ? (
+        <blockquote className={s.quote}>{incident.card.text}</blockquote>
       ) : (
-        <p className="empty">{action ? "Watching health after the fix." : "No action taken yet."}</p>
+        <p className={s.note}>{action ? "Watching health after the fix." : "No action taken yet."}</p>
       )}
-      {incident?.briefing && <p className={styles.briefing}>{incident.briefing}</p>}
-
-      <dl className={styles.facts}>
-        <div><dt>Action</dt><dd>{action ? <span className="mono">{action.tool} → {action.target}</span> : "–"}</dd></div>
-        <div><dt>Harm check</dt><dd><Yes value={incident?.harmClean} yes="clean" no="side effects" /></dd></div>
+      {briefing && <p className={s.note}>{briefing}</p>}
+      <dl className={s.facts}>
+        <div><dt>Action</dt><dd className="mono">{action ? `${action.tool} → ${action.target}` : "–"}</dd></div>
+        <div><dt>Harm check</dt><dd><Yes value={incident.harmClean} yes="clean" no="side effects" /></dd></div>
         <div><dt>Prediction</dt><dd><Yes value={receipt?.prediction_held} yes="held" no="missed" /></dd></div>
-        <div><dt>Trust bound</dt><dd>{typeof bound === "number" ? `${(bound * 100).toFixed(1)}%` : "–"}</dd></div>
+        <div><dt>Trust bound</dt><dd className="num">{typeof bound === "number" ? `${(bound * 100).toFixed(1)}%` : "–"}</dd></div>
       </dl>
-
       {action && action.receiptId > 0 && (
-        <a className={styles.receipt} href={`/api/gateway/receipts/${action.receiptId}`} target="_blank" rel="noreferrer">
-          Receipt #{action.receiptId} ↗
-        </a>
+        <a className={s.link} href={`/receipts?receipt=${action.receiptId}`}>Receipt #{action.receiptId} →</a>
       )}
-    </article>
+    </section>
   );
 }

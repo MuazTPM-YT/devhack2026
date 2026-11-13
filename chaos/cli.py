@@ -71,7 +71,7 @@ def cmd_list(args: argparse.Namespace) -> int:
 def cmd_inject(args: argparse.Namespace) -> int:
     entry = call("POST", f"{args.chaos_url}/chaos/{args.fault}")
     print(f"injected  {truth_line(entry)}")
-    print("watch the agent at http://localhost:3000; undo with: uv run python -m chaos.cli reset")
+    print("watch the agent at http://localhost:3000/live; undo with: uv run python -m chaos.cli reset")
     return 0
 
 

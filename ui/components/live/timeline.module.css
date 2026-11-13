@@ -14,13 +14,13 @@
 .phase {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
   display: flex;
   justify-content: space-between;
   gap: 10px;
   padding: 7px 16px;
-  background: var(--card-sunk);
-  border-block: 1px solid var(--line);
+  background: var(--card);
+  border-bottom: 1px solid var(--ink);
   font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.1em;
@@ -43,7 +43,7 @@
   text-align: left;
   cursor: pointer;
   position: relative;
-  animation: rise 0.25s var(--ease-out) both;
+  transition: background-color 120ms ease;
 }
 
 .row::before {
@@ -56,8 +56,11 @@
   background: var(--line);
 }
 
-.row:hover { background: var(--frame); }
-.on, .on:hover { background: var(--rose-soft); }
+.on { background: var(--rose-soft); }
+
+@media (hover: hover) and (pointer: fine) {
+  .row:hover:not(.on) { background: var(--card-sunk); }
+}
 
 .time { font-family: var(--mono); font-size: 11.5px; color: var(--ink-mute); padding-top: 2px; font-variant-numeric: tabular-nums; }
 
@@ -91,15 +94,13 @@
   padding: 10px 12px;
   max-height: 260px;
   overflow: auto;
-  background: var(--ox-deep);
+  background: var(--ink);
   color: var(--frame);
   border-radius: var(--radius);
   font: 11.5px/1.5 var(--mono);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-
-@keyframes rise { from { opacity: 0; transform: translateY(3px); } }
 
 @media (max-width: 900px) {
   .row { grid-template-columns: 54px 14px minmax(0, 1fr); }

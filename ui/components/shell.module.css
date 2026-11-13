@@ -1,5 +1,5 @@
-/* fixed sidebar on desktop, icon rail on tablets, drawer on phones */
-.app { min-height: 100vh; }
+/* slim paper sidebar on desktop, icon rail on tablets, drawer on phones */
+.app { min-height: 100dvh; }
 
 .side {
   position: fixed;
@@ -7,19 +7,18 @@
   width: var(--side-w);
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 16px 12px 14px;
-  background: var(--side);
-  color: var(--side-ink);
-  overflow: hidden;
+  gap: 20px;
+  padding: 18px 12px 14px;
+  background: var(--card);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
   z-index: 30;
 }
 
 .main {
   margin-left: var(--side-w);
-  padding: 20px 24px 32px;
+  padding: 24px 28px 40px;
   min-width: 0;
-  max-width: calc(1480px + var(--side-w));
 }
 
 .skip {
@@ -28,26 +27,24 @@
   top: -40px;
   z-index: 50;
   padding: 8px 12px;
-  background: var(--ox-deep);
+  background: var(--ink);
   color: var(--frame);
   border-radius: var(--radius-sm);
 }
 
 .skip:focus { top: 8px; }
 
-.brandRow { display: flex; align-items: center; justify-content: space-between; padding: 0 6px; }
+.brandRow { display: flex; align-items: center; justify-content: space-between; padding: 0 8px; }
 
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   text-decoration: none;
-  color: var(--side-ink);
+  color: var(--ox);
 }
 
-.brandText { display: flex; flex-direction: column; line-height: 1.05; }
-.brandName { font-family: var(--serif); font-size: 26px; letter-spacing: -0.01em; }
-.brandSub { font-size: 10.5px; color: var(--side-mute); letter-spacing: 0.08em; text-transform: uppercase; }
+.brandName { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); }
 
 .closeBtn, .menuBtn {
   display: none;
@@ -59,30 +56,28 @@
   border-radius: var(--radius);
   background: transparent;
   cursor: pointer;
+  transition: transform 160ms var(--ease-out);
 }
 
-.closeBtn { color: var(--side-ink); }
-.closeBtn:hover { background: var(--side-hover); }
+.closeBtn:active, .menuBtn:active { transform: scale(0.97); }
 
-.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav { display: flex; flex-direction: column; gap: 1px; }
 
 .link {
   display: flex;
   align-items: center;
-  gap: 11px;
-  min-height: 38px;
+  gap: 10px;
+  min-height: 36px;
   padding: 0 10px;
   border-radius: var(--radius);
-  color: var(--side-mute);
+  color: var(--ink-soft);
   text-decoration: none;
   font-size: 13.5px;
-  transition: background 0.12s var(--ease-out), color 0.12s var(--ease-out);
+  font-weight: 500;
+  transition: background-color 120ms ease, color 120ms ease;
 }
 
-.link:hover { background: var(--side-hover); color: var(--side-ink); }
-.link:focus-visible { outline-color: var(--rose); }
-
-.on, .on:hover { background: var(--side-on); color: var(--side-ink); box-shadow: inset 2px 0 0 var(--rose); }
+.on { background: var(--rose-soft); color: var(--ox); box-shadow: inset 2px 0 0 var(--ox); }
 
 .linkText { flex: 1; }
 
@@ -90,67 +85,22 @@
   min-width: 20px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: var(--rose);
-  color: var(--ox-deep);
+  background: var(--ox);
+  color: var(--frame);
   font-size: 11px;
   font-weight: 600;
   text-align: center;
-  font-variant-numeric: tabular-nums;
 }
 
-.section { display: flex; flex-direction: column; gap: 6px; min-height: 0; flex: 1; }
-
-.sectionTitle {
-  margin: 0;
-  padding: 0 10px;
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--side-mute);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  display: flex;
-  justify-content: space-between;
+@media (hover: hover) and (pointer: fine) {
+  .link:hover:not(.on) { background: var(--card-sunk); color: var(--ink); }
+  .closeBtn:hover { background: var(--card-sunk); }
 }
-
-.count { font-variant-numeric: tabular-nums; font-weight: 400; }
-
-.none { margin: 0; padding: 4px 10px; font-size: 12.5px; color: var(--side-mute); }
-
-.incidents {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  overflow-y: auto;
-  min-height: 0;
-  scrollbar-width: thin;
-  scrollbar-color: var(--side-line) transparent;
-}
-
-.incident {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 10px;
-  border-radius: var(--radius);
-  text-decoration: none;
-  color: var(--side-ink);
-}
-
-.incident:hover { background: var(--side-hover); }
-.incident:focus-visible { outline-color: var(--rose); }
-.incidentOn, .incidentOn:hover { background: var(--side-on); }
-
-.incMain { display: flex; flex-direction: column; min-width: 0; }
-.incWho { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.incSub { font-size: 11px; color: var(--side-mute); font-variant-numeric: tabular-nums; text-transform: capitalize; }
 
 .status {
-  margin: 0;
-  padding: 10px 10px 0;
-  border-top: 1px solid var(--side-line);
+  margin: auto 0 0;
+  padding: 12px 10px 0;
+  border-top: 1px solid var(--line);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -158,24 +108,22 @@
 }
 
 .status div { display: flex; justify-content: space-between; gap: 8px; }
-.status dt { display: flex; align-items: center; gap: 8px; }
-.status dd { margin: 0; color: var(--side-mute); font-variant-numeric: tabular-nums; }
+.status dt { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); }
+.status dd { margin: 0; color: var(--ink-mute); }
 
 .top { display: none; }
 .scrim { display: none; }
 
-/* tablet: icon rail, no incident list (it lives on the live page header too) */
 @media (max-width: 1100px) and (min-width: 721px) {
-  .side { width: var(--side-rail); padding: 14px 10px; align-items: center; }
-  .main { margin-left: var(--side-rail); padding: 18px 18px 28px; }
-  .brandText, .linkText, .section, .status dd, .statusName { display: none; }
+  .side { width: var(--side-rail); padding: 16px 10px; align-items: center; }
+  .main { margin-left: var(--side-rail); padding: 20px 20px 32px; }
+  .brandName, .linkText, .status dd, .statusName { display: none; }
   .brandRow { padding: 0; }
   .link { justify-content: center; padding: 0; width: 44px; position: relative; }
-  .badge { position: absolute; top: 2px; right: 0; min-width: 16px; padding: 0 4px; font-size: 10px; }
-  .status { padding: 10px 0 0; align-items: center; }
+  .badge { position: absolute; top: 2px; right: -2px; min-width: 16px; padding: 0 4px; font-size: 10px; }
+  .status { padding: 12px 0 0; align-items: center; }
 }
 
-/* phone: top bar + drawer */
 @media (max-width: 720px) {
   .top {
     display: flex;
@@ -184,22 +132,30 @@
     position: sticky;
     top: 0;
     z-index: 20;
-    padding: 8px 12px;
-    background: var(--side);
-    color: var(--side-ink);
+    padding: 6px 12px;
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
   }
-  .menuBtn { display: inline-flex; color: var(--side-ink); }
-  .topBrand { display: inline-flex; align-items: center; gap: 8px; font-family: var(--serif); font-size: 22px; }
-  .topBrand svg { width: 22px; height: 22px; }
-  .closeBtn { display: inline-flex; }
+  .menuBtn, .closeBtn { display: inline-flex; }
+  .topBrand { display: inline-flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; color: var(--ink); }
+  .topBrand svg { color: var(--ox); }
   .side {
-    width: min(300px, 86vw);
+    width: min(280px, 84vw);
     transform: translateX(-100%);
-    /* hidden only after the slide-out ends, so it stays out of the tab order when closed */
-    transition: transform 0.22s var(--ease-out), visibility 0s linear 0.22s;
     visibility: hidden;
+    /* close: fast system response; visibility drops after the slide so it leaves the tab order */
+    transition: transform 160ms var(--ease-out), visibility 0s linear 160ms;
   }
-  .side[data-open="true"] { transform: none; visibility: visible; transition: transform 0.22s var(--ease-out); }
-  .scrim { display: block; position: fixed; inset: 0; z-index: 25; background: rgba(42, 21, 18, 0.45); }
-  .main { margin-left: 0; padding: 14px 16px 24px; }
+  .side[data-open="true"] {
+    transform: none;
+    visibility: visible;
+    transition: transform 240ms var(--ease-drawer);
+  }
+  .side[data-instant="true"] { transition: none; }
+  .scrim { display: block; position: fixed; inset: 0; z-index: 25; background: rgba(28, 26, 23, 0.4); }
+  .main { margin-left: 0; padding: 16px 16px 28px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side, .side[data-open="true"] { transition: none; }
 }

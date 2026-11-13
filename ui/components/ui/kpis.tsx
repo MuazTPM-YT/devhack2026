@@ -1,0 +1,20 @@
+import type { ReactNode } from "react";
+
+import styles from "./kpis.module.css";
+
+export interface Kpi { label: string; value: ReactNode; sub?: ReactNode; tone?: "bad" | "warn" | "ok" }
+
+// one ruled row of figures under a page head
+export function Kpis({ items, label }: { items: Kpi[]; label: string }) {
+  return (
+    <dl className={styles.row} aria-label={label}>
+      {items.map((k) => (
+        <div key={k.label} className={styles.cell}>
+          <dt className={styles.label}>{k.label}</dt>
+          <dd className={`${styles.value} ${k.tone ? styles[k.tone] : ""}`}>{k.value}</dd>
+          {k.sub != null && <dd className={styles.sub}>{k.sub}</dd>}
+        </div>
+      ))}
+    </dl>
+  );
+}

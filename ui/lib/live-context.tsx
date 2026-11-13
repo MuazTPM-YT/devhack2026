@@ -3,13 +3,14 @@
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 
 import { type HealthNow, healthNow } from "./chaos-api.ts";
+import type { Policy } from "./overview.ts";
 import { useLive } from "./use-live.ts";
 
 const HEALTH_POLL_MS = 3000;
 
 export interface HealthState { health: HealthNow | null; error: string | null }
 
-type LiveCtx = ReturnType<typeof useLive> & { observer: HealthState };
+type LiveCtx = ReturnType<typeof useLive> & { observer: HealthState; policy: Policy };
 
 const Ctx = createContext<LiveCtx | null>(null);
 
@@ -29,13 +30,13 @@ function useObserver(): HealthState {
 }
 
 // one SSE stream for the whole app: lives in the layout, so changing page keeps the incident history
-export function LiveProvider({ children }: { children: ReactNode }) {
+export function LiveProvider({ children, policy }: { children: ReactNode; policy: Policy }) {
   // read once on load; ?demo=1 is a dev aid (see lib/demo.ts)
   const [demo, setDemo] = useState<boolean | null>(null);
   useEffect(() => setDemo(new URLSearchParams(window.location.search).get("demo") === "1"), []);
   const live = useLive(demo);
   const observer = useObserver();
-  return <Ctx.Provider value={{ ...live, observer }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ ...live, observer, policy }}>{children}</Ctx.Provider>;
 }
 
 export function useLiveContext(): LiveCtx {

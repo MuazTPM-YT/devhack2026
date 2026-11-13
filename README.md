@@ -156,7 +156,7 @@ stays until `reset`.
 
 ```bash
 uv run python -m chaos.cli list                       # faults you can inject
-uv run python -m chaos.cli inject bad-deploy          # break payment; watch http://localhost:3000
+uv run python -m chaos.cli inject bad-deploy          # break payment; watch http://localhost:3000/live
 uv run python -m chaos.cli status                     # severity and per-service health (observer :7001)
 uv run python -m chaos.cli kubectl -n shop scale deploy/cart --replicas=0   # break it your own way (admin)
 uv run python -m chaos.cli truth                      # what was really broken and when

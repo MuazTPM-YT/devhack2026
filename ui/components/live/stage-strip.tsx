@@ -1,5 +1,5 @@
 import { stageTimes } from "@/lib/flow";
-import { since } from "@/lib/format";
+import { duration, since } from "@/lib/format";
 import { type Incident, STAGES, type Stage, type StageState } from "@/lib/live";
 
 import styles from "./stage-strip.module.css";
@@ -17,8 +17,6 @@ const STATE_LABEL: Record<StageState, string> = {
   idle: "waiting", active: "working", done: "done", failed: "stopped",
 };
 
-const secs = (s: number) => (s < 60 ? `${s.toFixed(1)} s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`);
-
 // six stages as one stepper; each shows when it started and how long it ran
 export function StageStrip({ incident, now }: { incident: Incident | null; now: number }) {
   const times = stageTimes(incident?.events ?? [], incident?.closedAt ?? now);
@@ -32,11 +30,10 @@ export function StageStrip({ incident, now }: { incident: Incident | null; now: 
             <div className={styles.top}>
               <span className={styles.num}>{String(i + 1).padStart(2, "0")}</span>
               <span className={styles.title}>{COPY[stage].title}</span>
-              <span className={styles.state}>{STATE_LABEL[state]}</span>
             </div>
-            <div className={styles.bar} aria-hidden="true" />
+            <span className={styles.state}>{STATE_LABEL[state]}</span>
             <div className={styles.time}>
-              {t && incident ? `${since(t.start, incident.openedAt)} · ${secs(t.took)}` : COPY[stage].hint}
+              {t && incident ? `${since(t.start, incident.openedAt)} · ${duration(t.took)}` : COPY[stage].hint}
             </div>
           </li>
         );

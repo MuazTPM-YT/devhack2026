@@ -8,15 +8,16 @@ import type { Incident } from "@/lib/live";
 
 import styles from "./flow-map.module.css";
 
-const W = 1000;
-const H = 344;
-const NW = 150;
-const NH = 72;
+// sized for the centre pane (~560-900 px wide), so 1 viewBox unit stays close to 1 css px
+const W = 660;
+const H = 318;
+const NW = 116;
+const NH = 58;
 
 // component centres; the main row is the incident's path left to right
 const POS: Record<NodeId, [number, number]> = {
-  shop: [90, 172], observer: [280, 172], brain: [470, 172], gateway: [660, 172], k8s: [900, 172],
-  llm: [470, 50], notifier: [660, 50], verifier: [780, 294],
+  shop: [62, 160], observer: [194, 160], brain: [326, 160], gateway: [458, 160], k8s: [598, 160],
+  llm: [326, 40], notifier: [458, 40], verifier: [528, 278],
 };
 
 type Pt = [number, number];
@@ -35,7 +36,7 @@ const EDGES: Record<string, Pt[]> = {
   "gateway>k8s": [[R("gateway"), Y("gateway")], [L("k8s"), Y("k8s")]],
   "brain>llm": [[X("brain"), T("brain")], [X("llm"), B("llm")]],
   "gateway>notifier": [[X("gateway"), T("gateway")], [X("notifier"), B("notifier")]],
-  "shop>brain": [[X("shop"), T("shop")], [X("shop"), 108], [X("brain") - 40, 108], [X("brain") - 40, T("brain")]],
+  "shop>brain": [[X("shop"), T("shop")], [X("shop"), 100], [X("brain") - 34, 100], [X("brain") - 34, T("brain")]],
   "observer>verifier": [[X("observer"), B("observer")], [X("observer"), Y("verifier")], [L("verifier"), Y("verifier")]],
   "k8s>verifier": [[X("k8s"), B("k8s")], [X("k8s"), Y("verifier")], [R("verifier"), Y("verifier")]],
 };
@@ -53,13 +54,15 @@ function route(path: NodeId[]): Pt[] {
   return pts;
 }
 
-// dot walking the focused route; begun before paint, since SMIL begin=0 is already over on a new node
+// dot walking the focused route (the explainer, so it may run past 300 ms; capped at 900 ms); begun
+// before paint, since SMIL begin=0 is already over on a newly mounted node
 function Pulse({ pts }: { pts: Pt[] }) {
   const ref = useRef<SVGAnimateMotionElement>(null);
   useLayoutEffect(() => { ref.current?.beginElement(); }, []);
   return (
-    <circle r="6" cx="0" cy="0" className={styles.pulse}>
-      <animateMotion ref={ref} begin="indefinite" dur={`${Math.max(0.6, pts.length * 0.25)}s`} path={d(pts)} fill="freeze" />
+    <circle r="5" cx="0" cy="0" className={styles.pulse}>
+      <animateMotion ref={ref} begin="indefinite" dur={`${Math.min(0.9, Math.max(0.5, pts.length * 0.15))}s`}
+        path={d(pts)} fill="freeze" calcMode="spline" keyPoints="0;1" keyTimes="0;1" keySplines="0.77 0 0.175 1" />
     </circle>
   );
 }
@@ -115,14 +118,14 @@ export function FlowMap({ incident, upto }: { incident: Incident | null; upto: n
             return (
               <g key={id} className={`${styles.node} ${styles[n.state] ?? ""}`} transform={`translate(${cx - NW / 2},${cy - NH / 2})`}>
                 <title>{`${NODES[id].title} (${NODES[id].sub})${n.last ? `\n${n.last.title}${n.last.detail ? `\n${n.last.detail}` : ""}` : ""}`}</title>
-                <rect width={NW} height={NH} rx="6" className={styles.box} />
-                <text x="10" y="20" className={styles.title}>{NODES[id].title}</text>
-                <text x="10" y="35" className={styles.sub}>{NODES[id].sub}</text>
-                <text x="10" y="58" className={styles.last}>{n.last ? cut(n.last.title, 22) : "idle"}</text>
+                <rect width={NW} height={NH} rx="3" className={styles.box} />
+                <text x="9" y="18" className={styles.title}>{NODES[id].title}</text>
+                <text x="9" y="31" className={styles.sub}>{NODES[id].sub}</text>
+                <text x="9" y="48" className={styles.last}>{n.last ? cut(n.last.title, 19) : "idle"}</text>
                 {n.count > 0 && (
-                  <g transform={`translate(${NW - 10},14)`}>
-                    <rect x="-22" y="-9" width="22" height="16" rx="3" className={styles.countBox} />
-                    <text x="-11" y="3" textAnchor="middle" className={styles.count}>{n.count}</text>
+                  <g transform={`translate(${NW - 7},12)`}>
+                    <rect x="-20" y="-8" width="20" height="14" rx="2" className={styles.countBox} />
+                    <text x="-10" y="2.5" textAnchor="middle" className={styles.count}>{n.count}</text>
                   </g>
                 )}
               </g>

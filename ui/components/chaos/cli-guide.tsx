@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Icon } from "@/components/icon";
+import page from "@/components/page.module.css";
 
 import styles from "./cli-guide.module.css";
 
@@ -38,42 +39,41 @@ function Copy({ text }: { text: string }) {
   );
 }
 
-function Command({ cmd }: { cmd: string }) {
+// `short` shows a compact form in tight cells; Copy always copies the full command
+function Command({ cmd, short }: { cmd: string; short?: string }) {
   return (
     <div className={styles.cmd}>
-      <code className={styles.code}><span className={styles.prompt}>$</span> {cmd}</code>
+      <code className={styles.code} title={cmd}><span className={styles.prompt}>$</span> {short ?? cmd}</code>
       <Copy text={cmd} />
     </div>
   );
 }
 
 // faults come from a terminal, not this page: the panel only watches
-export function CliGuide({ className }: { className?: string }) {
+export function CliGuide() {
   return (
-    <article className={`card ${className ?? ""}`}>
+    <article className="card">
       <div className="card-head">
         <h2 className="card-title">Break it from a terminal</h2>
-        <span className="pill pill-dark">admin · namespace shop</span>
+        <span className="label">run from the repo root · each fault stays until reset</span>
       </div>
-      <p className={styles.intro}>
-        Run these from the repo root. Each fault stays until <span className="mono">reset</span>, and the
-        live page shows the agent working on it.
-      </p>
+      <div className={page.scroll}>
+        <table className={page.table}>
+          <thead><tr><th>Fault</th><th>Target</th><th>What happens</th><th>Command</th></tr></thead>
+          <tbody>
+            {FAULTS.map((f) => (
+              <tr key={f.name}>
+                <td><span className={styles.name}>{f.name}</span><span className={styles.scenario}>scenario {f.scenario}</span></td>
+                <td className="mono">{f.target}</td>
+                <td className={styles.what}>{f.what}</td>
+                <td className={styles.cmdCell}><Command cmd={`${CLI} inject ${f.name}`} short={`inject ${f.name}`} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-      <ul className={styles.faults}>
-        {FAULTS.map((f) => (
-          <li key={f.name}>
-            <div className={styles.faultHead}>
-              <span className={styles.name}>{f.name}</span>
-              <span className="label">scenario {f.scenario} · {f.target}</span>
-            </div>
-            <p className={styles.what}>{f.what}</p>
-            <Command cmd={`${CLI} inject ${f.name}`} />
-          </li>
-        ))}
-      </ul>
-
-      <h3 className={styles.sub}>More</h3>
+      <h3 className={styles.sub}>Watch, break your own way, undo</h3>
       <ul className={styles.other}>
         {OTHER.map((o) => (
           <li key={o.cmd}>

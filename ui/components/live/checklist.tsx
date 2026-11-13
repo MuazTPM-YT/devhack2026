@@ -1,56 +1,48 @@
-import { since, words } from "@/lib/format";
+import { plural, since, words } from "@/lib/format";
 import type { Incident } from "@/lib/live";
 
-import styles from "./checklist.module.css";
+import s from "./sheet.module.css";
 
-function Mark({ passed }: { passed: boolean }) {
-  return passed ? (
-    <svg width="18" height="18" viewBox="0 0 18 18" aria-label="passed" className={styles.pass}>
-      <circle cx="9" cy="9" r="8" fill="currentColor" />
-      <path d="M5.5 9.2l2.3 2.3 4.7-4.9" fill="none" stroke="var(--frame)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  ) : (
-    <svg width="18" height="18" viewBox="0 0 18 18" aria-label="failed" className={styles.fail}>
-      <circle cx="9" cy="9" r="8" fill="currentColor" />
-      <path d="M6.2 6.2l5.6 5.6M11.8 6.2l-5.6 5.6" stroke="var(--frame)" strokeWidth="1.6" strokeLinecap="round" />
+// gates that hand the fix to a human are not failures: amber, not red
+const ASKS = new Set(["trust_gate", "approval"]);
+
+function Mark({ kind }: { kind: "pass" | "fail" | "ask" }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" className={s[kind]} aria-label={kind === "pass" ? "passed" : kind === "ask" ? "asked a human" : "failed"}>
+      <circle cx="8" cy="8" r="7" fill="currentColor" />
+      {kind === "pass"
+        ? <path d="M4.8 8.2l2.1 2.1 4.3-4.5" fill="none" stroke="var(--frame)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        : kind === "ask" ? <path d="M8 4.5v4M8 11v.5" stroke="var(--frame)" strokeWidth="1.6" strokeLinecap="round" />
+        : <path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="var(--frame)" strokeWidth="1.5" strokeLinecap="round" />}
     </svg>
   );
 }
 
-export function Checklist({ incident, className }: { incident: Incident | null; className?: string }) {
-  const steps = incident?.checklist ?? [];
-  const approval = incident?.approval;
-  const passed = steps.filter((s) => s.passed).length;
+export function Checklist({ incident }: { incident: Incident }) {
+  const steps = incident.checklist;
+  const passed = steps.filter((x) => x.passed).length;
   return (
-    <article className={`card ${className ?? ""}`}>
-      <div className="card-head">
-        <h2 className="card-title">Checklist</h2>
-        {steps.length > 0 && <span className="pill">{passed} / {steps.length} passed</span>}
+    <section className={s.sec} aria-labelledby="sec-checklist">
+      <div className={s.head}>
+        <h2 id="sec-checklist" className={s.title}>Checklist</h2>
+        {steps.length > 0 && <span className="label">{passed} of {plural(steps.length, "gate")} passed</span>}
       </div>
-
       {steps.length === 0 ? (
-        <p className="empty">Gates run here once a fix is proposed: schema, hands-off, policy, dry run, net benefit, freshness, trust gate.</p>
+        <p className={s.empty}>Gates run once a fix is proposed: schema, hands-off, policy, dry run, net benefit, freshness, trust gate.</p>
       ) : (
-        <ol className={styles.list}>
+        <ol className={s.steps}>
           {steps.map((step, i) => (
-            <li key={`${step.name}-${i}`} className={styles.step}>
-              <Mark passed={step.passed} />
-              <div className={styles.body}>
-                <span className={styles.name}>{words(step.name)}</span>
-                {step.reason && <span className={styles.reason}>{step.reason}</span>}
-              </div>
-              <span className={styles.at}>{incident ? since(step.ts, incident.openedAt) : ""}</span>
+            <li key={`${step.name}-${i}`} className={s.step}>
+              <Mark kind={step.passed ? "pass" : ASKS.has(step.name) ? "ask" : "fail"} />
+              <span>
+                <span className={s.stepName}>{words(step.name)}</span>
+                {step.reason && <span className={s.reason}>{step.reason}</span>}
+              </span>
+              <span className={s.at}>{since(step.ts, incident.openedAt)}</span>
             </li>
           ))}
         </ol>
       )}
-
-      {approval && (
-        <div className={styles.approval}>
-          <span className="label">Approval {approval.decision ? words(approval.decision) : "waiting on a human"}</span>
-          {approval.forecast && <p className={styles.forecast}>{approval.forecast}</p>}
-        </div>
-      )}
-    </article>
+    </section>
   );
 }

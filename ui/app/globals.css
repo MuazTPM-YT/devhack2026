@@ -1,50 +1,46 @@
-/* parchment + oxblood palette (the brand), laid out as a dense ops console: square-ish panels,
-   uppercase micro labels, tabular numbers. One accent, no gradients. */
+/* neutral paper and ink, oxblood as the one accent; structure comes from rules and alignment, not boxes.
+   Status always pairs colour with a shape (components/tag.tsx). Text tokens are >= 4.5:1 on paper and card. */
 :root {
-  --paper: #e8e3d9;
-  --frame: #eeeae2;
-  --card: #f7f4ef;
-  --card-sunk: #ebe6dd;
-  --line: #ded7cb;
-  --line-strong: #cbc1b2;
+  --paper: #f3f0e9;
+  --frame: #fbfaf6;
+  --card: #fbfaf6;
+  --card-sunk: #ece8df;
+  --line: #dcd6ca;
+  --line-strong: #b9b1a2;
 
-  --ink: #2a1512;
-  --ink-soft: #5c4a44;
-  --ink-mute: #736359;
+  --ink: #1c1a17;
+  --ink-soft: #4a4640;
+  --ink-mute: #6b655b;
 
   --ox: #5b1d18;
   --ox-deep: #3a110e;
-  --rose: #c49a8e;
-  --rose-soft: #e6d3cb;
+  --rose: #b98f86;
+  --rose-soft: #f1e4e1;
 
-  --ok: #4f7a3c;
-  --bad: #a3372a;
-  --warn: #9a6a1f;
-  --ok-tint: #e3eadb;
-  --bad-tint: #f3dfda;
-  --warn-tint: #f1e6d1;
+  --ok: #2f6b3b;
+  --ok-tint: #e2eedf;
+  --bad: #b42318;
+  --bad-tint: #fbe5e0;
+  --warn: #8a5a00;
+  --warn-fill: #d99a1e;
+  --warn-tint: #faefd4;
 
-  /* sidebar sits on the deep oxblood; text tokens checked >= 4.5:1 on it */
-  --side: #3a110e;
-  --side-hover: #4a1813;
-  --side-on: #5b1d18;
-  --side-ink: #f3ece4;
-  --side-mute: #cdb3aa;
-  --side-line: #55231d;
+  --radius: 4px;
+  --radius-sm: 2px;
+  --gap: 16px;
 
-  --radius-lg: 8px;
-  --radius: 6px;
-  --radius-sm: 4px;
-  --gap: 12px;
+  --side-w: 216px;
+  --side-rail: 64px;
 
-  --side-w: 248px;
-  --side-rail: 68px;
+  /* strong curves (emil-design-eng): UI enter/exit, on-screen movement, drawers */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 
-  --ease-out: cubic-bezier(0.2, 0, 0, 1);
-
-  --serif: var(--font-serif), "Times New Roman", serif;
   --sans: var(--font-sans), system-ui, sans-serif;
   --mono: var(--font-mono), ui-monospace, monospace;
+
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -58,18 +54,24 @@ body {
   font-size: 14px;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
 }
 
 a { color: inherit; }
 
 button { font: inherit; color: inherit; }
 
+a, button, summary { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+
 :focus-visible { outline: 2px solid var(--ox); outline-offset: 2px; }
 
+h1, h2, h3 { font-weight: 600; letter-spacing: -0.01em; }
+
+/* panel: flat surface, hairline border, square-ish corners */
 .card {
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
   padding: 14px 16px;
   min-width: 0;
 }
@@ -87,13 +89,12 @@ button { font: inherit; color: inherit; }
 }
 
 .card-title {
-  font-family: var(--sans);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   margin: 0;
-  color: var(--ink-soft);
+  color: var(--ink);
   white-space: nowrap;
 }
 
@@ -104,39 +105,47 @@ button { font: inherit; color: inherit; }
   text-transform: uppercase;
 }
 
-.figure {
-  font-family: var(--serif);
-  font-size: 40px;
-  line-height: 1;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
 .mono { font-family: var(--mono); font-size: 12.5px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
-.pill {
+/* buttons: hairline, square, press feedback on :active */
+.btn, .pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 9px;
   border-radius: var(--radius-sm);
-  background: var(--card-sunk);
-  border: 1px solid var(--line);
-  font-size: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--card);
+  font-size: 12.5px;
   white-space: nowrap;
   text-decoration: none;
 }
 
-a.pill:hover, button.pill:hover { border-color: var(--line-strong); }
-button.pill { cursor: pointer; }
+.pill { padding: 3px 8px; }
 
-.pill-dark { background: var(--ox-deep); border-color: var(--ox-deep); color: var(--frame); }
+.btn {
+  min-height: 32px;
+  padding: 0 12px;
+  border-color: var(--ink);
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 160ms var(--ease-out), background-color 120ms ease, color 120ms ease;
+}
+
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.55; cursor: default; transform: none; }
+.btn-dark { background: var(--ink); color: var(--frame); }
+
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover:not(:disabled) { background: var(--card-sunk); }
+  .btn-dark:hover:not(:disabled) { background: var(--ox-deep); }
+  a.pill:hover { border-color: var(--ink); }
+}
 
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-mute); flex: none; }
 .dot-ok { background: var(--ok); }
 .dot-bad { background: var(--bad); }
-.dot-warn { background: var(--warn); }
-.dot-live { animation: blink 1.6s ease-in-out infinite; }
+.dot-warn { background: var(--warn-fill); }
 
 .muted { color: var(--ink-mute); }
 .ok { color: var(--ok); }
@@ -154,12 +163,8 @@ button.pill { cursor: pointer; }
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
-@keyframes blink { 50% { opacity: 0.35; } }
-
+/* reduced motion = no movement; colour and opacity changes stay (they aid reading) */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; }
-}
-
-@media (max-width: 640px) {
-  .figure { font-size: 34px; }
+  *, *::before, *::after { animation: none !important; }
+  .btn:active { transform: none; }
 }
