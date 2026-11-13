@@ -42,21 +42,36 @@ model and workload are supported by your subscription before live use.
 
 `BRAIN_MODE=agent` (the default) runs diagnosis as a tool-using agent
 (`brain/agent.py`, built on `pydantic-ai-slim`). The model gets a thin brief:
-the incident, the rule pattern and action, the culprit guess, runbooks and past
-incidents. It then reads telemetry through nine read-only tools in
-`brain/tools.py`: service health, metric history (allow-listed PromQL only),
-recent changes, dependencies, error traces, pods, Kubernetes events, pod error
-logs, and earlier runs of a fix. Agent mode needs `PROMETHEUS_URL`.
+the incident, the rule pattern, the culprit guess, runbooks and past incidents.
+It then reads telemetry through nine read-only tools in `brain/tools.py`:
+service health, metric history (allow-listed PromQL only), recent changes,
+dependencies, error traces, pods, Kubernetes events, pod error logs, and earlier
+runs of a fix. Agent mode needs `PROMETHEUS_URL`.
+
+The model also chooses the fix. The brief lists `candidates`: every fix the
+evidence supports (`brain/rules.py candidates()`), the rule's own pick first
+(`c1`, the undo of the newest change), then older changes and resource fixes.
+It lists `capabilities`: only the tools the gateway can really build. The
+model answers `accept` (a candidate id), `other` (one listed tool, with cited
+evidence) or `decline` (with what a human should check). It also gives the
+strongest other explanation and why it lost.
 
 The code keeps control. After 6 model rounds the tools are removed, and the
 whole run has 150 s. Each tool result is redacted, its injection lines are
 quarantined, and it is capped at 2000 chars. The model may cite only evidence IDs
-that a tool returned, and a made-up ID goes back to the model. For known
-patterns the rule's fix is still the action. When the agent fails, the rule
-action goes to the gateway without a diagnosis. Every tool call is published as
-`llm_called` with `tool`, `args`, `ms` and `evidence_ids`.
+that a tool returned, and a made-up ID or an unusable choice goes back to the
+model. Code builds the action from the choice and sets `origin`: `rule` when
+it is the rule's first pick, `model` for anything else. The gateway asks a
+human for every `model` action and writes nothing to the trust ledger for it.
+A decline wakes a human with the model's reason and the rule's suggestion.
+When the agent fails, the rule action goes to the gateway without a diagnosis.
+Every tool call is published as `tool_called` with `tool`, `args`, `ms` and
+`evidence_ids`. The model never sees which field manager wrote a change, only
+"the agent" or "another writer".
 
-`BRAIN_MODE=bundle` keeps the single-call path below, for comparison.
+`BRAIN_MODE=advise` uses the same tools but the rule's fix always wins (the
+behaviour before the agent could choose). `BRAIN_MODE=bundle` keeps the
+single-call path below. Both are kept for comparison runs.
 
 ### Bundle mode
 
@@ -176,27 +191,51 @@ at start. Read routes stay open for the UI. A manual approval is now:
 
 The notifier and Go adapter are not exercised live by the offline suite.
 
-## Breaking the shop (chaos CLI)
+## Breaking the shop (Chaos Lab)
 
-Faults are injected from the terminal, not from the UI. The CLI talks to the
-chaos panel on `:7004` (`CHAOS_URL`), so every change is logged in
-`data/ground_truth.jsonl`. The agent never reads that file. Every fault
-stays until `reset`.
+Open `http://localhost:3000/chaos`. Pick a target, what breaks, how hard and
+when; `Preview` shows the exact field that will change and every reason the
+run may not start; `Start experiment` applies it. The page then shows the run
+next to Akira's response, a `Stop and restore` button, and a reveal that puts
+the injected cause next to what Akira concluded. `Blind challenge` draws a
+valid fault by seed and hides the answer until you reveal it. A decoy adds a
+harmless change after the fault, so the newest change is not the cause.
 
-Interactive shell: run `uv run -m chaos.cli` with no command. Type `/` for
-a dropdown of commands (arrow keys to pick, Tab or Enter to fill in);
-`/inject <Tab>` lists the faults; `/watch` streams the agent's steps live;
-the bottom bar shows gateway and observer state and the current severity.
+What may be broken is the reviewed list in `config/chaos.yaml`, joined with
+live facts (flag variants, env keys, replicas) by `chaos/registry.py`.
+Anything else is listed as unavailable with its reason. Experiments live in
+`data/chaos.db` (`chaos/experiments.py`): preflight, idempotent start, a
+watchdog that expires and cleans up, and a restore that writes only when the
+field still holds the injected value. A fault that ends by timer, stop or
+reset is never credited to Akira.
+
+The chaos panel on `:7004` answers only to `CHAOS_JUDGE_TOKEN` (header
+`X-Chaos-Token`), reads included: ground truth and experiment specs are the
+answers. The UI server adds the token (`ui/app/api/chaos`), so it never
+reaches the browser; from another machine the page asks for the token once as
+a passcode. Agent processes drop the token when they start. The admin
+`kubectl` route is not reachable from the browser.
+
+### From a terminal
+
+The CLI talks to the same panel (`CHAOS_URL`), so every change is logged in
+`data/ground_truth.jsonl`. The agent never reads that file. The six fixed
+faults stay until their cause is reversed or `reset`.
+
+Interactive shell: run `uv run --env-file .env -m chaos.cli` with no command.
+Type `/` for a dropdown of commands (arrow keys to pick, Tab or Enter to fill
+in); `/inject <Tab>` lists the faults; `/watch` streams the agent's steps
+live; the bottom bar shows gateway and observer state and the current severity.
 
 One-shot commands (scripts, CI):
 
 ```bash
-uv run python -m chaos.cli list                       # faults you can inject
-uv run python -m chaos.cli inject bad-deploy          # break payment; watch http://localhost:3000/live
-uv run python -m chaos.cli status                     # severity and per-service health (observer :7001)
-uv run python -m chaos.cli kubectl -n shop scale deploy/cart --replicas=0   # break it your own way (admin)
-uv run python -m chaos.cli truth                      # what was really broken and when
-uv run python -m chaos.cli reset                      # undo everything, wait until healthy
+uv run --env-file .env python -m chaos.cli list                       # faults you can inject
+uv run --env-file .env python -m chaos.cli inject bad-deploy          # break payment; watch http://localhost:3000/live
+uv run --env-file .env python -m chaos.cli status                     # severity and per-service health (observer :7001)
+uv run --env-file .env python -m chaos.cli kubectl -n shop scale deploy/cart --replicas=0   # break it your own way (admin)
+uv run --env-file .env python -m chaos.cli truth                      # what was really broken and when
+uv run --env-file .env python -m chaos.cli reset                      # undo everything, wait until healthy
 ```
 
 `kubectl` runs as cluster admin without a shell: pipes and `$()` are passed
