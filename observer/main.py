@@ -21,7 +21,7 @@ from observer.kube_watch import Tracker, run_watch
 from schemas import auth, config, migrations
 from schemas.config import require_env
 from schemas.db import DEFAULT_PATH, connect
-from gateway.receipts import build_incident_card, source, started_by
+from gateway.cards import build_incident_card, source, started_by
 from schemas.models import GatewayDecision, Incident
 from schemas.orchestration import OrchestrationPolicy, SignalBatch, load_policy
 from schemas.workspace import Workspace

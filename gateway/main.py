@@ -20,7 +20,8 @@ from gateway.approvals import approvers_from_env
 from gateway.checklist import Gateway, brain_retry
 from gateway.intents import Conflict, IntentStore
 from gateway.mcp_server import build_mcp
-from gateway.receipts import ReceiptStore, build_card, create_receipts_router
+from gateway.cards import build_card
+from gateway.receipts import ReceiptStore, create_receipts_router
 from schemas import auth, config, migrations
 from schemas.config import require_env
 from schemas.db import DEFAULT_PATH, connect

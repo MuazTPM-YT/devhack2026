@@ -23,7 +23,8 @@ from gateway.verifier import Verification, harm_check, ledger_effect
 from gateway.executor import (WriteRefused, list_json, patch_configmap, patch_deployment, patch_scale,
                               read_configmap, read_deployment)
 from gateway.intents import IntentStore, precondition, submission
-from gateway.receipts import ReceiptStore, build_incident_card, source, started_by
+from gateway.cards import build_incident_card, source, started_by
+from gateway.receipts import ReceiptStore
 from observer import journal
 from observer.kube_watch import service_of
 from schemas import auth
