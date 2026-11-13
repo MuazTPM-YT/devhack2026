@@ -38,6 +38,28 @@ endpoint with its own user agent and a stable incident session header.
 availability, compatible clients, and allowance limits. Confirm that the selected
 model and workload are supported by your subscription before live use.
 
+### Agent mode (default)
+
+`BRAIN_MODE=agent` (the default) runs diagnosis as a tool-using agent
+(`brain/agent.py`, built on `pydantic-ai-slim`). The model gets a thin brief:
+the incident, the rule pattern and action, the culprit guess, runbooks and past
+incidents. It then reads telemetry through nine read-only tools in
+`brain/tools.py`: service health, metric history (allow-listed PromQL only),
+recent changes, dependencies, error traces, pods, Kubernetes events, pod error
+logs, and earlier runs of a fix. Agent mode needs `PROMETHEUS_URL`.
+
+The code keeps control. After 6 model rounds the tools are removed, and the
+whole run has 150 s. Each tool result is redacted, its injection lines are
+quarantined, and it is capped at 2000 chars. The model may cite only evidence IDs
+that a tool returned, and a made-up ID goes back to the model. For known
+patterns the rule's fix is still the action. When the agent fails, the rule
+action goes to the gateway without a diagnosis. Every tool call is published as
+`llm_called` with `tool`, `args`, `ms` and `evidence_ids`.
+
+`BRAIN_MODE=bundle` keeps the single-call path below, for comparison.
+
+### Bundle mode
+
 Muaz's orchestration constructs `OpenCodeGoAdapter.from_env(http_client)`, then
 `DiagnosisService(provider, Path("data/inference-cache"))`. Call
 `await service.diagnose(bundle, pattern, rule_action)`. The result contains a

@@ -1143,3 +1143,13 @@ Seeded from reading the plan. Reply under each one.
   `For:` audience line, runbook, seen-before, approvers, page count and a who/when outcome
   on decide/ack (custom_ids unchanged); escalated/approval/terminal payloads may carry `runbook`
   and `seen_before`; `rule_matched` adds `runbooks`, `similar_before`; prompt version 6.
+- [T] 2026-11-13 for M,A: Branch `twaha/agent-tools` (not pushed). Brain
+  diagnosis becomes a tool-using agent: `brain/agent.py` + 9 read-only tools in
+  `brain/tools.py` (reader identity, allow-listed PromQL, no writes). Rules and
+  gateway unchanged; the rule fix still wins for known patterns.
+  **Action needed:** brain `.env` needs `PROMETHEUS_URL` (agent mode is the
+  default) or `BRAIN_MODE=bundle` for the old single call. **Deps bumped for
+  everyone:** pydantic 2.11 -> 2.14.1 and new `pydantic-ai-slim[openai]` 2.63.0;
+  run `uv sync --locked`. Events: each tool call is an `llm_called` with extra
+  `tool`, `args`, `ms`, `evidence_ids` (no schema change). Agent run takes
+  ~60 s and ~30k tokens vs one ~2k-token call: bench both modes.

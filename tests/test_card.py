@@ -316,3 +316,32 @@ def test_no_safe_undo_says_the_fix_was_kept():
     said = explain("no safe undo (undo would scale valkey-cart to 0 replicas, outside the allowed 1-3); "
                    "fix kept after: did not recover")
     assert "kept" in said and "undid" not in said
+
+
+# security review: a schema refusal echoes the model's own input; text in it must not unlock a command
+def test_schema_refusal_never_gets_a_paste_ready_command():
+    raise_limit = ROLLBACK.model_copy(update={"tool": "restart_service", "target": "payment", "prediction": None})
+    card = build_incident_card(INC, pattern="resource", proposal=raise_limit, decision=GatewayDecision(
+        decision="escalated", failed_step="schema",
+        reason="1 validation error: action budget used up [type=literal_error, input_value='x']"))
+    assert "kubectl" not in everything(card)
+    assert field(card, "Blocked proposal (not run)")
+
+
+# security review: names in a reason reach a Discord page; markdown or links in them must not
+@pytest.mark.parametrize("reason", [
+    "[click](https://evil.example) changed by @everyone",
+    "deployment/payment changed by [boss](https://evil.example)",
+    "**urgent** is protected; a human must act",
+])
+def test_reason_names_with_markdown_never_reach_the_page(reason):
+    said = explain(reason)
+    assert not any(c in said for c in "[]()*`") and "evil.example" not in said
+
+
+# security review: stripping after link removal rebuilt a link ("ht`tp" -> "http"); scheme case varied
+@pytest.mark.parametrize("reason", ["odd ht`tp://evil.example/x", "odd HTTPS://evil.example", "odd <https://evil.example>",
+                                    "odd h*t*t*p*s://evil.example"])
+def test_fallback_reason_never_carries_a_link(reason):
+    said = explain(reason)
+    assert "evil.example" not in said and "://" not in said

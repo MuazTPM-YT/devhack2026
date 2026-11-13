@@ -138,13 +138,16 @@ WHY = {
 }
 
 # gateway and brain stop reasons in plain words; first match wins, {0} {1} are the regex groups
+# names copied into a page: k8s object names and field managers only, never markdown or links
+OBJ = r"[a-z0-9][a-z0-9./-]{0,252}"
+WHO = r"[A-Za-z0-9][A-Za-z0-9.:-]{0,127}"
 REASONS = [
     (r"action budget used up", "Safety limit: the agent already made as many changes this hour as it may. "
                                "It stops on purpose; nothing in the agent is broken."),
     (r"no safe action \(unknown\)", "No cause found. The agent acts only when it can name a cause."),
     (r"no safe action", "The agent found a likely cause but has no safe fix for it."),
-    (r"(\S+) is protected; a human must act", "{0} holds data, so the agent may never change it. A person must act."),
-    (r"(\S+) is a protected data store", "{0} holds data, so a person must approve any change to it."),
+    (rf"^({OBJ}) is protected; a human must act", "{0} holds data, so the agent may never change it. A person must act."),
+    (rf"^({OBJ}) is a protected data store", "{0} holds data, so a person must approve any change to it."),
     (r"another action is still being verified", "The agent is still checking an earlier fix, "
                                                 "so it will not start another one yet."),
     (r"problem no longer present", "The problem went away before the agent acted."),
@@ -174,12 +177,12 @@ REASONS = [
     (r"harm check failed", "After the fix, another service got worse, so the agent undid it."),
     (r"UNDO FAILED", "The agent could not undo its own change. The system may be half changed."),
     (r"watchdog", "The agent lost track of its fix while checking it, so it undid it to be safe."),
-    (r"(\S+) changed by (\S+)", "A person ({1}) changed {0} during the incident, so the agent stepped back."),
+    (rf"^({OBJ}) changed by ({WHO})$", "A person ({1}) changed {0} during the incident, so the agent stepped back."),
 ]
 
 
 # the agent stopped on its own limits: its fix was allowed, so a human may run it by hand
-RERUNNABLE = r"action budget used up|another action is still being verified|approval expired|observer unreachable"
+RERUNNABLE = r"(?:action budget used up|another action is still being verified|approval expired|observer unreachable)"
 
 
 def plain(text: object) -> str:
@@ -193,7 +196,12 @@ def explain(reason: str, failed_step: str | None = None) -> str:
     for pattern, sentence in REASONS:
         if m := re.search(pattern, reason):
             return sentence.format(*(plain(g) for g in m.groups()))
-    return f"The agent stopped: {plain(reason)}."
+    # unknown reason, printed raw: no links (discord makes bare URLs clickable) and no markdown
+    # strip first, then drop links, so stripping can't rebuild one ("ht`tp" -> "http")
+    text = re.sub(r"[()<>]", "", _tidy(plain(reason)))
+    while (cleaner := re.sub(r"\S*(?:[a-z][a-z0-9+.-]*://|www\.)\S*", "link removed", text, flags=re.I)) != text:
+        text = cleaner
+    return f"The agent stopped: {text}."
 
 
 def shorten(text: str, limit: int = 220) -> str:
@@ -358,7 +366,9 @@ def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
             add("Why the agent stepped back" if state == "HANDED OFF" else "Why the agent stopped", because)
         if proposal and wanted:
             # no paste-ready command when rules refused the fix, nor beside Approve (by hand skips verification)
-            allowed = bool(stop and (re.search(RERUNNABLE, stop) or (decision and decision.failed_step == "gateway")))
+            # gateway reasons start with their code; a schema refusal echoes model text, so it never counts
+            step = decision.failed_step if decision else None
+            allowed = bool(stop and step != "schema" and (re.match(RERUNNABLE, stop) or step == "gateway"))
             cmd = _command(proposal.tool, plain(proposal.target), proposal.params) if allowed and not asking else None
             add("The agent wants to" if asking else "Suggested fix (not run)" if allowed
                 else "Blocked proposal (not run)", f"{cap(wanted)}." + (f"\n`{cmd}`" if cmd else ""))

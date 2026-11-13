@@ -10,7 +10,7 @@ import time
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -18,14 +18,16 @@ from fastapi import FastAPI, HTTPException
 from brain import rules
 from brain.bundle import build_bundle, collect_k8s, why_text
 from brain import major, memory, runbooks
+from brain.agent import AgentDiagnosisService, model_from_env
 from brain.culprit import dependency_change, fetch_error_traces, find_culprit
 from brain.gateway_client import call_tool
 from brain.graph import DependencyGraph
 from brain.llm import DiagnosisService
 from brain.redact import redact
+from brain.tools import KubeReader, ToolBox
 from schemas import auth, config
 from schemas.db import DEFAULT_PATH, connect
-from schemas.models import ActionRequest, GatewayDecision, Incident
+from schemas.models import ActionRequest, GatewayDecision, Incident, Pattern
 from schemas import logs
 
 logs.setup()
@@ -54,6 +56,11 @@ class Brain:
         self.flag_map: dict[str, str] = {}  # config/services.yaml `flags:`, set by build_from_env
         self.runbooks: list[dict] = []  # config/runbooks.yaml, set by build_from_env
         self.guides: dict[str, dict] = {}  # incident id -> runbook + seen-before for the escalation payload
+        # BRAIN_MODE=agent, set by build_from_env: tool-using diagnosis and what its tools read
+        self.agent: AgentDiagnosisService | None = None
+        self.prom_url = ""
+        self.queries: dict[str, str] = {}
+        self.kube: Any = None  # brain.tools.KubeReader
         self.lock = threading.Lock()
         self.submit = submit or (lambda a: call_tool(self.gateway_url, a))
 
@@ -142,9 +149,14 @@ class Brain:
                                                          "runbooks": [rb["id"] for rb in matched],
                                                          "similar_before": len(past)})
 
-        result = await self.diagnoser.diagnose(bundle, pattern, rule_action,
-                                               {"runbooks": [runbooks.brief(rb) for rb in matched[:3]],
-                                                "past_incidents": past})
+        guide = {"runbooks": [runbooks.brief(rb) for rb in matched[:3]], "past_incidents": past}
+        if self.agent is not None:  # agent mode: the model reads telemetry through tools, not the bundle
+            box = ToolBox(incident, now, self.http, self.observer_url, self.prom_url, self.jaeger_url, self.graph,
+                          self.kube, self.conn, self.lock, list(self.services), self.queries, self.publish,
+                          edges=list(edges))
+            result = await self.agent.diagnose(box, cast(Pattern, pattern), rule_action, guide)
+        else:
+            result = await self.diagnoser.diagnose(bundle, pattern, rule_action, guide)
         for ev in result.events:
             await self.publish(ev["type"], ev.get("incident_id"), ev.get("payload", {}))
         action = result.action
@@ -161,7 +173,7 @@ class Brain:
                               "llm_why=? WHERE id=?",
                               (culprit, json.dumps(victims), pattern, int(is_major), llm_why, incident.id))
             self.conn.commit()
-        record = {"incident": incident.model_dump(mode="json"), "pattern": pattern,
+        record: dict[str, Any] = {"incident": incident.model_dump(mode="json"), "pattern": pattern,
                   "action": action.model_dump(mode="json") if action else None,
                   "followups": actions[1:],
                   "diagnosis": result.diagnosis.model_dump(mode="json") if result.diagnosis else None,
@@ -262,8 +274,12 @@ def build_from_env() -> Brain:
 
     from brain.providers.opencode_go import OpenCodeGoAdapter
 
+    mode = os.environ.get("BRAIN_MODE", "agent")
+    if mode not in ("agent", "bundle"):
+        raise RuntimeError(f"BRAIN_MODE must be agent or bundle, got {mode!r}")
     observer, gateway, jaeger, kubeconfig = require_env("OBSERVER_URL", "GATEWAY_URL", "JAEGER_URL",
                                                         "READER_KUBECONFIG")
+    prom = require_env("PROMETHEUS_URL")[0] if mode == "agent" else ""
     http = httpx.AsyncClient()
     api = kube_config.new_client_from_config(config_file=kubeconfig)
     core, custom = client.CoreV1Api(api), client.CustomObjectsApi(api)
@@ -275,6 +291,9 @@ def build_from_env() -> Brain:
                   connect(DEFAULT_PATH, shared=True), services, config.load("policy"))
     brain.flag_map = services_cfg.get("flags") or {}
     brain.runbooks = runbooks.load()
+    if mode == "agent":
+        brain.agent = AgentDiagnosisService(model_from_env(http))
+        brain.prom_url, brain.queries, brain.kube = prom, config.load("queries"), KubeReader(core, custom, "shop")
     return brain
 
 
