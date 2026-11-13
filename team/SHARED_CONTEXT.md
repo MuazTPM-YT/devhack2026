@@ -1022,3 +1022,33 @@ Seeded from reading the plan. Reply under each one.
   293Mi). `scripts/install_shop.sh` now passes `--force-conflicts`: helm 4
   applies server-side and a re-install after any flag fault stopped on a
   flagd-config conflict with chaos-panel. Suite 385 passed.
+- [T] 2026-11-13 for M,A: **Discord cards are embeds now** (branch
+  `twaha/card-embeds`). Live pages read "action budget used up", "no safe
+  action (unknown)" and `[query:p95_ms:service=...]`; on-call could not tell
+  a safety limit from a crash. What changed:
+  - `schemas/models.py` `Card` gets optional `headline`, `title`, `summary`,
+    `fields` (`CardField` label/body/inline; not
+    name/value, because `redact_value` blanks any {name, value} dict as an env var), `footer`, `level`
+    (page/ask/ok/info). Defaults keep old events valid; UI ignores them.
+  - `gateway/receipts.py`: `explain()` maps every stop reason to a plain
+    sentence (`REASONS` table; new reason strings should get a row, else
+    they show as "The agent stopped: <reason>."). `symptom()` writes the
+    first line from live health with units and the normal value ("36% of
+    payment requests are failing", "95% of requests finish within 15 ms,
+    normal is 5 ms"). Evidence IDs leave the text; footer counts them.
+    Model sentence: own field "AI reading (not checked)", epoch times,
+    IDs and markdown stripped.
+  - Status names: `WOKE YOU BECAUSE` -> `NEEDS YOU`; `RECOVERED; PREDICTION
+    FAILED` / `RECOVERED; NO PREDICTION` -> `RECOVERED, FIX NOT PROVEN`;
+    `VERIFICATION PENDING` -> `CHECKING FIX`. Card text is still 5 lines
+    (plan §6.7.1) and uses the same words as the embed.
+  - Gateway keeps the last health read per incident (`Gateway.health`) and
+    passes the proposed action to stop/ask cards ("Suggested fix (not run)"
+    with the kubectl command). Brain escalations pass health too.
+  - Notifier: ping + one-sentence headline as text (embeds never push or
+    ping), details in the embed, colour by level. Cards without fields
+    (old events) still go out as text.
+  - Live smoke #11 with embeds: FIXED end to end. Notifier fix in the same
+    branch: a saved wake that no longer validates as `Card` used to crash
+    the repage task and with it the whole consumer TaskGroup (no pages, dead
+    buttons); it now re-pages its plain text.

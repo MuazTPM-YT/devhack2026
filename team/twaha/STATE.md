@@ -1,11 +1,25 @@
 # Twaha [T]: state
 
 **Last updated:** 2026-11-13
-**Current phase:** Live end-to-end smoke passes on local k3d; next is LLM latency, then trust runs
-**Branch:** `twaha/live-fixes-2` (from `origin/main` `89ca81e`), not pushed
+**Current phase:** Discord cards rewritten as embeds; next is 3 back-to-back smokes, then trust runs
+**Branch:** `twaha/card-embeds` (from `origin/main` `ac28c81`), not pushed
 **Implementation:** PRs #8, #12, #15 merged
 
 ## Done (with proof)
+
+- Card embeds (`twaha/card-embeds`): plain-word reasons, symptom line with units
+  and normal value, suggested fix with command, AI sentence in its own field,
+  evidence IDs moved to footer, colour by level. 407 passed on committed
+  config; Ruff and mypy clean. New tests in `tests/test_card.py` (scenario per
+  card, every known reason, embed limits, old-card fallback) and the gateway
+  budget page in `tests/test_gateway.py`. PR #36 and #37 merged.
+- Live check of the embeds, smoke #11: FIXED, `inc-1794551830062`, detect
+  48.9 s, diagnose 96.6 s, recover 206.4 s; approval and fixed cards read in
+  Discord; audit verified 394 records. Smokes #9 and #10 found 2 bugs, both
+  fixed with tests that failed first: the audit redactor blanked
+  `{name, value}` card fields (keys now `label`/`body`), and one unreadable
+  saved wake crashed the notifier's whole TaskGroup (now re-pages as text).
+  Smoke #10's LLM hit the 90 s deadline (no prediction, no AI field).
 
 - Local k3d cluster `oncall` (context `k3d-oncall`) on Twaha's host, built from
   A's scripts; shop re-installed with A's new `k8s/values.yaml` (28 pods Running).
@@ -125,7 +139,7 @@
 - Local only: `config/policy.yaml` `max_actions_per_hour: 30` (do not commit;
   `test_policy` budget boundary fails while it is set).
 - M: `/approvals/{id}/decide` trusts `decided_by` from the body (auth gap).
-- Push/PR of `twaha/live-fixes-2` waits on Twaha's OK.
+- Push/PR of `twaha/card-embeds` waits on Twaha's OK.
 - `agent.kubeconfig`/`reader.kubeconfig` tokens last 72 h; rerun
   `make_kubeconfigs.sh` after that.
 - Human-only: approver button click on a real approval, manual baseline (3 runs
