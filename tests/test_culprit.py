@@ -31,6 +31,12 @@ class CulpritTest(unittest.TestCase):
         email = trace([("a", None, "checkout", True), ("b", "a", "email", True)])
         self.assertEqual(find_culprit([pay, pay, email], [], [], {})[0], "payment")
 
+    # live smoke 2026-11-13: proxy span errors but frontend span below it does not; every trace tied 1-1
+    def test_error_above_a_clean_span_is_not_an_origin(self):
+        t = trace([("a", None, "frontend-proxy", True), ("b", "a", "frontend", False),
+                   ("c", "b", "checkout", True), ("d", "c", "payment", True)])
+        self.assertEqual(find_culprit([t, t], [], [], {}), ("payment", ["checkout", "frontend-proxy"]))
+
     def test_no_traces_falls_back_to_deepest(self):
         edges = [("frontend", "checkout", 5.0), ("checkout", "cart", 5.0), ("cart", "valkey-cart", 5.0)]
         got = find_culprit([], ["frontend", "cart", "valkey-cart"], edges, {})

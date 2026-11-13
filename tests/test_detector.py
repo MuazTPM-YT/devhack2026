@@ -72,3 +72,17 @@ class DetectorTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# live: recommendation baseline p95 4.8 ms, so a 10 ms blip was "2x" -> false pages and a failed harm check
+def test_small_absolute_latency_jump_is_not_a_breach():
+    d = Detector(err_threshold=0.05, latency_multiplier=2.0, sustain_s=30, group_within_s=120, latency_floor_ms=100)
+    blip = d.tick(0, {"recommendation": {"err_ratio": 0.0, "p95_ms": 10.0}}, {"recommendation": 4.8}, {})[0]
+    assert not blip["services"]["recommendation"]["breaching"]
+    slow = d.tick(5, {"recommendation": {"err_ratio": 0.0, "p95_ms": 150.0}}, {"recommendation": 4.8}, {})[0]
+    assert slow["services"]["recommendation"]["breaching"]
+
+
+def test_policy_sets_a_latency_floor():
+    from schemas import config
+    assert config.load("policy")["detection"]["latency_floor_ms"] >= 50

@@ -40,7 +40,7 @@ class Observer:
                  clock: Callable[[], float] = time.time):
         d = policy["detection"]
         self.detector = Detector(d["error_ratio_threshold"], d["latency_multiplier"], d["sustain_seconds"],
-                                 policy["major_incident"]["within_seconds"])
+                                 policy["major_incident"]["within_seconds"], d["latency_floor_ms"])
         self.poll_s = d["poll_seconds"]
         self.max_age_s = d["incident_max_age_seconds"]
         self.conn, self.tracker, self.http, self.clock = conn, tracker, http, clock

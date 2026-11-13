@@ -100,9 +100,14 @@ def make(world, responses, tmp_path):
 INC = Incident(id="inc-1", opened_at=990, onset_at=960, unhealthy=["checkout", "payment"], severity=6)
 
 
+def brain_why(world):
+    return world.brain.conn.execute("SELECT llm_why FROM incidents WHERE id='inc-1'").fetchone()[0]
+
+
 async def test_bad_deploy_end_to_end(tmp_path):
     world = World()
-    record = await make(world, [diagnosis_json()], tmp_path).handle(INC)
+    world.brain = make(world, [diagnosis_json()], tmp_path)
+    record = await world.brain.handle(INC)
     assert record["incident"]["culprit"] == "payment" and record["incident"]["victims"] == ["checkout"]
     assert record["pattern"] == "recent_change"
     action = record["action"]
@@ -111,6 +116,8 @@ async def test_bad_deploy_end_to_end(tmp_path):
     types = [e["type"] for e in world.published]
     assert types[:3] == ["culprit_found", "bundle_built", "rule_matched"] and types[-1] == "diagnosis_ready"
     assert "llm_called" in types
+    # the model's own words reach the card the gateway builds later
+    assert brain_why(world) == "Bad image."
 
 
 async def test_llm_failure_keeps_rule_action(tmp_path):
@@ -203,7 +210,8 @@ async def test_resource_case_sends_restart_then_raise_limit(tmp_path):
                                      summary="container app last ended OOMKilled, exit 137")],
                  "logs": [], "memory_ratio": 0.5, "memory_limit": "256Mi"}
     inc = INC.model_copy(update={"unhealthy": ["recommendation"]})
-    brain = make(world, [diagnosis_json(causes=[], prediction=None)], tmp_path)
+    brain = make(world, [diagnosis_json(causes=[], prediction={"metric": "err_ratio", "target": "recommendation",
+                                                               "below": 0.05, "within_s": 120})], tmp_path)
     record = await brain.handle(inc)
     assert record["pattern"] == "resource"
     assert [(a.tool, a.params) for a in brain.submitted] == [("restart_service", {}),
@@ -223,7 +231,7 @@ async def test_datastore_scaled_to_zero_moves_culprit_to_protected_dependency(tm
 
     world = StoreWorld(jaeger_up=False)  # no traces, no graph edge to the datastore
     inc = INC.model_copy(update={"unhealthy": ["cart"]})
-    brain = make(world, [diagnosis_json(causes=[], prediction=None)], tmp_path)
+    brain = make(world, [diagnosis_json(causes=[], prediction={"metric": "err_ratio", "target": "cart", "below": 0.05, "within_s": 120})], tmp_path)
     record = await brain.handle(inc)
     assert record["incident"]["culprit"] == "valkey-cart" and record["incident"]["victims"] == ["cart"]
     assert record["pattern"] == "protected"
@@ -256,7 +264,9 @@ async def test_flag_change_moves_untouchable_trace_culprit_to_flagged_service(tm
             return super().__call__(request)
 
     world = FlagWorld()
-    brain = make(world, [diagnosis_json(causes=[], prediction=None)], tmp_path)
+    cause = {"cause_class": "recent_change", "culprit": "payment", "evidence_ids": ["journal:32"],
+             "explanation": "paymentFailure flag set to 50%."}
+    brain = make(world, [diagnosis_json(causes=[cause])], tmp_path)
     brain.flag_map = config.load("services")["flags"]
     record = await brain.handle(INC.model_copy(update={"unhealthy": ["payment"]}))
     culprit_event = next(e for e in world.published if e["type"] == "culprit_found")

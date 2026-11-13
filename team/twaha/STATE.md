@@ -1,11 +1,26 @@
 # Twaha [T]: state
 
 **Last updated:** 2026-11-13
-**Current phase:** Cluster-free live checks done; cluster-bound phases waiting on cluster access
-**Branch:** `codex/twaha-live-phases` (from `origin/main` `98b8ade`, includes gateway PR #16 and verify loop PR #17)
+**Current phase:** Live end-to-end smoke passes on local k3d; next is LLM latency, then trust runs
+**Branch:** `twaha/live-fixes-2` (from `origin/main` `89ca81e`), not pushed
 **Implementation:** PRs #8, #12, #15 merged
 
 ## Done (with proof)
+
+- Local k3d cluster `oncall` (context `k3d-oncall`) on Twaha's host, built from
+  A's scripts; shop re-installed with A's new `k8s/values.yaml` (28 pods Running).
+  `security_check.sh`: 19 PASS, 0 FAIL. Host DNS changed to 1.1.1.1/8.8.8.8 on
+  "Wired connection 2" (iPhone tether DNS could not resolve ghcr.io); undo:
+  `sudo nmcli connection modify "Wired connection 2" ipv4.dns "" ipv4.ignore-auto-dns no`.
+- Smoke #3 on main `89ca81e` + branch fixes: PASS, `inc-1794542033381`,
+  detect 49.9 s, diagnose 95.1 s, recover 188.1 s; Twaha clicked Approve in
+  Discord; harm clean; audit verified 129 records. Smoke #1 and #2 (earlier,
+  old main) escalated: the frontend-proxy verifier bug, fixed by M in `4c9cf29`.
+  My own copy of that fix is in `git stash` ("superseded by 4c9cf29"), unused.
+- `97d1a56` early abort needs the severity rise to hold `sustain_seconds`
+  (30 s); 2 new tests failed first. `bf9f082` LLM deadline 45 s; adapter httpx
+  timeout follows `DEADLINE_S`; test failed first. Checks: 332 passed, Ruff and
+  mypy clean.
 
 - Live checks 2026-11-13, isolated scratch dir (own `data/`, not repo `data/`),
   gateway started with an unreachable dummy kubeconfig (no cluster on this host):
@@ -98,24 +113,32 @@
 
 ## In progress
 
-- Nothing running. Cluster-bound work waits on access (below).
+- Services 7001-7005 and port-forwards 9090/8080 run detached from the repo root
+  (scratchpad `start_services.sh`); they stop on reboot.
 
 ## Blocked / waiting on
 
-- No `oncall` cluster on Twaha's host (`kubectl` contexts: `k3d-workshop`,
-  `kind-foss`; `AGENT_KUBECONFIG` path in `.env` does not exist here). A's
-  cluster is on A's machine. Blocks: brain -> gateway live run, `scripts/smoke.sh`,
-  live RBAC/admission acceptance, overnight trust runs, accuracy runs.
+- Smoke #8 FIXED end to end (first proven fix). Fixed today, all with tests
+  that failed first: culprit tie (frontend-proxy), latency noise floor,
+  LLM max_tokens/truncation, prediction required, LLM "why" on cards
+  (labelled, new `incidents.why`), plain-word cards, absolute receipt links.
+- Local only: `config/policy.yaml` `max_actions_per_hour: 30` (do not commit;
+  `test_policy` budget boundary fails while it is set).
+- M: `/approvals/{id}/decide` trusts `decided_by` from the body (auth gap).
+- Push/PR of `twaha/live-fixes-2` waits on Twaha's OK.
+- `agent.kubeconfig`/`reader.kubeconfig` tokens last 72 h; rerun
+  `make_kubeconfigs.sh` after that.
 - Human-only: approver button click on a real approval, manual baseline (3 runs
   per scenario), five-person card study, deck, video.
 - `brain/major.py` not built yet, so major-incident policy tests are not written.
 
 ## Next
 
-1. Get cluster access (local k3d rebuild from A's scripts, or A's machine).
-2. Run observer/brain/gateway/notifier against it; `scripts/smoke.sh`.
-3. Live security acceptance table (§8.3); real approval click.
-4. Overnight trust runs, accuracy runs, separate result files; then reports.
+1. Repeat smoke a few times for stability, then overnight trust runs.
+2. Escalated incidents never close when the service recovers by itself
+   (re-page forever); needs an ack button or auto-close.
+3. Overnight trust runs, accuracy runs, separate result files; then reports.
+4. Try A's `/chaos/flag-flip` -> `revert_config` path live.
 5. Manual baseline, card study, final README, deck, video.
 
 ## Notes for next session

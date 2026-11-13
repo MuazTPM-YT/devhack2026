@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+# live bundles: calls took 16-20 s, then hit 30 s and 45 s; rules still act if this runs out
+DEADLINE_S = 90
+
 
 @dataclass(frozen=True)
 class InferenceRequest:

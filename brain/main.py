@@ -135,10 +135,13 @@ class Brain:
             action = action.model_copy(update={"prediction": result.diagnosis.prediction})
         await self.publish("diagnosis_ready", incident.id, {"pattern": pattern, "culprit": culprit})
 
+        causes = result.diagnosis.causes if result.diagnosis else []
+        llm_why = " ".join(causes[0].explanation.split())[:300] if causes else None
         with self.lock:
             # MAX: a regroup may already have marked it major while we were diagnosing
-            self.conn.execute("UPDATE incidents SET culprit=?, victims_json=?, pattern=?, major=MAX(major, ?) "
-                              "WHERE id=?", (culprit, json.dumps(victims), pattern, int(is_major), incident.id))
+            self.conn.execute("UPDATE incidents SET culprit=?, victims_json=?, pattern=?, major=MAX(major, ?), "
+                              "llm_why=? WHERE id=?",
+                              (culprit, json.dumps(victims), pattern, int(is_major), llm_why, incident.id))
             self.conn.commit()
         record = {"incident": incident.model_dump(mode="json"), "pattern": pattern,
                   "action": action.model_dump(mode="json") if action else None,

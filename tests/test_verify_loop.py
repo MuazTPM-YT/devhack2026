@@ -65,6 +65,7 @@ async def test_recovery_with_prediction_is_success_and_real_credit(tmp_path):
     assert w.types()[-1] == "incident_resolved" and "harm_check" in w.types()
     card = w.events[-1]["payload"]["card"]
     assert card["status"] == "FIXED"
+    assert "image change" in card["text"].splitlines()[1]  # gateway has no diagnosis; the journal explains
     assert ledger(w) == [("real", 1, 0)]
     r = w.gw.receipts.get(d.receipt_id)
     assert (r.outcome, r.prediction_held, r.harm_clean) == ("success", True, True)
