@@ -97,7 +97,8 @@ class Brain:
         if is_major:
             self.majors.add(incident.id)
             # many services at once: the ranked shared cause beats the per-trace culprit
-            ranked = major.analyse(incident.unhealthy, edges, first_breach, journal_rows, incident.onset_at, window_s)
+            ranked = major.analyse(incident.unhealthy, edges, first_breach, journal_rows, incident.onset_at, window_s,
+                                   self.flag_map)
             if ranked:
                 culprit = ranked[0]["target"]
                 victims = sorted(set(incident.unhealthy) - {culprit})
@@ -197,7 +198,8 @@ class Brain:
             edges = []
         window_s = self.policy["change_window_minutes"] * 60
         journal_rows = await self._get_json(f"{self.observer_url}/journal", [], since=incident.onset_at - window_s)
-        ranked = major.analyse(incident.unhealthy, edges, first_breach, journal_rows, incident.onset_at, window_s)
+        ranked = major.analyse(incident.unhealthy, edges, first_breach, journal_rows, incident.onset_at, window_s,
+                                   self.flag_map)
         with self.lock:
             self.conn.execute("UPDATE incidents SET major=1 WHERE id=?", (incident.id,))
             if ranked:

@@ -122,3 +122,22 @@ def test_kafka_consumers_together_are_major():
     sick = ["checkout", "accounting", "fraud-detection"]
     assert is_major(sick, {"checkout": 0, "accounting": 20, "fraud-detection": 40}, len(services), policy)
     assert not is_major(sick[:2], {"checkout": 0, "accounting": 20}, len(services), policy)
+
+
+# a flag flip that sickens 3+ services is major; the shared change's object is configmap/flagd-config,
+# not a service, so the culprit was "flagd-config", the rules said unknown and nobody reverted the flag
+def test_major_flag_change_ranks_the_flag_service():
+    from brain import rules
+    services = config.load("services")
+    flag = {"id": 7, "ts": 950.0, "kind": "flag", "object": "configmap/flagd-config", "field_manager": "chaos-panel",
+            "by_agent": False, "diff": {"flags[paymentFailure].defaultVariant": {"old": "off", "new": "50%"}},
+            "inverse": [{"op": "flag", "key": "demo.flagd.json", "flag": "paymentFailure", "defaultVariant": "off"}]}
+    fb = {"payment": 960.0, "checkout": 962.0, "frontend": 965.0}
+    ranked = analyse(list(fb), [], fb, [flag], 960.0, 600, services["flags"])
+    assert ranked[0]["target"] == "payment" and ranked[0]["journal_entry"] == 7
+    inc = {"id": "inc-1", "culprit": "payment", "onset_at": 960.0}
+    pattern, actions = rules.match(inc, [flag], [], services["services"], POLICY, flag_map=services["flags"])
+    assert pattern == "recent_change" and actions[0]["tool"] == "revert_config" and actions[0]["journal_entry"] == 7
+    # a flag that maps to no service is no shared change we can act on: shared dependencies rank instead
+    other = {**flag, "diff": {"flags[emitRawPii].defaultVariant": {"old": "off", "new": "on"}}}
+    assert analyse(list(fb), [], fb, [other], 960.0, 600, services["flags"]) == []
