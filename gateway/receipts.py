@@ -150,8 +150,8 @@ REASONS = [
     (r"journal entry \d+ (?:no longer matches|not found)", "The change the agent wanted to undo has changed again "
                                                            "since. A person should check."),
     (r"observer unreachable", "The agent cannot read health data right now, so it will not act."),
-    (r"action refused|not allowed|unknown service|is not actable", "The fix the agent proposed is not allowed by "
-                                                                   "its rules."),
+    (r"action refused|not allowed|unknown service|is not actable|validation error",
+     "The fix the agent proposed is not allowed by its rules, so it was blocked."),
     (r"trust bound", "The agent has not proven this fix often enough yet to run it alone."),
     (r"major incident: a human approves", "Many services are failing at once. In a major incident a person "
                                           "approves every fix."),
@@ -168,6 +168,10 @@ REASONS = [
     (r"watchdog", "The agent lost track of its fix while checking it, so it undid it to be safe."),
     (r"(\S+) changed by (\S+)", "A person ({1}) changed {0} during the incident, so the agent stepped back."),
 ]
+
+
+# the agent stopped on its own limits: its fix was allowed, so a human may run it by hand
+RERUNNABLE = r"action budget used up|another action is still being verified|approval expired|observer unreachable"
 
 
 def plain(text: object) -> str:
@@ -305,7 +309,9 @@ def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
     svc = plain(incident.culprit or "the service")
     kind = causes[0].cause_class if causes else (pattern or "unknown")
     found = bool(why) or kind != "unknown"
-    cause = plain(why) if why else cap(WHY.get(kind, WHY["unknown"]).format(svc=svc))
+    template = WHY.get(kind, WHY["unknown"])  # sentences that open with a service name keep it lower case
+    cause = plain(why) if why else (template.format(svc=svc) if template.startswith("{svc}")
+                                    else cap(template.format(svc=svc)))
     said = shorten(_tidy(plain(model_says or (causes[0].explanation if causes else ""))))
     stop = reason or (decision.reason if decision else None)
     because = explain(stop, decision.failed_step if decision else None) if stop else None
@@ -340,9 +346,11 @@ def build_incident_card(incident: Incident, diagnosis: Diagnosis | None = None,
         if because and not asking:
             add("Why the agent stepped back" if state == "HANDED OFF" else "Why the agent stopped", because)
         if proposal and wanted:
-            cmd = _command(proposal.tool, plain(proposal.target), proposal.params)
-            add("The agent wants to" if asking else "Suggested fix (not run)",
-                f"{cap(wanted)}." + (f"\n`{cmd}`" if cmd else ""))
+            # no paste-ready command when rules refused the fix, nor beside Approve (by hand skips verification)
+            allowed = bool(stop and (re.search(RERUNNABLE, stop) or (decision and decision.failed_step == "gateway")))
+            cmd = _command(proposal.tool, plain(proposal.target), proposal.params) if allowed and not asking else None
+            add("The agent wants to" if asking else "Suggested fix (not run)" if allowed
+                else "Blocked proposal (not run)", f"{cap(wanted)}." + (f"\n`{cmd}`" if cmd else ""))
             if asking and proposal.prediction:
                 add("If you approve", _expect(proposal.prediction) + ".")
         if because and asking:

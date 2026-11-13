@@ -194,6 +194,36 @@ def test_every_known_reason_has_a_plain_sentence(reason):
     assert not said.startswith("The agent stopped:") and reason not in said
 
 
+# live: astronomy-db OOM; the MCP schema refused raise_limit and the page showed a pydantic error
+def test_schema_refusal_reads_as_blocked_not_as_a_suggestion():
+    db = INC.model_copy(update={"culprit": "astronomy-db", "unhealthy": ["astronomy-db"], "victims": []})
+    raise_limit = ROLLBACK.model_copy(update={"tool": "raise_limit", "target": "astronomy-db", "prediction": None})
+    card = build_incident_card(db, pattern="resource", proposal=raise_limit, decision=GatewayDecision(
+        decision="escalated", failed_step="schema", reason="Error executing tool raise_limit: 1 validation error for "
+                                                           "raise_limitArguments target Input should be 'payment'"))
+    assert field(card, "Why the agent stopped") == ("The fix the agent proposed is not allowed by its rules, "
+                                                    "so it was blocked.")
+    assert field(card, "Blocked proposal (not run)") == "Raise astronomy-db's memory limit."
+    assert "validation error" not in everything(card)
+    assert card.text.splitlines()[1] == "Why: astronomy-db ran out of memory or CPU"
+
+
+# security review: a refused fix must not come with a command that walks around the policy
+@pytest.mark.parametrize("reason", ["valkey-cart is protected; a human must act", "tool scale not allowed",
+                                    "approval rejected", "major incident: one restart per incident"])
+def test_refused_fix_never_gets_a_paste_ready_command(reason):
+    card = build_incident_card(INC, decision=GatewayDecision(decision="escalated", reason=reason),
+                               health=HEALTH, proposal=ROLLBACK)
+    assert field(card, "Blocked proposal (not run)") == "Roll payment back to its previous version."
+    assert "kubectl" not in everything(card)
+
+
+def test_approval_card_has_no_command_beside_approve():
+    card = build_incident_card(INC, decision=GatewayDecision(decision="awaiting_approval", reason="trust bound 0.4"),
+                               health=HEALTH, proposal=ROLLBACK)
+    assert "kubectl" not in everything(card)
+
+
 def test_unknown_reason_still_shown_labelled():
     assert explain("brand new thing") == "The agent stopped: brand new thing."
     assert explain("ConnectError", "gateway").startswith("The agent's safety checker")
