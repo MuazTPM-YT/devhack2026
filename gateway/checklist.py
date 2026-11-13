@@ -223,7 +223,10 @@ class Gateway:
             used = {**used, "hour": 0}
         protected = bool(self.services.get(action.target, {}).get("protected"))
         # these can only end in an approval request, so an action still verifying doesn't block them
-        asking = not approved and (self.policy["tools"][action.tool]["auto_eligible"] is False or protected)
+        # a fix the model chose itself (not the rule's first pick) always goes to a human
+        chosen_by_model = action.origin == "model"
+        asking = not approved and (self.policy["tools"][action.tool]["auto_eligible"] is False or protected
+                                   or chosen_by_model)
         ok, outcome, reason = policy.check(action.model_dump(), self.services, self.policy, used, asking=asking)
         if not ok:
             return await self.stop(action, row, steps, "policy", outcome, reason)
@@ -272,7 +275,9 @@ class Gateway:
                                             self.flag_map)
         # only "recent change" points at a journal entry; other patterns must not trip on unrelated edits
         rule_now: tuple[str, int | None]
-        if action.pattern == "recent_change":
+        # nor a fix the model chose: it is allowed to differ from the rule, and a human reviews it anyway.
+        # Still-sick and still-live are checked for it like for any other action
+        if action.pattern == "recent_change" and not chosen_by_model:
             rule_now = (action.pattern, latest["id"] if latest else None)
         else:
             rule_now = (action.pattern, action.journal_entry)
@@ -308,6 +313,9 @@ class Gateway:
             if not (action.pattern == "recent_change" and shared and action.journal_entry == shared["id"]):
                 return await self.ask(action, row, steps, plan, "major incident: a human approves every action "
                                                                 "except reverting the shared change", gate)
+        if not approved and chosen_by_model:
+            return await self.ask(action, row, steps, plan, "the agent chose this fix itself, not the rule's "
+                                                            "first pick; a human must approve", gate)
         if not approved:
             if not gate["open"]:
                 return await self.ask(action, row, steps, plan, f"trust bound {gate['lower_bound']} < {gate['bar']}",
@@ -315,7 +323,8 @@ class Gateway:
             await self.step(action.incident_id, steps, "trust_gate", True, f"bound {gate['lower_bound']}")
 
         # 8 execute
-        return await self.execute(action, row, steps, plan, {**gate, "approved_by": approved_by, "pattern": action.pattern})
+        return await self.execute(action, row, steps, plan, {**gate, "approved_by": approved_by, "pattern": action.pattern,
+                                                             "origin": action.origin})
 
     async def ask(self, action: ActionRequest, row: dict, steps: list[dict], plan: dict, reason: str | None,
                   gate: dict | None = None, step_name: str = "trust_gate") -> GatewayDecision:
@@ -574,8 +583,10 @@ class Gateway:
         with self.lock:
             self.conn.execute("UPDATE receipts SET outcome=?, hash_after=? WHERE id=?",
                               (outcome, hash_after, receipt_id))
-            # real success needs a human's yes (§6.4.6); a failure always counts; the bench credits rehearsals
-            if effect is not None and by != approvals.REHEARSAL_APPROVER and (by or not effect):
+            # real success needs a human's yes (§6.4.6); a failure always counts; the bench credits rehearsals.
+            # The ledger is the rule's record: a fix the model chose earns and costs it nothing
+            if (effect is not None and by != approvals.REHEARSAL_APPROVER and (by or not effect)
+                    and action.origin != "model"):
                 trust.record(self.conn, action.pattern, action.tool, action.target, "real", effect, self.clock())
             self.conn.commit()
         event = {"success": "incident_resolved", "right_by_accident": "incident_resolved",
@@ -614,6 +625,8 @@ class Gateway:
                 return {"credited": False, "reason": "not a rehearsal receipt"}
             if gate.get("credited"):
                 return {"credited": False, "reason": "already credited"}
+            if gate.get("origin") == "model":
+                return {"credited": False, "reason": "the model chose this fix; the ledger is the rule's record"}
             if r["outcome"] in ("pending", "handed_off", "right_by_accident"):
                 return {"credited": False, "reason": f"outcome {r['outcome']} earns no credit"}
             success = r["outcome"] == "success" and diagnosis_matched

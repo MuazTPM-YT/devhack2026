@@ -15,10 +15,10 @@ def build_mcp(submit: Callable[[dict], Any], actable: list[str]) -> FastMCP:
     def make(tool: str):
         async def call(incident_id: str, target: ActableService, pattern: str, evidence_ids: list[str],  # type: ignore[valid-type]
                        prediction: dict | None = None, journal_entry: int | None = None,
-                       params: dict | None = None) -> dict:
+                       params: dict | None = None, origin: str = "rule") -> dict:
             decision = await submit({"incident_id": incident_id, "tool": tool, "target": target, "pattern": pattern,
                                      "evidence_ids": evidence_ids, "prediction": prediction,
-                                     "journal_entry": journal_entry, "params": params or {}})
+                                     "journal_entry": journal_entry, "params": params or {}, "origin": origin})
             return decision.model_dump(mode="json")
 
         call.__name__ = tool
