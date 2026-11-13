@@ -5,10 +5,22 @@ section. Only my own work here; cross-team facts go in
 `team/SHARED_CONTEXT.md`.
 
 **Last updated:** 2026-11-13
-**Current phase:** Akira MCP on `anirudh/akira-mcp` (off main 1893be7, not pushed).
-Phases 0-4 merged.
+**Current phase:** UI service map + debloat on `anirudh/service-map` (off main 912b88c,
+not pushed). Phases 0-4 merged.
 
 ## Done (with proof)
+
+- Service map + debloat, 2026-11-13, branch `anirudh/service-map` (dcd7f1c, 12eb5d2,
+  c93aab2). Decisions by Anirudh: UI reads Jaeger through a Next rewrite
+  (`/api/jaeger/*` -> `JAEGER_URL`), no gateway route; Trust merged into Receipts
+  (ledger card under the receipts); chaos "Health now" cut; `/flow` removed.
+  New `/map`: Jaeger `/api/dependencies` (1 h, polled 30 s), longest-chain column
+  layout, unhealthy = failing, every transitive caller = at risk, failure path red;
+  click a node -> "if it fails, these break" + "it needs". Checks: UI 62 pass (7 new
+  in `lib/service-map.test.ts`), tsc clean, `next build` OK, ruff clean. Screenshots
+  1440/390 px and picked state against a mock Jaeger + observer (scratchpad
+  `mock.py`, payment failing). **Not checked against the live cluster** (k3d
+  `oncall` was stopped); kafka and valkey-cart may have no Jaeger edges.
 
 - Akira MCP, 2026-11-13, branch `anirudh/akira-mcp` (a51d963, c98bfc5, b44aab5,
   113ab2b, 0ef7bd9). Decisions by Anirudh: one server with opt-in groups
