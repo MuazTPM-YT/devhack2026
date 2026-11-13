@@ -7,8 +7,9 @@ import { type BusRecord, EVENT_TYPES, initialState, reduce } from "./live.ts";
 
 export type Link = "connecting" | "live" | "down" | "demo";
 
-// gateway SSE through the Next rewrite; the browser re-sends Last-Event-ID on reconnect
-export function useLive(demo: boolean) {
+// gateway SSE through the Next rewrite; the browser re-sends Last-Event-ID on reconnect.
+// demo null = not known yet: connect to nothing, or replayed seqs would collide with real ones
+export function useLive(demo: boolean | null) {
   const [state, dispatch] = useReducer(reduce, initialState);
   const [link, setLink] = useState<Link>(demo ? "demo" : "connecting");
   const [run, setRun] = useState(0);
@@ -32,7 +33,7 @@ export function useLive(demo: boolean) {
   }, [demo, run]);
 
   useEffect(() => {
-    if (demo) return;
+    if (demo !== false) return;
     const source = new EventSource("/api/gateway/events");
     const onRecord = (e: MessageEvent<string>) => {
       try {

@@ -113,3 +113,15 @@ test("demo script ends resolved with every tile done", async () => {
   assert.equal(inc.checklist.length, 8);
   assert.ok(DEMO_SCRIPT.every((step, i) => i === 0 || step.at >= DEMO_SCRIPT[i - 1].at));
 });
+
+test("each incident keeps its own events in order with payloads", () => {
+  const s = run(
+    rec("incident_opened", { severity: 4 }, "inc-1"),
+    rec("incident_opened", {}, "inc-2"),
+    rec("culprit_found", { culprit: "cart" }, "inc-1"),
+    rec("blocked", {}, null),
+  );
+  assert.deepEqual(s.incidents["inc-1"].events.map((e) => e.type), ["incident_opened", "culprit_found"]);
+  assert.deepEqual(s.incidents["inc-1"].events[1].payload, { culprit: "cart" });
+  assert.deepEqual(s.incidents["inc-2"].events.map((e) => e.type), ["incident_opened"]);
+});

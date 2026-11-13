@@ -1,3 +1,4 @@
+import { stageTimes } from "@/lib/flow";
 import { since } from "@/lib/format";
 import { type Incident, STAGES, type Stage, type StageState } from "@/lib/live";
 
@@ -16,40 +17,30 @@ const STATE_LABEL: Record<StageState, string> = {
   idle: "waiting", active: "working", done: "done", failed: "stopped",
 };
 
-// 5x4 dot field; lit dots grow as the stage moves on
-function Dots({ state }: { state: StageState }) {
-  const lit = { idle: 0, active: 9, done: 20, failed: 20 }[state];
-  return (
-    <div className={styles.dots} aria-hidden="true">
-      {Array.from({ length: 20 }, (_, i) => (
-        <span key={i} className={i < lit ? styles[`dot_${state}`] : styles.dot} />
-      ))}
-    </div>
-  );
-}
+const secs = (s: number) => (s < 60 ? `${s.toFixed(1)} s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`);
 
-export function StageStrip({ incident }: { incident: Incident | null }) {
+// six stages as one stepper; each shows when it started and how long it ran
+export function StageStrip({ incident, now }: { incident: Incident | null; now: number }) {
+  const times = stageTimes(incident?.events ?? [], incident?.closedAt ?? now);
   return (
-    <section className={styles.strip} aria-label="Pipeline stages">
+    <ol className={styles.strip} aria-label="Pipeline stages">
       {STAGES.map((stage, i) => {
         const state = incident?.stages[stage] ?? "idle";
+        const t = times[stage];
         return (
-          <article key={stage} className={`card ${styles.tile} ${styles[state]}`}>
+          <li key={stage} className={`${styles.step} ${styles[state] ?? ""}`} title={COPY[stage].hint}>
             <div className={styles.top}>
-              <span className="label">{String(i + 1).padStart(2, "0")}</span>
+              <span className={styles.num}>{String(i + 1).padStart(2, "0")}</span>
+              <span className={styles.title}>{COPY[stage].title}</span>
               <span className={styles.state}>{STATE_LABEL[state]}</span>
             </div>
-            <h3 className={styles.title}>{COPY[stage].title}</h3>
-            <div className={styles.bottom}>
-              <p className={styles.hint}>{COPY[stage].hint}</p>
-              <Dots state={state} />
+            <div className={styles.bar} aria-hidden="true" />
+            <div className={styles.time}>
+              {t && incident ? `${since(t.start, incident.openedAt)} · ${secs(t.took)}` : COPY[stage].hint}
             </div>
-            {stage === "detect" && incident?.onsetAt != null && (
-              <span className={styles.stamp}>{since(incident.openedAt, incident.onsetAt)} after onset</span>
-            )}
-          </article>
+          </li>
         );
       })}
-    </section>
+    </ol>
   );
 }

@@ -11,8 +11,8 @@ const sans = Geist({ subsets: ["latin"], variable: "--font-sans" });
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
-  title: "On-call",
-  description: "The on-call agent that has to earn its autonomy",
+  title: { default: "Akira", template: "%s · Akira" },
+  description: "Akira, the on-call agent that has to earn its autonomy",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

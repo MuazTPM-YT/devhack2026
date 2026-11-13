@@ -7,13 +7,12 @@
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  margin-bottom: 6px;
 }
 
 .title {
   font-family: var(--serif);
   font-weight: 400;
-  font-size: 48px;
+  font-size: 40px;
   line-height: 1;
   margin: 4px 0 0;
   letter-spacing: -0.02em;
@@ -72,5 +71,5 @@
 }
 
 @media (max-width: 640px) {
-  .title { font-size: 38px; }
+  .title { font-size: 32px; }
 }

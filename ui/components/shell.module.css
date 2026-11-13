@@ -1,45 +1,205 @@
-.bar {
+/* fixed sidebar on desktop, icon rail on tablets, drawer on phones */
+.app { min-height: 100vh; }
+
+.side {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--side-w);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 26px;
+  flex-direction: column;
+  gap: 18px;
+  padding: 16px 12px 14px;
+  background: var(--side);
+  color: var(--side-ink);
+  overflow: hidden;
+  z-index: 30;
 }
+
+.main {
+  margin-left: var(--side-w);
+  padding: 20px 24px 32px;
+  min-width: 0;
+  max-width: calc(1480px + var(--side-w));
+}
+
+.skip {
+  position: absolute;
+  left: 8px;
+  top: -40px;
+  z-index: 50;
+  padding: 8px 12px;
+  background: var(--ox-deep);
+  color: var(--frame);
+  border-radius: var(--radius-sm);
+}
+
+.skip:focus { top: 8px; }
+
+.brandRow { display: flex; align-items: center; justify-content: space-between; padding: 0 6px; }
 
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   text-decoration: none;
-  color: var(--ox-deep);
-  font-family: var(--serif);
-  font-size: 26px;
-  letter-spacing: -0.01em;
+  color: var(--side-ink);
 }
 
-.nav {
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  border-radius: 999px;
-  background: var(--card-sunk);
-  border: 1px solid var(--line);
+.brandText { display: flex; flex-direction: column; line-height: 1.05; }
+.brandName { font-family: var(--serif); font-size: 26px; letter-spacing: -0.01em; }
+.brandSub { font-size: 10.5px; color: var(--side-mute); letter-spacing: 0.08em; text-transform: uppercase; }
+
+.closeBtn, .menuBtn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  cursor: pointer;
 }
+
+.closeBtn { color: var(--side-ink); }
+.closeBtn:hover { background: var(--side-hover); }
+
+.nav { display: flex; flex-direction: column; gap: 2px; }
 
 .link {
-  padding: 7px 16px;
-  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 38px;
+  padding: 0 10px;
+  border-radius: var(--radius);
+  color: var(--side-mute);
   text-decoration: none;
-  color: var(--ink-soft);
   font-size: 13.5px;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.12s var(--ease-out), color 0.12s var(--ease-out);
 }
 
-.link:hover { color: var(--ink); }
+.link:hover { background: var(--side-hover); color: var(--side-ink); }
+.link:focus-visible { outline-color: var(--rose); }
 
-.on, .on:hover { background: var(--ox-deep); color: var(--frame); }
+.on, .on:hover { background: var(--side-on); color: var(--side-ink); box-shadow: inset 2px 0 0 var(--rose); }
 
-@media (max-width: 640px) {
-  .bar { flex-direction: column; align-items: flex-start; gap: 12px; margin-bottom: 18px; }
-  .nav { max-width: 100%; overflow-x: auto; }
+.linkText { flex: 1; }
+
+.badge {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--rose);
+  color: var(--ox-deep);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.section { display: flex; flex-direction: column; gap: 6px; min-height: 0; flex: 1; }
+
+.sectionTitle {
+  margin: 0;
+  padding: 0 10px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--side-mute);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  display: flex;
+  justify-content: space-between;
+}
+
+.count { font-variant-numeric: tabular-nums; font-weight: 400; }
+
+.none { margin: 0; padding: 4px 10px; font-size: 12.5px; color: var(--side-mute); }
+
+.incidents {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--side-line) transparent;
+}
+
+.incident {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: var(--side-ink);
+}
+
+.incident:hover { background: var(--side-hover); }
+.incident:focus-visible { outline-color: var(--rose); }
+.incidentOn, .incidentOn:hover { background: var(--side-on); }
+
+.incMain { display: flex; flex-direction: column; min-width: 0; }
+.incWho { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.incSub { font-size: 11px; color: var(--side-mute); font-variant-numeric: tabular-nums; text-transform: capitalize; }
+
+.status {
+  margin: 0;
+  padding: 10px 10px 0;
+  border-top: 1px solid var(--side-line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.status div { display: flex; justify-content: space-between; gap: 8px; }
+.status dt { display: flex; align-items: center; gap: 8px; }
+.status dd { margin: 0; color: var(--side-mute); font-variant-numeric: tabular-nums; }
+
+.top { display: none; }
+.scrim { display: none; }
+
+/* tablet: icon rail, no incident list (it lives on the live page header too) */
+@media (max-width: 1100px) and (min-width: 721px) {
+  .side { width: var(--side-rail); padding: 14px 10px; align-items: center; }
+  .main { margin-left: var(--side-rail); padding: 18px 18px 28px; }
+  .brandText, .linkText, .section, .status dd, .statusName { display: none; }
+  .brandRow { padding: 0; }
+  .link { justify-content: center; padding: 0; width: 44px; position: relative; }
+  .badge { position: absolute; top: 2px; right: 0; min-width: 16px; padding: 0 4px; font-size: 10px; }
+  .status { padding: 10px 0 0; align-items: center; }
+}
+
+/* phone: top bar + drawer */
+@media (max-width: 720px) {
+  .top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    padding: 8px 12px;
+    background: var(--side);
+    color: var(--side-ink);
+  }
+  .menuBtn { display: inline-flex; color: var(--side-ink); }
+  .topBrand { display: inline-flex; align-items: center; gap: 8px; font-family: var(--serif); font-size: 22px; }
+  .topBrand svg { width: 22px; height: 22px; }
+  .closeBtn { display: inline-flex; }
+  .side {
+    width: min(300px, 86vw);
+    transform: translateX(-100%);
+    /* hidden only after the slide-out ends, so it stays out of the tab order when closed */
+    transition: transform 0.22s var(--ease-out), visibility 0s linear 0.22s;
+    visibility: hidden;
+  }
+  .side[data-open="true"] { transform: none; visibility: visible; transition: transform 0.22s var(--ease-out); }
+  .scrim { display: block; position: fixed; inset: 0; z-index: 25; background: rgba(42, 21, 18, 0.45); }
+  .main { margin-left: 0; padding: 14px 16px 24px; }
 }
